@@ -22,29 +22,132 @@ object WebScrapeScripts {
             };
 
             try {
-                // Check Next.js __NEXT_DATA__ first if present
+                // 0. Click any "TOC" / "All Chapters" / "Chapters" tab or expand button if present
+                try {
+                    var tocButtons = document.querySelectorAll('button, [role="tab"], [role="button"], a.nav-link, a.tab, div.tab, span.tab, .accordion-title, [data-tab*="chapter"]');
+                    for (var b = 0; b < tocButtons.length; b++) {
+                        var btn = tocButtons[b];
+                        var bText = (btn.innerText || '').trim().toLowerCase();
+                        if (bText === 'chapters' || bText === 'all chapters' || bText === 'table of contents' || bText === 'toc' || bText.indexOf('all chapters') >= 0 || bText === 'chapter list') {
+                            btn.click();
+                        }
+                    }
+                } catch(e) {}
+
+                // Helper to search deep in JSON objects for chapters array
+                function findChaptersInObject(obj, depth) {
+                    if (!obj || depth > 6) return null;
+                    if (Array.isArray(obj)) {
+                        if (obj.length > 0 && typeof obj[0] === 'object' && obj[0] !== null) {
+                            var first = obj[0];
+                            var hasTitle = !!(first.title || first.name || first.chapter_name || first.chapterName || first.chapter_title);
+                            var hasUrlOrId = !!(first.url || first.id || first.slug || first.chapter_id || first.chapter_slug || first.order || first.chapter_number);
+                            if (hasTitle || hasUrlOrId) {
+                                return obj;
+                            }
+                        }
+                        for (var i = 0; i < Math.min(obj.length, 6); i++) {
+                            var foundInArr = findChaptersInObject(obj[i], depth + 1);
+                            if (foundInArr && foundInArr.length > 0) return foundInArr;
+                        }
+                    } else if (typeof obj === 'object') {
+                        // Check keys that likely contain chapter list
+                        var candidateKeys = ['chapters', 'rawChapters', 'chapterList', 'chapter_list', 'items', 'list', 'toc', 'episodes', 'data'];
+                        for (var k = 0; k < candidateKeys.length; k++) {
+                            var key = candidateKeys[k];
+                            if (obj[key] && Array.isArray(obj[key]) && obj[key].length > 0) {
+                                var sample = obj[key][0];
+                                if (sample && typeof sample === 'object') {
+                                    if (sample.title || sample.name || sample.url || sample.id || sample.slug || sample.chapter_name) {
+                                        return obj[key];
+                                    }
+                                }
+                            }
+                        }
+                        for (var prop in obj) {
+                            if (typeof obj[prop] === 'object') {
+                                var foundInProp = findChaptersInObject(obj[prop], depth + 1);
+                                if (foundInProp && foundInProp.length > 0) return foundInProp;
+                            }
+                        }
+                    }
+                    return null;
+                }
+
+                // Helper to search deep in JSON objects for genres/tags
+                function findGenresInObject(obj, depth) {
+                    if (!obj || depth > 5) return [];
+                    var genres = [];
+                    if (typeof obj === 'object') {
+                        var targetKeys = ['genres', 'tags', 'categories', 'genre', 'tag', 'category'];
+                        for (var k = 0; k < targetKeys.length; k++) {
+                            var tKey = targetKeys[k];
+                            if (obj[tKey]) {
+                                if (Array.isArray(obj[tKey])) {
+                                    obj[tKey].forEach(function(item) {
+                                        var gName = typeof item === 'string' ? item : (item && (item.name || item.title || item.slug || ''));
+                                        if (gName && gName.trim().length > 1 && genres.indexOf(gName.trim()) < 0) {
+                                            genres.push(gName.trim());
+                                        }
+                                    });
+                                } else if (typeof obj[tKey] === 'string') {
+                                    obj[tKey].split(/[,|]/).forEach(function(s) {
+                                        var trimmed = s.trim();
+                                        if (trimmed.length > 1 && genres.indexOf(trimmed) < 0) genres.push(trimmed);
+                                    });
+                                }
+                            }
+                        }
+                        for (var p in obj) {
+                            if (typeof obj[p] === 'object') {
+                                var sub = findGenresInObject(obj[p], depth + 1);
+                                sub.forEach(function(g) { if (genres.indexOf(g) < 0) genres.push(g); });
+                            }
+                        }
+                    }
+                    return genres;
+                }
+
+                // Check Next.js __NEXT_DATA__
                 var nextScript = document.getElementById("__NEXT_DATA__");
                 if (nextScript) {
                     try {
                         var nextData = JSON.parse(nextScript.textContent);
                         var pp = (nextData.props && nextData.props.pageProps) || {};
-                        var serie = pp.serie || pp.novel || pp.book || (pp.series && pp.series.data) || pp.series;
-                        if (serie) {
-                            if (typeof serie === 'object') {
-                                if (serie.title) result.title = serie.title;
-                                if (serie.name && !result.title) result.title = serie.name;
-                                if (serie.author) result.author = typeof serie.author === 'string' ? serie.author : (serie.author.name || '');
-                                if (serie.description) result.description = serie.description.replace(/<[^>]+>/g, ' ').trim();
-                                if (serie.image) result.coverUrl = serie.image;
-                                if (serie.cover) result.coverUrl = serie.cover;
-                                if (Array.isArray(serie.genres)) result.genres = serie.genres.map(function(g) { return typeof g === 'string' ? g : (g.name || ''); });
-                            }
+                        var serie = pp.serie || pp.novel || pp.book || (pp.series && pp.series.data) || pp.series || pp.data;
+                        if (serie && typeof serie === 'object') {
+                            if (serie.title) result.title = serie.title;
+                            if (serie.name && !result.title) result.title = serie.name;
+                            if (serie.author) result.author = typeof serie.author === 'string' ? serie.author : (serie.author.name || '');
+                            if (serie.description) result.description = serie.description.replace(/<[^>]+>/g, ' ').trim();
+                            if (serie.synopsis && !result.description) result.description = serie.synopsis.replace(/<[^>]+>/g, ' ').trim();
+                            if (serie.image) result.coverUrl = serie.image;
+                            if (serie.cover) result.coverUrl = serie.cover;
+                            if (serie.poster && !result.coverUrl) result.coverUrl = serie.poster;
                         }
-                        if (Array.isArray(pp.chapters)) {
-                            pp.chapters.forEach(function(ch, idx) {
-                                var chUrl = ch.url || (ch.id ? (window.location.origin + '/chapter/' + ch.id) : '');
-                                var chTitle = ch.title || ch.name || ('Chapter ' + (idx + 1));
-                                if (chUrl) result.chapters.push({ title: chTitle, url: chUrl, order: idx + 1 });
+
+                        // Search for genres in Next.js props
+                        var nextGenres = findGenresInObject(pp, 0);
+                        nextGenres.forEach(function(g) { if (result.genres.indexOf(g) < 0) result.genres.push(g); });
+
+                        // Search for chapters in Next.js props
+                        var foundNextChapters = findChaptersInObject(pp, 0);
+                        if (foundNextChapters && foundNextChapters.length > 0) {
+                            foundNextChapters.forEach(function(ch, idx) {
+                                var chUrl = ch.url || '';
+                                if (!chUrl && (ch.slug || ch.id || ch.chapter_id || ch.order)) {
+                                    var idOrSlug = ch.slug || ch.id || ch.chapter_id || ch.order;
+                                    var currentBase = window.location.href.split('?')[0].replace(/\/+$/, '');
+                                    chUrl = currentBase + '/chapter-' + idOrSlug;
+                                }
+                                var chTitle = ch.title || ch.name || ch.chapter_name || ('Chapter ' + (idx + 1));
+                                if (chUrl) {
+                                    result.chapters.push({
+                                        title: chTitle,
+                                        url: chUrl,
+                                        order: idx + 1
+                                    });
+                                }
                             });
                         }
                     } catch(e) {}
@@ -92,6 +195,13 @@ object WebScrapeScripts {
                                     var gList = Array.isArray(item.genre) ? item.genre : [item.genre];
                                     gList.forEach(function(g) { if (g && result.genres.indexOf(g) < 0) result.genres.push(g); });
                                 }
+                                if (item.keywords) {
+                                    var kwList = typeof item.keywords === 'string' ? item.keywords.split(',') : (Array.isArray(item.keywords) ? item.keywords : []);
+                                    kwList.forEach(function(kw) {
+                                        var kwTrim = kw.trim();
+                                        if (kwTrim.length > 1 && result.genres.indexOf(kwTrim) < 0) result.genres.push(kwTrim);
+                                    });
+                                }
                             }
                         }
                     } catch(e) {}
@@ -124,6 +234,22 @@ object WebScrapeScripts {
                 var metaAuthor = document.querySelector('meta[name="author"]') || document.querySelector('meta[property="book:author"]');
                 if (!result.author && metaAuthor && metaAuthor.content) {
                     result.author = metaAuthor.content.trim();
+                }
+
+                // Meta tags for genres/tags
+                var metaKeywords = document.querySelector('meta[name="keywords"]');
+                if (metaKeywords && metaKeywords.content) {
+                    metaKeywords.content.split(/[,|]/).forEach(function(kw) {
+                        var kwTrim = kw.trim();
+                        if (kwTrim.length > 1 && kwTrim.length < 30 && !/^(?:novel|read|online|free|light novel)$/i.test(kwTrim)) {
+                            if (result.genres.indexOf(kwTrim) < 0) result.genres.push(kwTrim);
+                        }
+                    });
+                }
+                var metaTags = document.querySelectorAll('meta[property="article:tag"], meta[property="og:article:tag"], meta[name="novel:genre"]');
+                for (var mt = 0; mt < metaTags.length; mt++) {
+                    var mContent = (metaTags[mt].content || '').trim();
+                    if (mContent && result.genres.indexOf(mContent) < 0) result.genres.push(mContent);
                 }
 
                 // 3. Heuristics fallback: Title
@@ -164,9 +290,9 @@ object WebScrapeScripts {
 
                 // 3. Heuristics fallback: Cover Image
                 if (!result.coverUrl) {
-                    var coverImg = document.querySelector('img[class*="cover"], img[id*="cover"], img[class*="poster"], img[class*="thumb"], .novel-cover img, .book-cover img, .series-img img');
-                    if (coverImg && (coverImg.src || coverImg.getAttribute('data-src'))) {
-                        result.coverUrl = coverImg.src || coverImg.getAttribute('data-src') || '';
+                    var coverImg = document.querySelector('img[class*="cover"], img[id*="cover"], img[class*="poster"], img[class*="thumb"], .novel-cover img, .book-cover img, .series-img img, .thumbnail img');
+                    if (coverImg && (coverImg.src || coverImg.getAttribute('data-src') || coverImg.getAttribute('data-lazy-src'))) {
+                        result.coverUrl = coverImg.src || coverImg.getAttribute('data-src') || coverImg.getAttribute('data-lazy-src') || '';
                     }
                 }
 
@@ -176,7 +302,6 @@ object WebScrapeScripts {
                     if (descEl && descEl.innerText && descEl.innerText.trim().length > 20) {
                         result.description = descEl.innerText.trim();
                     } else {
-                        // Pick longest paragraph in upper half of page
                         var paragraphs = document.querySelectorAll('p');
                         var longestP = "";
                         for (var p = 0; p < Math.min(paragraphs.length, 30); p++) {
@@ -189,27 +314,72 @@ object WebScrapeScripts {
                     }
                 }
 
-                // 3. Heuristics fallback: Tags / Genres
+                // 3. Heuristics fallback: Tags / Genres from DOM
                 if (result.genres.length === 0) {
-                    var tagEls = document.querySelectorAll('[class*="genre"], [class*="tag"], [rel="tag"], a[href*="/genre/"], a[href*="/tag/"], a[href*="/genres/"], a[href*="/tags/"]');
+                    var tagEls = document.querySelectorAll('[class*="genre"], [class*="tag"], [rel="tag"], a[href*="/genre"], a[href*="/tag"], a[href*="/genres/"], a[href*="/tags/"], a[href*="genre="], a[href*="tag="], .badge, .chip');
                     for (var t = 0; t < tagEls.length; t++) {
                         var tText = (tagEls[t].innerText || '').trim();
-                        if (tText && tText.length >= 2 && tText.length <= 30 && result.genres.indexOf(tText) < 0) {
-                            result.genres.push(tText);
+                        if (tText && tText.length >= 2 && tText.length <= 30) {
+                            if (!/^(?:home|read|novel|chapters|bookmark|login|sign\s*up|menu|search)$/i.test(tText)) {
+                                if (result.genres.indexOf(tText) < 0) {
+                                    result.genres.push(tText);
+                                }
+                            }
                         }
                     }
                 }
 
-                // 4. Chapter List Extraction
-                if (result.chapters.length === 0) {
-                    var chapterContainer = document.querySelector('[class*="chapter-list"], [class*="chapters"], [id*="chapters"], [class*="toc"], .volume, ul.chapter, ol.chapter, [class*="table-of-contents"], [id*="chapter-list"], #list-chapter, .list-chapter, [class*="episode-list"]');
-                    var anchorList = (chapterContainer || document).querySelectorAll('a[href]');
-                    var seenUrls = {};
-                    var chapterRegex = /(?:chapter|ch[-_.]?|episode|ep[-_.]?)\s*(\d+)/i;
-                    var pathRegex = /\/(?:chapter|ch|episode|c|read)[-_/](\d+)/i;
+                // Also inspect metadata rows / definition lists / tables for genres & tags
+                var metaRows = document.querySelectorAll('tr, dt, dd, li, div, p');
+                for (var mr = 0; mr < metaRows.length; mr++) {
+                    var rowText = (metaRows[mr].innerText || '').trim();
+                    var matchGenre = rowText.match(/^(?:genres?|tags?|categories?)\s*[:：]\s*([\s\S]+)$/i);
+                    if (matchGenre && matchGenre[1]) {
+                        var extractedG = matchGenre[1].split(/[,/|\n\r•]+/).map(function(s) { return s.trim(); });
+                        extractedG.forEach(function(g) {
+                            if (g.length >= 2 && g.length <= 30 && result.genres.indexOf(g) < 0) {
+                                result.genres.push(g);
+                            }
+                        });
+                    }
+                }
 
-                    for (var a = 0; a < anchorList.length; a++) {
-                        var anchor = anchorList[a];
+                // 4. Chapter List Extraction: Comprehensive DOM Scrape
+                // If Next.js didn't find chapters or only found a few, inspect DOM thoroughly!
+                if (result.chapters.length < 5) {
+                    var seenUrls = {};
+                    // Pre-populate seenUrls from any already found
+                    result.chapters.forEach(function(ch) { seenUrls[ch.url] = true; });
+
+                    // Find all candidate chapter containers
+                    var candidateContainers = document.querySelectorAll('[class*="chapter-list"], [class*="chapters"], [id*="chapters"], [class*="toc"], .volume, ul.chapter, ol.chapter, [class*="table-of-contents"], [id*="chapter-list"], #list-chapter, .list-chapter, [class*="episode-list"], [id*="episode-list"], .tab-content, .panel-body, #tab-chapters, .chapter-container');
+
+                    // If candidate containers exist, prefer the ones with the HIGHEST count of links
+                    // (prevents picking a small "latest 2-4 chapters" preview box)
+                    var bestContainerLinks = [];
+                    var maxLinksInContainer = 0;
+                    for (var cc = 0; cc < candidateContainers.length; cc++) {
+                        // Skip if container is explicitly a "latest" or "recent" preview box
+                        var cClass = (candidateContainers[cc].className || '') + ' ' + (candidateContainers[cc].id || '');
+                        var isPreview = /latest|recent|preview|last-release/i.test(cClass);
+                        var links = candidateContainers[cc].querySelectorAll('a[href]');
+                        if (links.length > maxLinksInContainer && (!isPreview || links.length > 10)) {
+                            maxLinksInContainer = links.length;
+                            bestContainerLinks = links;
+                        }
+                    }
+
+                    // Fallback to all links in document if no large container found
+                    var candidateLinkList = (bestContainerLinks.length > 5) ? bestContainerLinks : document.querySelectorAll('a[href]');
+
+                    var chapterRegex = /(?:chapter|ch[-_.]?|episode|ep[-_.]?)\s*(\d+)/i;
+                    var pathRegex = /\/(?:chapter|ch|episode|ep|c|read)[-_/](\d+)/i;
+                    var numericEndingRegex = /\/(?:serie-?\d+.*?\/)?(\d+)\/?(?:[?#]|$)/i;
+
+                    var collectedCandidates = [];
+
+                    for (var a = 0; a < candidateLinkList.length; a++) {
+                        var anchor = candidateLinkList[a];
                         var href = anchor.href;
                         var aText = (anchor.innerText || anchor.getAttribute('title') || '').trim();
 
@@ -217,28 +387,42 @@ object WebScrapeScripts {
                             continue;
                         }
 
-                        // Check if href or text suggests a chapter
-                        var isChapterHref = pathRegex.test(href) || href.indexOf('/chapter-') >= 0 || href.indexOf('/chapter/') >= 0 || href.indexOf('/ch-') >= 0;
-                        var isChapterText = chapterRegex.test(aText) || /^\s*\d+[\s.:-]/i.test(aText) || /^第\s*\d+\s*[章回]/i.test(aText);
+                        // Filter out navigation boilerplate
+                        if (/^(?:next\s+chapter|prev(?:ious)?\s+chapter|first\s+chapter|last\s+chapter|latest\s+chapter|all\s+chapters|read\s+now|start\s+reading|table\s+of\s+contents)$/i.test(aText)) {
+                            continue;
+                        }
 
-                        if (chapterContainer || isChapterHref || isChapterText) {
-                            // Filter out navigation boilerplate like "Next Chapter" or "Previous Chapter" or "First Chapter"
-                            if (/^(?:next\s+chapter|prev(?:ious)?\s+chapter|latest\s+chapter|all\s+chapters)$/i.test(aText)) {
-                                continue;
-                            }
+                        var isChapterHref = pathRegex.test(href) ||
+                                            href.indexOf('/chapter-') >= 0 ||
+                                            href.indexOf('/chapter/') >= 0 ||
+                                            href.indexOf('/ch-') >= 0 ||
+                                            href.indexOf('/ch/') >= 0 ||
+                                            numericEndingRegex.test(href);
 
-                            // Normalize URL
+                        var isChapterText = chapterRegex.test(aText) ||
+                                            /^\s*(?:chapter|ch|ep)?\s*#?\s*\d+\b/i.test(aText) ||
+                                            /^\s*\d+[\s.:-]/i.test(aText) ||
+                                            /^第\s*\d+\s*[章回]/i.test(aText);
+
+                        var inChapterContainer = (bestContainerLinks.length > 5);
+
+                        if (isChapterHref || isChapterText || inChapterContainer) {
                             var cleanUrl = href.split('#')[0];
                             if (!seenUrls[cleanUrl]) {
                                 seenUrls[cleanUrl] = true;
-                                var title = aText || ('Chapter ' + (result.chapters.length + 1));
-                                result.chapters.push({
+                                var title = aText || ('Chapter ' + (collectedCandidates.length + 1));
+                                collectedCandidates.push({
                                     title: title,
                                     url: cleanUrl,
-                                    order: result.chapters.length + 1
+                                    order: collectedCandidates.length + 1
                                 });
                             }
                         }
+                    }
+
+                    // If collected candidates are more than what Next.js had, replace with the complete list!
+                    if (collectedCandidates.length > result.chapters.length) {
+                        result.chapters = collectedCandidates;
                     }
                 }
 

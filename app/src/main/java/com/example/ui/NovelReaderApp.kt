@@ -288,7 +288,11 @@ fun NovelReaderApp(
             is Screen.WebBrowser -> {
                 WebBrowserScreen(
                     initialUrl = screen.initialUrl,
+                    repository = repo,
                     onBack = { currentScreen = Screen.Main },
+                    onNovelSaved = { savedNovel ->
+                        currentScreen = Screen.NovelDetail(savedNovel)
+                    },
                     onScrapedNovel = { scraped ->
                         currentScreen = Screen.ConfirmScrapedNovel(scraped)
                     }

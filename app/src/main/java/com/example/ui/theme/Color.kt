@@ -12,8 +12,8 @@ val WarmAmberContainer = Color(0xFF33271A) // Dark amber container
 val DarkWarmBackground = Color(0xFF141312)
 val DarkWarmSurface = Color(0xFF1D1C1A)
 val DarkWarmSurfaceVariant = Color(0xFF262422)
-val DarkWarmOutline = Color(0xFF383532)
-val DarkWarmOutlineVariant = Color(0xFF2C2926)
+val DarkWarmOutline = Color(0xFF78726A)
+val DarkWarmOutlineVariant = Color(0xFF423E3A)
 val DarkWarmOnSurface = Color(0xFFF3EFEA)
 val DarkWarmOnSurfaceVariant = Color(0xFFABA49C)
 
@@ -30,8 +30,8 @@ val LightWarmOnSurfaceVariant = Color(0xFF70695E)
 val AmoledBackground = Color(0xFF000000)
 val AmoledSurface = Color(0xFF11100F)
 val AmoledSurfaceVariant = Color(0xFF1B1A18)
-val AmoledOutline = Color(0xFF2D2B28)
-val AmoledOutlineVariant = Color(0xFF21201D)
+val AmoledOutline = Color(0xFF6B655E)
+val AmoledOutlineVariant = Color(0xFF383531)
 
 // Sepia theme palette
 val SepiaBackground = Color(0xFFF5EFE1)

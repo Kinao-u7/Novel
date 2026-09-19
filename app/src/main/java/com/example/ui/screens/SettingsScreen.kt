@@ -39,6 +39,7 @@ import com.example.data.model.*
 import com.example.data.repository.NovelRepository
 import com.example.data.source.NovelSource
 import com.example.data.source.SourceManager
+import com.example.ui.components.AppSwitch
 import com.example.ui.components.NovelCoverImage
 import com.example.ui.theme.calculateOnColor
 import com.example.ui.theme.parseColorHex
@@ -446,7 +447,7 @@ private fun AppearanceSettingsPage(repository: NovelRepository) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Switch(
+                        AppSwitch(
                             checked = themeSettings.useDynamicColor,
                             onCheckedChange = { checked ->
                                 repository.updateThemeSettings(themeSettings.copy(useDynamicColor = checked))
@@ -920,7 +921,7 @@ private fun ReaderSettingsPage(repository: NovelRepository) {
                             Text("First-Line Indentation", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                             Text("Indent the first line of each paragraph", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Switch(
+                        AppSwitch(
                             checked = readerSettings.paragraphIndentation,
                             onCheckedChange = { repository.updateReaderSettings(readerSettings.copy(paragraphIndentation = it)) }
                         )
@@ -985,7 +986,7 @@ private fun ReaderSettingsPage(repository: NovelRepository) {
                             Text("Keep Screen On", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                             Text("Prevent display sleep while actively reading", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Switch(
+                        AppSwitch(
                             checked = readerSettings.keepScreenOn,
                             onCheckedChange = { repository.updateReaderSettings(readerSettings.copy(keepScreenOn = it)) }
                         )
@@ -1003,7 +1004,7 @@ private fun ReaderSettingsPage(repository: NovelRepository) {
                             Text("Show Mini Status Bar", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                             Text("Display clock & battery indicator at the top of reader", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Switch(
+                        AppSwitch(
                             checked = readerSettings.showStatusBar,
                             onCheckedChange = { repository.updateReaderSettings(readerSettings.copy(showStatusBar = it)) }
                         )
@@ -1143,7 +1144,7 @@ private fun ReaderSettingsPage(repository: NovelRepository) {
                             )
                         }
 
-                        Switch(
+                        AppSwitch(
                             checked = rule.isEnabled,
                             onCheckedChange = { checked ->
                                 repository.toggleTermReplacementRule(rule.id, checked)
@@ -1335,7 +1336,7 @@ private fun DownloadSettingsPage(repository: NovelRepository) {
                             Text("Only Download on Wi-Fi", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                             Text("Prevent cellular data usage when downloading chapters", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Switch(
+                        AppSwitch(
                             checked = downloadSettings.wifiOnly,
                             onCheckedChange = { repository.updateDownloadSettings(downloadSettings.copy(wifiOnly = it)) }
                         )
@@ -1352,7 +1353,7 @@ private fun DownloadSettingsPage(repository: NovelRepository) {
                             Text("Auto-Download Next Chapter", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                             Text("Silently prefetch next chapter while reading current one", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Switch(
+                        AppSwitch(
                             checked = downloadSettings.autoDownloadNext,
                             onCheckedChange = { repository.updateDownloadSettings(downloadSettings.copy(autoDownloadNext = it)) }
                         )
@@ -1659,7 +1660,7 @@ private fun NotificationsSettingsPage(repository: NovelRepository) {
                             Text("Library Chapter Updates", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                             Text("Alert when new chapters are detected for books in your library", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Switch(
+                        AppSwitch(
                             checked = notificationSettings.notifyOnNovelUpdate,
                             onCheckedChange = { repository.updateNotificationSettings(notificationSettings.copy(notifyOnNovelUpdate = it)) }
                         )
@@ -1676,7 +1677,7 @@ private fun NotificationsSettingsPage(repository: NovelRepository) {
                             Text("Download Completed Alerts", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                             Text("Notify when offline chapter batch downloads finish", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Switch(
+                        AppSwitch(
                             checked = notificationSettings.notifyOnDownload,
                             onCheckedChange = { repository.updateNotificationSettings(notificationSettings.copy(notifyOnDownload = it)) }
                         )

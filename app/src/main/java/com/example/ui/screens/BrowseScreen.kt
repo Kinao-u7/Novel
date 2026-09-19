@@ -138,15 +138,20 @@ fun BrowseScreen(
             OutlinedButton(
                 onClick = { onOpenWebBrowser("https://wtr-lab.com") },
                 shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.primary
+                ),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Public,
                     contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                Text(text = "Web Browser", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(text = "Web Browser", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
             }
         }
 
@@ -333,7 +338,10 @@ fun BrowseScreen(
                     item {
                         Text(
                             text = "Novels Added from Web",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontFamily = BookSerifFontFamily,
+                                fontWeight = FontWeight.Bold
+                            ),
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }

@@ -3,6 +3,7 @@ package com.example.ui.screens
 import android.annotation.SuppressLint
 import android.content.ClipDescription
 import android.graphics.Bitmap
+import android.util.Log
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
@@ -14,6 +15,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -22,11 +24,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,15 +46,23 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHost
@@ -56,9 +70,9 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -67,6 +81,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -84,18 +99,26 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.example.data.model.Novel
+import com.example.data.repository.NovelRepository
 import com.example.data.source.webscrape.ScrapedChapter
 import com.example.data.source.webscrape.ScrapedNovelData
 import com.example.data.source.webscrape.WebScrapeScripts
+import com.example.ui.components.NovelCoverImage
+import com.example.ui.theme.BookSerifFontFamily
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
+@OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun WebBrowserScreen(
     initialUrl: String = "https://wtr-lab.com",
+    repository: NovelRepository? = null,
     onBack: () -> Unit,
-    onScrapedNovel: (ScrapedNovelData) -> Unit
+    onNovelSaved: ((Novel) -> Unit)? = null,
+    onScrapedNovel: ((ScrapedNovelData) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -119,9 +142,12 @@ fun WebBrowserScreen(
     }
     var isAddressBarFocused by remember { mutableStateOf(false) }
 
-    // Scraping overlay / state
+    // Scraping overlay & bottom sheet state
+    var showAddNovelSheet by remember { mutableStateOf(false) }
+    var sheetUrlInput by remember { mutableStateOf(initialUrl) }
     var isScraping by remember { mutableStateOf(false) }
     var scrapeErrorMessage by remember { mutableStateOf<String?>(null) }
+    var scrapedNovelData by remember { mutableStateOf<ScrapedNovelData?>(null) }
 
     fun navigateTo(rawInput: String) {
         val trimmed = rawInput.trim()
@@ -138,6 +164,7 @@ fun WebBrowserScreen(
         }
 
         currentUrl = targetUrl
+        sheetUrlInput = targetUrl
         urlInputValue = TextFieldValue(targetUrl, TextRange(targetUrl.length))
         focusManager.clearFocus()
         keyboardController?.hide()
@@ -146,7 +173,9 @@ fun WebBrowserScreen(
 
     // Hardware back navigation
     BackHandler {
-        if (isAddressBarFocused) {
+        if (showAddNovelSheet) {
+            showAddNovelSheet = false
+        } else if (isAddressBarFocused) {
             focusManager.clearFocus()
             keyboardController?.hide()
         } else if (webViewInstance?.canGoBack() == true) {
@@ -156,76 +185,104 @@ fun WebBrowserScreen(
         }
     }
 
-    // Function to trigger JS scraping on current page
-    fun runScrapingPass() {
+    // Trigger JS scraping on current or custom URL with pre-scroll & TOC trigger
+    fun runScrapingPass(customUrl: String? = null) {
         val webView = webViewInstance ?: return
+
+        if (!customUrl.isNullOrBlank() && customUrl.trim() != currentUrl.trim()) {
+            navigateTo(customUrl)
+        }
+
         isScraping = true
         scrapeErrorMessage = null
 
-        webView.evaluateJavascript(WebScrapeScripts.NOVEL_DETAILS_SCRAPE_JS) { rawJson ->
-            isScraping = false
-            try {
-                if (rawJson.isNullOrBlank() || rawJson == "null") {
-                    scrapeErrorMessage = "No information could be extracted from this page."
-                    return@evaluateJavascript
-                }
-
-                val unescaped = if (rawJson.startsWith("\"") && rawJson.endsWith("\"")) {
-                    org.json.JSONTokener(rawJson).nextValue().toString()
-                } else {
-                    rawJson
-                }
-
-                val json = JSONObject(unescaped)
-                val title = json.optString("title", "").trim()
-                val author = json.optString("author", "Unknown Author").trim()
-                val coverUrl = json.optString("coverUrl", "").takeIf { it.isNotBlank() }
-                val description = json.optString("description", "").trim()
-                val sourceUrl = json.optString("sourceUrl", currentUrl).ifBlank { currentUrl }
-
-                val genresList = mutableListOf<String>()
-                val gArr = json.optJSONArray("genres")
-                if (gArr != null) {
-                    for (i in 0 until gArr.length()) {
-                        val g = gArr.optString(i, "").trim()
-                        if (g.isNotBlank() && !genresList.contains(g)) genresList.add(g)
-                    }
-                }
-
-                val chaptersList = mutableListOf<ScrapedChapter>()
-                val chArr = json.optJSONArray("chapters")
-                if (chArr != null) {
-                    for (i in 0 until chArr.length()) {
-                        val cObj = chArr.optJSONObject(i) ?: continue
-                        val chTitle = cObj.optString("title", "").trim()
-                        val chUrl = cObj.optString("url", "").trim()
-                        val chOrder = cObj.optInt("order", i + 1)
-                        if (chUrl.isNotBlank()) {
-                            chaptersList.add(
-                                ScrapedChapter(
-                                    title = chTitle.ifBlank { "Chapter ${i + 1}" },
-                                    url = chUrl,
-                                    order = chOrder
-                                )
-                            )
+        // Step 1: Programmatically trigger any TOC/accordion and scroll to load all chapters
+        val prepareJs = """
+            (function() {
+                try {
+                    var buttons = document.querySelectorAll('button, [role="tab"], [role="button"], a.nav-link, a.tab, div.tab, span.tab, [data-tab*="chapter"]');
+                    for (var b = 0; b < buttons.length; b++) {
+                        var text = (buttons[b].innerText || '').trim().toLowerCase();
+                        if (text === 'chapters' || text === 'all chapters' || text === 'table of contents' || text === 'toc' || text.indexOf('all chapters') >= 0 || text === 'chapter list') {
+                            buttons[b].click();
                         }
                     }
+                    window.scrollTo(0, document.body.scrollHeight || document.documentElement.scrollHeight);
+                } catch(e) {}
+            })();
+        """.trimIndent()
+
+        webView.evaluateJavascript(prepareJs) {
+            // Step 2: Wait 600ms for lazy rendered DOM elements, then perform deep scrape
+            scope.launch {
+                delay(600)
+                webView.evaluateJavascript(WebScrapeScripts.NOVEL_DETAILS_SCRAPE_JS) { rawJson ->
+                    isScraping = false
+                    try {
+                        if (rawJson.isNullOrBlank() || rawJson == "null") {
+                            scrapeErrorMessage = "No novel details could be extracted from this page."
+                            return@evaluateJavascript
+                        }
+
+                        val unescaped = if (rawJson.startsWith("\"") && rawJson.endsWith("\"")) {
+                            org.json.JSONTokener(rawJson).nextValue().toString()
+                        } else {
+                            rawJson
+                        }
+
+                        val json = JSONObject(unescaped)
+                        val title = json.optString("title", "").trim()
+                        val author = json.optString("author", "Unknown Author").trim()
+                        val coverUrl = json.optString("coverUrl", "").takeIf { it.isNotBlank() }
+                        val description = json.optString("description", "").trim()
+                        val sourceUrl = json.optString("sourceUrl", currentUrl).ifBlank { currentUrl }
+
+                        val genresList = mutableListOf<String>()
+                        val gArr = json.optJSONArray("genres")
+                        if (gArr != null) {
+                            for (i in 0 until gArr.length()) {
+                                val g = gArr.optString(i, "").trim()
+                                if (g.isNotBlank() && !genresList.contains(g)) genresList.add(g)
+                            }
+                        }
+
+                        val chaptersList = mutableListOf<ScrapedChapter>()
+                        val chArr = json.optJSONArray("chapters")
+                        if (chArr != null) {
+                            for (i in 0 until chArr.length()) {
+                                val cObj = chArr.optJSONObject(i) ?: continue
+                                val chTitle = cObj.optString("title", "").trim()
+                                val chUrl = cObj.optString("url", "").trim()
+                                val chOrder = cObj.optInt("order", i + 1)
+                                if (chUrl.isNotBlank()) {
+                                    chaptersList.add(
+                                        ScrapedChapter(
+                                            title = chTitle.ifBlank { "Chapter ${i + 1}" },
+                                            url = chUrl,
+                                            order = chOrder
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        val data = ScrapedNovelData(
+                            title = title.ifBlank { pageTitle.ifBlank { "Untitled Web Novel" } },
+                            author = author.ifBlank { "Unknown Author" },
+                            coverUrl = coverUrl,
+                            description = description,
+                            genres = genresList,
+                            chapters = chaptersList,
+                            sourceUrl = sourceUrl
+                        )
+
+                        Log.d("NovelScraper", "Extracted novel: '${data.title}', ${chaptersList.size} chapters, ${genresList.size} genres")
+                        scrapedNovelData = data
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        scrapeErrorMessage = "Extraction failed: ${e.localizedMessage ?: "Unknown error"}"
+                    }
                 }
-
-                val scrapedData = ScrapedNovelData(
-                    title = title.ifBlank { pageTitle.ifBlank { "Untitled Web Novel" } },
-                    author = author.ifBlank { "Unknown Author" },
-                    coverUrl = coverUrl,
-                    description = description,
-                    genres = genresList,
-                    chapters = chaptersList,
-                    sourceUrl = sourceUrl
-                )
-
-                onScrapedNovel(scrapedData)
-            } catch (e: Exception) {
-                e.printStackTrace()
-                scrapeErrorMessage = "Failed to parse page data: ${e.localizedMessage ?: "Unknown error"}"
             }
         }
     }
@@ -233,11 +290,13 @@ fun WebBrowserScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
 
-            // Top Header with Address Bar & Navigation Controls
+            // Top Header with Address Bar & Navigation Controls (Proper status bar padding)
             Surface(
                 color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 3.dp,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
@@ -262,7 +321,7 @@ fun WebBrowserScreen(
 
                         Spacer(modifier = Modifier.width(4.dp))
 
-                        // Functional, fully-editable Address Bar
+                        // Functional, fully-editable Address Bar with Amber Accents
                         OutlinedTextField(
                             value = urlInputValue,
                             onValueChange = { newValue ->
@@ -275,7 +334,6 @@ fun WebBrowserScreen(
                                 .onFocusChanged { focusState ->
                                     isAddressBarFocused = focusState.isFocused
                                     if (focusState.isFocused) {
-                                        // Select entire text when focused so user can replace or paste immediately
                                         val len = urlInputValue.text.length
                                         urlInputValue = urlInputValue.copy(selection = TextRange(0, len))
                                     }
@@ -299,7 +357,7 @@ fun WebBrowserScreen(
                             },
                             trailingIcon = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    // Quick Paste Icon Button: pastes clipboard directly into the field
+                                    // Quick Paste Icon Button
                                     if (isAddressBarFocused || urlInputValue.text.isBlank()) {
                                         IconButton(
                                             onClick = {
@@ -368,7 +426,7 @@ fun WebBrowserScreen(
                                 focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                                 unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
                                 focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
                             )
                         )
 
@@ -439,7 +497,7 @@ fun WebBrowserScreen(
                         }
                     }
 
-                    // Progress Indicator
+                    // Progress Indicator with Amber Accent
                     if (isLoading) {
                         LinearProgressIndicator(
                             progress = { loadProgress },
@@ -489,7 +547,7 @@ fun WebBrowserScreen(
                             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                                 val url = request?.url?.toString()
                                 if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
-                                    return false // Let WebView load it
+                                    return false
                                 }
                                 return false
                             }
@@ -544,17 +602,22 @@ fun WebBrowserScreen(
                     }
                 },
                 update = {
-                    // Update if needed
+                    // Handled dynamically
                 }
             )
         }
 
-        // Floating Action Button: "Add to Library" (Bottom-right, accent circular FAB)
+        // Floating Action Button: "Add to Library" (Warm Amber Accent, bottom-right with navigation bar padding)
         FloatingActionButton(
-            onClick = { runScrapingPass() },
+            onClick = {
+                sheetUrlInput = currentUrl
+                showAddNovelSheet = true
+                runScrapingPass(currentUrl)
+            },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(20.dp)
+                .navigationBarsPadding()
+                .padding(16.dp)
                 .testTag("add_to_library_fab"),
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -577,60 +640,331 @@ fun WebBrowserScreen(
             }
         }
 
-        // Scraping Loading Overlay
-        if (isScraping) {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.55f)
+        // Compact Add-Novel Modal Bottom Sheet Overlay
+        if (showAddNovelSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showAddNovelSheet = false },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp,
+                dragHandle = { BottomSheetDefaults.DragHandle() }
             ) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 20.dp, vertical = 8.dp)
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 6.dp,
-                        modifier = Modifier.padding(32.dp)
+                    // Header: "Add Novel" with Serif Display Typography
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(
-                            modifier = Modifier.padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            CircularProgressIndicator(
-                                color = MaterialTheme.colorScheme.primary,
-                                strokeWidth = 3.dp
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "Extracting Novel Info...",
-                                style = MaterialTheme.typography.titleMedium,
+                        Text(
+                            text = "Add Novel",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontFamily = BookSerifFontFamily,
                                 fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Analyzing title, author, cover, synopsis, and chapter table of contents.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        IconButton(
+                            onClick = { showAddNovelSheet = false },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Editable URL Field with Paste & Go Buttons
+                    OutlinedTextField(
+                        value = sheetUrlInput,
+                        onValueChange = { sheetUrlInput = it },
+                        label = { Text("Novel or Chapter URL", fontSize = 12.sp) },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Public,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        },
+                        trailingIcon = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = {
+                                        val clip = clipboardManager.getText()?.text
+                                        if (!clip.isNullOrBlank()) {
+                                            sheetUrlInput = clip
+                                            navigateTo(clip)
+                                            runScrapingPass(clip)
+                                        }
+                                    },
+                                    modifier = Modifier.size(34.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ContentPaste,
+                                        contentDescription = "Paste",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = {
+                                        if (sheetUrlInput.isNotBlank()) {
+                                            navigateTo(sheetUrlInput)
+                                            runScrapingPass(sheetUrlInput)
+                                        }
+                                    },
+                                    modifier = Modifier.size(34.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        contentDescription = "Go",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Compact Confirmation Preview Area
+                    if (isScraping) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(20.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    color = MaterialTheme.colorScheme.primary,
+                                    strokeWidth = 2.5.dp,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = "Extracting novel details & chapters...",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    } else if (scrapeErrorMessage != null) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f)
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f))
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Text(
+                                    text = "Extraction Notice",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = scrapeErrorMessage ?: "Could not extract details.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                TextButton(
+                                    onClick = { runScrapingPass(sheetUrlInput.ifBlank { currentUrl }) },
+                                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+                                ) {
+                                    Text("Retry Extraction", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    } else if (scrapedNovelData != null) {
+                        val data = scrapedNovelData!!
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Cover Thumbnail
+                                NovelCoverImage(
+                                    coverUrl = data.coverUrl,
+                                    title = data.title,
+                                    modifier = Modifier
+                                        .width(60.dp)
+                                        .height(84.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                )
+
+                                Spacer(modifier = Modifier.width(14.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = data.title,
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontFamily = BookSerifFontFamily,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Text(
+                                        text = data.author,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.MenuBook,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = "${data.chapters.size} chapters found",
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontWeight = FontWeight.SemiBold
+                                            ),
+                                            color = if (data.chapters.isEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+
+                                    if (data.genres.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = data.genres.take(3).joinToString(", "),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Inline warning if 0 chapters found
+                        if (data.chapters.isEmpty()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f)
+                                ),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Warning,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "0 chapters detected. Navigate to the novel's table of contents or index page to scrape all chapters.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    // Prominent "Add to Library" Button
+                    Button(
+                        onClick = {
+                            val data = scrapedNovelData ?: return@Button
+                            if (repository != null) {
+                                val savedNovel = repository.saveWebScrapedNovel(
+                                    scrapedData = data,
+                                    customTitle = data.title,
+                                    customAuthor = data.author,
+                                    customSynopsis = data.description,
+                                    customTags = data.genres,
+                                    customCoverUrl = data.coverUrl
+                                )
+                                showAddNovelSheet = false
+                                onNovelSaved?.invoke(savedNovel)
+                            } else if (onScrapedNovel != null) {
+                                showAddNovelSheet = false
+                                onScrapedNovel.invoke(data)
+                            }
+                        },
+                        enabled = !isScraping && scrapedNovelData != null && scrapedNovelData!!.title.isNotBlank(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .testTag("sheet_add_to_library_btn"),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    ) {
+                        Icon(imageVector = Icons.Default.BookmarkAdd, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Add to Library",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
             }
-        }
-
-        // Scrape Error Dialog
-        if (scrapeErrorMessage != null) {
-            AlertDialog(
-                onDismissRequest = { scrapeErrorMessage = null },
-                title = { Text("Extraction Error") },
-                text = { Text(scrapeErrorMessage ?: "") },
-                confirmButton = {
-                    TextButton(onClick = { scrapeErrorMessage = null }) {
-                        Text("OK")
-                    }
-                }
-            )
         }
 
         SnackbarHost(

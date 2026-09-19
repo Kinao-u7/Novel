@@ -431,7 +431,7 @@ fun LibraryScreen(
             },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(bottom = 84.dp, end = 20.dp),
+                .padding(bottom = 16.dp, end = 16.dp),
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary
         ) {
