@@ -1,0 +1,195 @@
+package com.example.data.model
+
+enum class AppThemeMode(val displayName: String) {
+    SYSTEM("System Default"),
+    LIGHT("Light"),
+    DARK("Dark"),
+    AMOLED("AMOLED Pure Black"),
+    SEPIA("Warm Sepia")
+}
+
+data class AccentPreset(
+    val name: String,
+    val hex: String
+)
+
+val PRESET_ACCENT_COLORS = listOf(
+    AccentPreset("Warm Gold", "#DEB887"),
+    AccentPreset("Sandstone", "#E5B876"),
+    AccentPreset("Amber Gold", "#F59E0B"),
+    AccentPreset("Indigo", "#6366F1"),
+    AccentPreset("Ocean Blue", "#2563EB"),
+    AccentPreset("Emerald Teal", "#0D9488"),
+    AccentPreset("Jade Green", "#10B981"),
+    AccentPreset("Sunset Orange", "#EA580C"),
+    AccentPreset("Ruby Red", "#E11D48"),
+    AccentPreset("Rose Pink", "#EC4899"),
+    AccentPreset("Royal Purple", "#8B5CF6"),
+    AccentPreset("Deep Cyan", "#0284C7"),
+    AccentPreset("Slate", "#64748B")
+)
+
+data class ThemeSettings(
+    val themeMode: AppThemeMode = AppThemeMode.DARK,
+    val accentColorHex: String = "#DEB887",
+    val useDynamicColor: Boolean = false
+)
+
+enum class ReaderTheme(val displayName: String) {
+    LIGHT("Light"),
+    WARM("Warm Paper"),
+    SEPIA("Sepia"),
+    DARK("Dark"),
+    AMOLED("AMOLED")
+}
+
+enum class ReaderFontWeight(val displayName: String, val weight: Int) {
+    NORMAL("Normal", 400),
+    MEDIUM("Medium", 500),
+    BOLD("Bold", 700)
+}
+
+enum class ReaderTextAlign(val displayName: String) {
+    LEFT("Left"),
+    JUSTIFIED("Justified"),
+    RIGHT("Right")
+}
+
+enum class ReadingMode(val displayName: String) {
+    CONTINUOUS("Scroll"),
+    PAGINATED("Paginated")
+}
+
+enum class FontType(val displayName: String, val fontFamilyName: String) {
+    SANS("Sans-Serif", "sans-serif"),
+    SERIF("Bookish Serif", "serif"),
+    MONOSPACE("Monospace", "monospace"),
+    ROUNDED("Rounded", "sans-serif-rounded")
+}
+
+enum class MarginType(val displayName: String, val horizontalPaddingDp: Int) {
+    COMPACT("Compact", 12),
+    NORMAL("Normal", 20),
+    WIDE("Wide", 32)
+}
+
+enum class ToolbarPosition(val displayName: String) {
+    TOP("Top"),
+    BOTTOM("Bottom")
+}
+
+data class TermReplacementRule(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val original: String,
+    val replacement: String,
+    val isEnabled: Boolean = true
+)
+
+data class ReaderSettings(
+    val theme: ReaderTheme = ReaderTheme.SEPIA,
+    val fontSizeSp: Int = 18,
+    val fontWeight: ReaderFontWeight = ReaderFontWeight.NORMAL,
+    val lineSpacingMultiplier: Float = 1.6f,
+    val paragraphSpacingDp: Int = 12,
+    val letterSpacingSp: Float = 0f,
+    val textAlign: ReaderTextAlign = ReaderTextAlign.JUSTIFIED,
+    val horizontalMarginDp: Int = 20,
+    val verticalMarginDp: Int = 20,
+    val contentWidthPercent: Int = 100,
+    val paragraphIndentation: Boolean = false,
+    val marginType: MarginType = MarginType.NORMAL,
+    val fontType: FontType = FontType.SERIF,
+    val readingMode: ReadingMode = ReadingMode.CONTINUOUS,
+    val autoScrollSpeed: Int = 0, // 0 = off, 1-5 = speed
+    val keepScreenOn: Boolean = true,
+    val isJustified: Boolean = true,
+    val toolbarPosition: ToolbarPosition = ToolbarPosition.BOTTOM,
+    val showStatusBar: Boolean = true,
+    val enabledToolbarActions: List<String> = listOf("prev_chapter", "next_chapter", "toc", "tts", "bookmark", "display"),
+    val globalTermReplacementsEnabled: Boolean = true,
+    val ttsSpeechRate: Float = 1.0f,
+    val ttsPitch: Float = 1.0f,
+    val ttsVoice: String? = null,
+    val saveReadingPosition: Boolean = true
+)
+
+data class DownloadSettings(
+    val wifiOnly: Boolean = true,
+    val allowMobileData: Boolean = false,
+    val simultaneousDownloads: Int = 3,
+    val autoDownloadNext: Boolean = false
+)
+
+data class NotificationSettings(
+    val notifyOnDownload: Boolean = true,
+    val notifyOnNovelUpdate: Boolean = true
+)
+
+data class AppNotificationItem(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val title: String,
+    val message: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val type: String = "info" // "download", "update", "system"
+)
+
+data class Novel(
+    val id: String,
+    val title: String,
+    val author: String,
+    val coverUrl: String? = null,
+    val description: String,
+    val genres: List<String> = emptyList(),
+    val status: String = "Ongoing", // Ongoing, Completed, Local
+    val sourceId: String,
+    val sourceName: String,
+    val inLibrary: Boolean = false,
+    val lastReadChapterId: String? = null,
+    val lastReadChapterTitle: String? = null,
+    val lastReadChapterIndex: Int = 0,
+    val lastReadScrollPosition: Int = 0, // paragraph or scroll offset
+    val totalChapters: Int = 0,
+    val downloadedChaptersCount: Int = 0,
+    val rating: Float = 4.8f,
+    val lastReadTimestamp: Long = 0L,
+    val isEpub: Boolean = false
+)
+
+data class Chapter(
+    val id: String,
+    val novelId: String,
+    val title: String,
+    val chapterIndex: Int,
+    val releaseDate: String = "Recent",
+    val isDownloaded: Boolean = false,
+    val isRead: Boolean = false,
+    val wordCount: Int = 0
+)
+
+data class ChapterContent(
+    val chapterId: String,
+    val novelId: String,
+    val title: String,
+    val paragraphs: List<String>,
+    val isDownloaded: Boolean = false
+)
+
+data class Bookmark(
+    val id: String,
+    val novelId: String,
+    val chapterId: String,
+    val chapterTitle: String,
+    val paragraphIndex: Int,
+    val excerpt: String,
+    val note: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class ReadingStats(
+    val todayMinutesRead: Int = 42,
+    val currentStreakDays: Int = 7,
+    val totalChaptersRead: Int = 128,
+    val totalWordsRead: Long = 345200L,
+    val wordsPerMinute: Int = 240,
+    val lastSessionTimestamp: Long = System.currentTimeMillis()
+)

@@ -1,0 +1,32 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Open Book Left Page -->
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M32,38 C38,36 46,38 52,41 L52,72 C46,69 38,67 32,69 Z" />
+    <!-- Open Book Right Page -->
+    <path
+        android:fillColor="#E2E8F0"
+        android:pathData="M76,38 C70,36 62,38 56,41 L56,72 C62,69 70,67 76,69 Z" />
+    <!-- Book Spine / Center Binding -->
+    <path
+        android:fillColor="#94A3B8"
+        android:pathData="M52,41 C53.3,40.5 54.7,40.5 56,41 L56,72 C54.7,71.5 53.3,71.5 52,72 Z" />
+    <!-- Gold Ribbon Bookmark -->
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M52,36 L56,36 L56,54 L54,51 L52,54 Z" />
+    <!-- Subtle Book Page Lines Left -->
+    <path
+        android:strokeColor="#CBD5E1"
+        android:strokeWidth="1.2"
+        android:pathData="M36,46 L48,48 M36,52 L48,54 M36,58 L45,60" />
+    <!-- Subtle Book Page Lines Right -->
+    <path
+        android:strokeColor="#94A3B8"
+        android:strokeWidth="1.2"
+        android:pathData="M60,48 L72,46 M60,54 L72,52 M60,60 L69,58" />
+</vector>

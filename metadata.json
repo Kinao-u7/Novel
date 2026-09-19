@@ -1,0 +1,6 @@
+{
+  "name": "Novel Reader",
+  "description": "A clean, offline-first Android web novel and light novel reader designed for long reading sessions with customizable themes, EPUB import, and local chapter storage.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

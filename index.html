@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Novel Reader</title>
+  <meta name="description" content="A clean, offline-first Android web novel and light novel reader designed for long reading sessions with customizable themes, EPUB import, and local chapter storage." />
+  <meta property="og:title" content="Novel Reader" />
+  <meta property="og:description" content="A clean, offline-first Android web novel and light novel reader designed for long reading sessions with customizable themes, EPUB import, and local chapter storage." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=JetBrains+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            serif: ['Newsreader', 'Georgia', 'serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+            display: ['Cinzel', 'serif'],
+          },
+          colors: {
+            sepia: {
+              50: '#FAF6EE',
+              100: '#F4ECD8',
+              200: '#E6D7B8',
+              300: '#D5BE93',
+              800: '#524128',
+              900: '#2C2214',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Theme definitions */
+    body.theme-light {
+      --bg-reader: #FAFAFA;
+      --text-reader: #18181B;
+      --card-reader: #FFFFFF;
+      --border-reader: #E4E4E7;
+      --muted-reader: #71717A;
+    }
+    body.theme-sepia {
+      --bg-reader: #FAF6EE;
+      --text-reader: #2C2214;
+      --card-reader: #F4ECD8;
+      --border-reader: #E6D7B8;
+      --muted-reader: #7C6848;
+    }
+    body.theme-dark {
+      --bg-reader: #12141A;
+      --text-reader: #E2E8F0;
+      --card-reader: #1A1E26;
+      --border-reader: #2A303C;
+      --muted-reader: #94A3B8;
+    }
+    body.theme-amoled {
+      --bg-reader: #000000;
+      --text-reader: #E4E4E7;
+      --card-reader: #0A0A0A;
+      --border-reader: #27272A;
+      --muted-reader: #A1A1AA;
+    }
+
+    .reader-content {
+      background-color: var(--bg-reader);
+      color: var(--text-reader);
+    }
+    .reader-card {
+      background-color: var(--card-reader);
+      border-color: var(--border-reader);
+    }
+    .highlight-tts {
+      background-color: rgba(245, 158, 11, 0.25);
+      border-left: 3px solid #D97706;
+      padding-left: 0.75rem;
+      border-radius: 2px;
+      transition: all 0.2s ease;
+    }
+    /* Hide scrollbars during paginated mode */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="theme-light bg-zinc-50 text-zinc-900 font-sans antialiased min-h-screen flex flex-col transition-colors duration-200">
+
+  <!-- Top Navigation Header -->
+  <header id="main-header" class="sticky top-0 z-40 bg-white/90 dark:bg-zinc-900/90 backdrop-blur border-b border-zinc-200 dark:border-zinc-800 transition-colors">
+    <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 flex items-center justify-center font-display font-bold text-lg shadow-sm">
+          N
+        </div>
+        <div>
+          <h1 id="app-title" class="font-display font-bold text-lg tracking-wide leading-none text-zinc-900 dark:text-white">Novel Reader</h1>
+          <p class="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Offline-First Web & Light Novel Engine</p>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav id="nav-tabs" class="hidden md:flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/80 p-1 rounded-xl text-sm font-medium">
+        <button id="tab-btn-library" onclick="switchTab('library')" class="tab-btn px-4 py-1.5 rounded-lg bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-white transition">Library</button>
+        <button id="tab-btn-browse" onclick="switchTab('browse')" class="tab-btn px-4 py-1.5 rounded-lg text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 transition">Browse</button>
+        <button id="tab-btn-downloads" onclick="switchTab('downloads')" class="tab-btn px-4 py-1.5 rounded-lg text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 transition">Offline Cache</button>
+        <button id="tab-btn-stats" onclick="switchTab('stats')" class="tab-btn px-4 py-1.5 rounded-lg text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 transition">Statistics</button>
+      </nav>
+
+      <!-- Action Area -->
+      <div class="flex items-center gap-2">
+        <button id="btn-open-epub" onclick="triggerEpubImport()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 transition flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Import EPUB
+        </button>
+        <a id="btn-download-apk" href="/download-apk" download="NovelReader-Debug.apk" target="_blank" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          Download APK
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hidden EPUB File Input -->
+  <input type="file" id="epub-file-input" accept=".epub" class="hidden" onchange="handleEpubFile(event)" />
+
+  <!-- Main View Container -->
+  <main id="main-content" class="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6">
+
+    <!-- 1. LIBRARY TAB -->
+    <section id="view-library" class="space-y-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-2xl font-bold font-display text-zinc-900 dark:text-white">Your Reading Library</h2>
+          <p class="text-sm text-zinc-500">Track current books, reading positions, and local downloads.</p>
+        </div>
+        <span id="library-count-badge" class="px-2.5 py-1 text-xs font-semibold rounded-full bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">
+          3 Novels
+        </span>
+      </div>
+
+      <div id="library-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- 2. BROWSE TAB -->
+    <section id="view-browse" class="space-y-6 hidden">
+      <div class="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+        <div>
+          <h2 class="text-2xl font-bold font-display text-zinc-900 dark:text-white">Discover Novels</h2>
+          <p class="text-sm text-zinc-500">Explore curated web novel catalogs & public domain classics.</p>
+        </div>
+        <!-- Search bar -->
+        <div class="w-full md:w-80 relative">
+          <input id="browse-search-input" type="text" placeholder="Search title, author, or tags..." oninput="filterNovels(this.value)" class="w-full pl-9 pr-4 py-2 rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white" />
+          <svg class="w-4 h-4 text-zinc-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        </div>
+      </div>
+
+      <!-- Sources Filter Bar -->
+      <div class="flex flex-wrap items-center gap-2 pt-1 border-b border-zinc-200 dark:border-zinc-800 pb-3">
+        <span class="text-xs font-medium text-zinc-400 uppercase tracking-wider mr-2">Source:</span>
+        <button onclick="setSourceFilter('all')" class="source-filter-btn px-3 py-1 text-xs rounded-full bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 font-medium transition" data-source="all">All Sources</button>
+        <button onclick="setSourceFilter('WebNovel Haven')" class="source-filter-btn px-3 py-1 text-xs rounded-full bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-medium transition" data-source="WebNovel Haven">WebNovel Haven</button>
+        <button onclick="setSourceFilter('Public Domain Classics')" class="source-filter-btn px-3 py-1 text-xs rounded-full bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-medium transition" data-source="Public Domain Classics">Classics Archive</button>
+      </div>
+
+      <div id="browse-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- 3. NOVEL DETAIL VIEW -->
+    <section id="view-novel-detail" class="space-y-6 hidden">
+      <button onclick="switchTab('browse')" class="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+        Back to Catalog
+      </button>
+
+      <div id="novel-detail-card" class="bg-white dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/60 rounded-2xl p-6 md:p-8">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- 4. ACTIVE READER VIEW -->
+    <section id="view-reader" class="hidden fixed inset-0 z-50 flex flex-col reader-content transition-colors duration-200">
+      <!-- Reader Floating Top Bar -->
+      <div id="reader-topbar" class="flex items-center justify-between px-4 py-3 bg-black/10 backdrop-blur border-b border-black/5 dark:border-white/10 z-20">
+        <button onclick="exitReader()" class="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition" title="Back to Novel">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+        </button>
+
+        <div class="text-center truncate px-4">
+          <h3 id="reader-title" class="font-bold text-sm truncate">Novel Title</h3>
+          <p id="reader-chapter-title" class="text-xs opacity-75 truncate">Chapter 1</p>
+        </div>
+
+        <div class="flex items-center gap-1">
+          <button onclick="toggleReaderSettings()" class="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition" title="Reading Settings">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          </button>
+          <button onclick="toggleTtsPlayback()" id="btn-tts-toggle" class="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition" title="Text-to-Speech Audiobook">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>
+          </button>
+          <button onclick="bookmarkCurrentPosition()" class="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition" title="Bookmark">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Settings Flyout Drawer -->
+      <div id="reader-settings-drawer" class="hidden absolute top-14 right-4 z-30 w-80 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-2xl space-y-4 text-zinc-900 dark:text-zinc-100">
+        <div class="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-3">
+          <h4 class="font-bold text-sm">Reader Appearance</h4>
+          <button onclick="toggleReaderSettings()" class="text-zinc-400 hover:text-zinc-700 dark:hover:text-white">✕</button>
+        </div>
+
+        <!-- Themes -->
+        <div>
+          <label class="text-xs font-semibold text-zinc-500 uppercase tracking-wider block mb-2">Theme</label>
+          <div class="grid grid-cols-4 gap-2">
+            <button onclick="setTheme('theme-light')" class="py-2 rounded-lg border text-xs font-medium bg-white text-zinc-900 border-zinc-300 shadow-sm">Light</button>
+            <button onclick="setTheme('theme-sepia')" class="py-2 rounded-lg border text-xs font-medium bg-[#FAF6EE] text-[#2C2214] border-[#E6D7B8]">Sepia</button>
+            <button onclick="setTheme('theme-dark')" class="py-2 rounded-lg border text-xs font-medium bg-[#12141A] text-slate-200 border-slate-700">Dark</button>
+            <button onclick="setTheme('theme-amoled')" class="py-2 rounded-lg border text-xs font-medium bg-black text-zinc-200 border-zinc-800">AMOLED</button>
+          </div>
+        </div>
+
+        <!-- Mode -->
+        <div>
+          <label class="text-xs font-semibold text-zinc-500 uppercase tracking-wider block mb-2">Reading Mode</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="btn-mode-continuous" onclick="setReadingMode('continuous')" class="py-1.5 rounded-lg border text-xs font-medium bg-zinc-900 text-white dark:bg-white dark:text-zinc-900">Continuous</button>
+            <button id="btn-mode-paginated" onclick="setReadingMode('paginated')" class="py-1.5 rounded-lg border text-xs font-medium bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200 border-zinc-200 dark:border-zinc-700">Paginated</button>
+          </div>
+        </div>
+
+        <!-- Font Family -->
+        <div>
+          <label class="text-xs font-semibold text-zinc-500 uppercase tracking-wider block mb-2">Typography</label>
+          <select id="reader-font-family" onchange="setFontFamily(this.value)" class="w-full text-xs py-2 px-3 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800">
+            <option value="serif">Bookish Serif (Newsreader)</option>
+            <option value="sans">Clean Sans (Plus Jakarta)</option>
+            <option value="mono">Code Monospace (JetBrains)</option>
+          </select>
+        </div>
+
+        <!-- Font Size -->
+        <div>
+          <div class="flex justify-between text-xs font-medium mb-1">
+            <span>Font Size</span>
+            <span id="font-size-label">18px</span>
+          </div>
+          <input type="range" min="14" max="32" value="18" oninput="setFontSize(this.value)" class="w-full accent-zinc-900 dark:accent-white" />
+        </div>
+
+        <!-- Line Height -->
+        <div>
+          <div class="flex justify-between text-xs font-medium mb-1">
+            <span>Line Spacing</span>
+            <span id="line-height-label">1.8</span>
+          </div>
+          <input type="range" min="1.3" max="2.4" step="0.1" value="1.8" oninput="setLineHeight(this.value)" class="w-full accent-zinc-900 dark:accent-white" />
+        </div>
+      </div>
+
+      <!-- TTS Floating Control Bar (When Playing) -->
+      <div id="tts-control-bar" class="hidden px-4 py-2 bg-amber-500/15 border-b border-amber-500/30 flex items-center justify-between text-xs font-medium">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+          <span>Audiobook Narrator Playing...</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <button onclick="changeTtsSpeed(-0.25)" class="hover:underline">Speed -</button>
+          <span id="tts-speed-label" class="font-mono">1.0x</span>
+          <button onclick="changeTtsSpeed(0.25)" class="hover:underline">Speed +</button>
+          <button onclick="stopTtsPlayback()" class="text-rose-500 font-bold ml-2">Stop</button>
+        </div>
+      </div>
+
+      <!-- Reader Scrollable/Paginated Body -->
+      <div id="reader-body-container" class="flex-1 overflow-y-auto px-6 md:px-12 py-8 flex justify-center">
+        <div id="reader-prose" class="w-full max-w-2xl font-serif text-[18px] leading-[1.8] space-y-5">
+          <!-- Paragraphs rendered here -->
+        </div>
+      </div>
+
+      <!-- Paginated Footer Controls (Visible in Paginated Mode) -->
+      <div id="paginated-controls" class="hidden px-4 py-3 bg-black/5 dark:bg-white/5 border-t border-black/5 dark:border-white/10 flex items-center justify-between text-xs">
+        <button onclick="prevPage()" class="px-4 py-1.5 rounded-lg bg-black/10 dark:bg-white/10 font-semibold">Previous Page</button>
+        <span id="page-indicator" class="font-mono">Page 1 of 5</span>
+        <button onclick="nextPage()" class="px-4 py-1.5 rounded-lg bg-black/10 dark:bg-white/10 font-semibold">Next Page</button>
+      </div>
+
+      <!-- Chapter Navigation Bottom Bar -->
+      <div id="reader-bottombar" class="flex items-center justify-between px-4 py-2.5 bg-black/5 dark:bg-white/5 border-t border-black/5 dark:border-white/10 text-xs">
+        <button id="btn-prev-chapter" onclick="navigateChapter(-1)" class="flex items-center gap-1 opacity-70 hover:opacity-100 transition">
+          ← Previous Chapter
+        </button>
+        <span id="reader-progress-percent" class="font-mono opacity-80">Progress: 12%</span>
+        <button id="btn-next-chapter" onclick="navigateChapter(1)" class="flex items-center gap-1 opacity-70 hover:opacity-100 transition">
+          Next Chapter →
+        </button>
+      </div>
+    </section>
+
+    <!-- 5. OFFLINE DOWNLOADS TAB -->
+    <section id="view-downloads" class="space-y-6 hidden">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-2xl font-bold font-display text-zinc-900 dark:text-white">Offline Storage</h2>
+          <p class="text-sm text-zinc-500">Manage downloaded chapters cached locally for offline reading.</p>
+        </div>
+        <button onclick="clearAllDownloads()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 transition">
+          Clear Offline Storage
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="p-5 rounded-2xl bg-white dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700">
+          <p class="text-xs font-medium text-zinc-400 uppercase tracking-wider">Storage Utilized</p>
+          <p id="stat-storage-size" class="text-2xl font-bold font-display mt-1 text-zinc-900 dark:text-white">1.8 MB</p>
+          <p class="text-xs text-zinc-500 mt-1">Stored locally on disk</p>
+        </div>
+        <div class="p-5 rounded-2xl bg-white dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700">
+          <p class="text-xs font-medium text-zinc-400 uppercase tracking-wider">Downloaded Chapters</p>
+          <p id="stat-cached-chapters" class="text-2xl font-bold font-display mt-1 text-zinc-900 dark:text-white">24</p>
+          <p class="text-xs text-zinc-500 mt-1">Available without internet</p>
+        </div>
+        <div class="p-5 rounded-2xl bg-white dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700">
+          <p class="text-xs font-medium text-zinc-400 uppercase tracking-wider">Compiled APK</p>
+          <p class="text-2xl font-bold font-display mt-1 text-emerald-600">23.5 MB</p>
+          <a href="/download-apk" download="NovelReader-Debug.apk" target="_blank" class="text-xs text-emerald-600 hover:underline mt-1 inline-block">Download Android APK →</a>
+        </div>
+      </div>
+
+      <div id="downloads-list" class="space-y-3">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- 6. READING STATS TAB -->
+    <section id="view-stats" class="space-y-6 hidden">
+      <div>
+        <h2 class="text-2xl font-bold font-display text-zinc-900 dark:text-white">Reading Statistics</h2>
+        <p class="text-sm text-zinc-500">Track streaks, pace, and reading journey milestones.</p>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="p-5 rounded-2xl bg-white dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700">
+          <p class="text-xs font-medium text-zinc-400 uppercase tracking-wider">Daily Streak</p>
+          <p class="text-3xl font-bold font-display mt-1 text-amber-500">🔥 7 Days</p>
+        </div>
+        <div class="p-5 rounded-2xl bg-white dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700">
+          <p class="text-xs font-medium text-zinc-400 uppercase tracking-wider">Read Today</p>
+          <p class="text-3xl font-bold font-display mt-1 text-indigo-500">42 Min</p>
+        </div>
+        <div class="p-5 rounded-2xl bg-white dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700">
+          <p class="text-xs font-medium text-zinc-400 uppercase tracking-wider">Chapters Read</p>
+          <p class="text-3xl font-bold font-display mt-1 text-emerald-500">18</p>
+        </div>
+        <div class="p-5 rounded-2xl bg-white dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700">
+          <p class="text-xs font-medium text-zinc-400 uppercase tracking-wider">Reading Speed</p>
+          <p class="text-3xl font-bold font-display mt-1 text-zinc-900 dark:text-white">245 WPM</p>
+        </div>
+      </div>
+
+      <div class="p-6 rounded-2xl bg-white dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700">
+        <h3 class="font-bold text-base mb-3 font-display">Recent Bookmarks & Notes</h3>
+        <div id="bookmarks-list" class="space-y-3 text-sm">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 px-4 py-2.5 rounded-xl shadow-xl text-sm font-medium flex items-center gap-2">
+    <span id="toast-message">Action completed</span>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
