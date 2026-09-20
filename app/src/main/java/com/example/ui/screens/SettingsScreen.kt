@@ -145,6 +145,7 @@ private fun SettingsHubPage(
     val readerSettings by repository.readerSettings.collectAsState()
     val downloadSettings by repository.downloadSettings.collectAsState()
     val notificationSettings by repository.notificationSettings.collectAsState()
+    val context = LocalContext.current
 
     LazyColumn(
         modifier = Modifier
@@ -256,6 +257,13 @@ private fun SettingsHubPage(
                         title = "General",
                         subtitle = "About Novel Reader v${BuildConfig.VERSION_NAME}, Reset Preferences",
                         onClick = { onNavigate(SettingsSubPage.GENERAL) }
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    HubItemRow(
+                        icon = Icons.Default.BugReport,
+                        title = "Scrape Diagnostics",
+                        subtitle = "Share or export scrape_diagnostics.txt log file",
+                        onClick = { com.example.data.source.webscrape.ScrapeDiagnosticsManager.shareDiagnosticsFile(context) }
                     )
                 }
             }
@@ -1946,6 +1954,47 @@ private fun GeneralSettingsPage(repository: NovelRepository) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Architecture", style = MaterialTheme.typography.bodyMedium)
                         Text("Offline-First Android Compose", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+
+        item {
+            Text(
+                text = "Scrape Diagnostics",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        item {
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Scraping Diagnostic Logs",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Detailed logs of DOM extraction, JSON-LD, and Next.js data are recorded for each novel scrape attempt (scrape_diagnostics.txt).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    FilledTonalButton(
+                        onClick = {
+                            com.example.data.source.webscrape.ScrapeDiagnosticsManager.shareDiagnosticsFile(context)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Share Diagnostics Log")
                     }
                 }
             }

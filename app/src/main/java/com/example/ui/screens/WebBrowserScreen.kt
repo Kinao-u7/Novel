@@ -5,6 +5,7 @@ import android.content.ClipDescription
 import android.graphics.Bitmap
 import android.util.Log
 import android.view.ViewGroup
+import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -22,6 +23,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -42,6 +44,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
@@ -49,6 +52,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
@@ -57,12 +61,14 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHost
@@ -103,11 +109,15 @@ import com.example.data.model.Novel
 import com.example.data.repository.NovelRepository
 import com.example.data.source.webscrape.ScrapedChapter
 import com.example.data.source.webscrape.ScrapedNovelData
+import com.example.data.source.webscrape.ScrapeDiagnosticsManager
 import com.example.data.source.webscrape.WebScrapeScripts
+import com.example.data.source.webscrape.WtrLabExtractor
 import com.example.ui.components.NovelCoverImage
 import com.example.ui.theme.BookSerifFontFamily
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -189,6 +199,11 @@ fun WebBrowserScreen(
     fun runScrapingPass(customUrl: String? = null) {
         val webView = webViewInstance ?: return
 
+        val targetUrl = if (!customUrl.isNullOrBlank()) customUrl.trim() else currentUrl.trim()
+        Log.d("NOVEL_SCRAPE_DIAG", "================== NOVEL EXTRACTION PASS INITIATED ==================")
+        Log.d("NOVEL_SCRAPE_DIAG", "Target URL: $targetUrl (current WebView URL: $currentUrl)")
+        ScrapeDiagnosticsManager.startNewRun(context, targetUrl)
+
         if (!customUrl.isNullOrBlank() && customUrl.trim() != currentUrl.trim()) {
             navigateTo(customUrl)
         }
@@ -196,91 +211,215 @@ fun WebBrowserScreen(
         isScraping = true
         scrapeErrorMessage = null
 
-        // Step 1: Programmatically trigger any TOC/accordion and scroll to load all chapters
-        val prepareJs = """
-            (function() {
+        val isWtrLab = targetUrl.contains("wtr-lab.com", ignoreCase = true) || currentUrl.contains("wtr-lab.com", ignoreCase = true)
+
+        val processScrapedJson: (String?) -> Unit = { rawJson ->
+            scope.launch {
+                isScraping = false
                 try {
-                    var buttons = document.querySelectorAll('button, [role="tab"], [role="button"], a.nav-link, a.tab, div.tab, span.tab, [data-tab*="chapter"]');
-                    for (var b = 0; b < buttons.length; b++) {
-                        var text = (buttons[b].innerText || '').trim().toLowerCase();
-                        if (text === 'chapters' || text === 'all chapters' || text === 'table of contents' || text === 'toc' || text.indexOf('all chapters') >= 0 || text === 'chapter list') {
-                            buttons[b].click();
+                    if (rawJson.isNullOrBlank() || rawJson == "null") {
+                        Log.d("NOVEL_SCRAPE_DIAG", "[ERROR] evaluateJavascript returned null or blank response.")
+                        ScrapeDiagnosticsManager.log(context, "[ERROR] evaluateJavascript returned null or blank response.")
+                        ScrapeDiagnosticsManager.finishRun(context, "FAILED - evaluateJavascript returned null or blank")
+                        scrapeErrorMessage = "No novel details could be extracted from this page."
+                        return@launch
+                    }
+
+                    val unescaped = if (rawJson.startsWith("\"") && rawJson.endsWith("\"")) {
+                        org.json.JSONTokener(rawJson).nextValue().toString()
+                    } else {
+                        rawJson
+                    }
+
+                    val json = JSONObject(unescaped)
+
+                    // Output all diagnostic logs collected by JavaScript
+                    Log.d("NOVEL_SCRAPE_DIAG", "====================== NOVEL EXTRACTION REPORT START ======================")
+                    Log.d("NOVEL_SCRAPE_DIAG", "Report Target URL: $currentUrl")
+                    ScrapeDiagnosticsManager.log(context, "====================== NOVEL EXTRACTION REPORT START ======================")
+                    ScrapeDiagnosticsManager.log(context, "Report Target URL: $currentUrl")
+
+                    val diagLogsArr = json.optJSONArray("_diagnosticLogs")
+                    if (diagLogsArr != null) {
+                        for (dIdx in 0 until diagLogsArr.length()) {
+                            val logMsg = diagLogsArr.optString(dIdx, "")
+                            Log.d("NOVEL_SCRAPE_DIAG", logMsg)
+                            ScrapeDiagnosticsManager.log(context, logMsg)
                         }
                     }
-                    window.scrollTo(0, document.body.scrollHeight || document.documentElement.scrollHeight);
-                } catch(e) {}
-            })();
-        """.trimIndent()
 
-        webView.evaluateJavascript(prepareJs) {
-            // Step 2: Wait 600ms for lazy rendered DOM elements, then perform deep scrape
-            scope.launch {
-                delay(600)
-                webView.evaluateJavascript(WebScrapeScripts.NOVEL_DETAILS_SCRAPE_JS) { rawJson ->
-                    isScraping = false
-                    try {
-                        if (rawJson.isNullOrBlank() || rawJson == "null") {
-                            scrapeErrorMessage = "No novel details could be extracted from this page."
-                            return@evaluateJavascript
+                    // Output site structure diagnostics (HTML of container, JSON-LD tag, __NEXT_DATA__)
+                    val siteDiag = json.optJSONObject("_siteStructureDiag")
+                    if (siteDiag != null) {
+                        val nextExists = siteDiag.optBoolean("nextDataExists", false)
+                        val nextKeysArr = siteDiag.optJSONArray("nextDataKeys")
+                        val nextKeysStr = if (nextKeysArr != null) {
+                            (0 until nextKeysArr.length()).map { nextKeysArr.optString(it) }.joinToString(", ")
+                        } else "none"
+                        Log.d("NOVEL_SCRAPE_DIAG", "--- SITE STRUCTURE DIAGNOSTICS ---")
+                        Log.d("NOVEL_SCRAPE_DIAG", "[SITE_STRUCTURE] window.__NEXT_DATA__ exists: $nextExists | keys: [$nextKeysStr]")
+                        ScrapeDiagnosticsManager.log(context, "--- SITE STRUCTURE DIAGNOSTICS ---")
+                        ScrapeDiagnosticsManager.log(context, "[SITE_STRUCTURE] window.__NEXT_DATA__ exists: $nextExists | keys: [$nextKeysStr]")
+
+                        val headJsonLd = siteDiag.optString("headJsonLdOuterHtml", "none")
+                        Log.d("NOVEL_SCRAPE_DIAG", "[SITE_STRUCTURE] Head <script type=\"application/ld+json\"> tag outerHTML:")
+                        logDiagChunked("HEAD_JSON_LD", headJsonLd)
+                        ScrapeDiagnosticsManager.log(context, "[SITE_STRUCTURE] Head <script type=\"application/ld+json\"> tag outerHTML:\n$headJsonLd")
+
+                        val containerHtml = siteDiag.optString("chapterContainerOuterHtml", "none")
+                        Log.d("NOVEL_SCRAPE_DIAG", "[SITE_STRUCTURE] Candidate chapter container outerHTML:")
+                        logDiagChunked("CHAPTER_CONTAINER", containerHtml)
+                        ScrapeDiagnosticsManager.log(context, "[SITE_STRUCTURE] Candidate chapter container outerHTML:\n$containerHtml")
+                    }
+                    Log.d("NOVEL_SCRAPE_DIAG", "====================== NOVEL EXTRACTION REPORT END ========================")
+                    ScrapeDiagnosticsManager.log(context, "====================== NOVEL EXTRACTION REPORT END ========================")
+
+                    var title = json.optString("title", "").trim()
+                    var author = json.optString("author", "Unknown Author").trim()
+                    var coverUrl = json.optString("coverUrl", "").takeIf { it.isNotBlank() }
+                    var description = json.optString("description", "").trim()
+                    val sourceUrl = json.optString("sourceUrl", currentUrl).ifBlank { currentUrl }
+
+                    val genresList = mutableListOf<String>()
+                    val gArr = json.optJSONArray("genres")
+                    if (gArr != null) {
+                        for (i in 0 until gArr.length()) {
+                            val g = gArr.optString(i, "").trim()
+                            if (g.isNotBlank() && !genresList.contains(g)) genresList.add(g)
                         }
+                    }
 
-                        val unescaped = if (rawJson.startsWith("\"") && rawJson.endsWith("\"")) {
-                            org.json.JSONTokener(rawJson).nextValue().toString()
-                        } else {
-                            rawJson
-                        }
-
-                        val json = JSONObject(unescaped)
-                        val title = json.optString("title", "").trim()
-                        val author = json.optString("author", "Unknown Author").trim()
-                        val coverUrl = json.optString("coverUrl", "").takeIf { it.isNotBlank() }
-                        val description = json.optString("description", "").trim()
-                        val sourceUrl = json.optString("sourceUrl", currentUrl).ifBlank { currentUrl }
-
-                        val genresList = mutableListOf<String>()
-                        val gArr = json.optJSONArray("genres")
-                        if (gArr != null) {
-                            for (i in 0 until gArr.length()) {
-                                val g = gArr.optString(i, "").trim()
-                                if (g.isNotBlank() && !genresList.contains(g)) genresList.add(g)
-                            }
-                        }
-
-                        val chaptersList = mutableListOf<ScrapedChapter>()
-                        val chArr = json.optJSONArray("chapters")
-                        if (chArr != null) {
-                            for (i in 0 until chArr.length()) {
-                                val cObj = chArr.optJSONObject(i) ?: continue
-                                val chTitle = cObj.optString("title", "").trim()
-                                val chUrl = cObj.optString("url", "").trim()
-                                val chOrder = cObj.optInt("order", i + 1)
-                                if (chUrl.isNotBlank()) {
-                                    chaptersList.add(
-                                        ScrapedChapter(
-                                            title = chTitle.ifBlank { "Chapter ${i + 1}" },
-                                            url = chUrl,
-                                            order = chOrder
-                                        )
+                    val chaptersList = mutableListOf<ScrapedChapter>()
+                    val chArr = json.optJSONArray("chapters")
+                    if (chArr != null) {
+                        for (i in 0 until chArr.length()) {
+                            val cObj = chArr.optJSONObject(i) ?: continue
+                            val chTitle = cObj.optString("title", "").trim()
+                            val chUrl = cObj.optString("url", "").trim()
+                            val chOrder = cObj.optInt("order", i + 1)
+                            if (chUrl.isNotBlank()) {
+                                chaptersList.add(
+                                    ScrapedChapter(
+                                        title = chTitle.ifBlank { "Chapter ${i + 1}" },
+                                        url = chUrl,
+                                        order = chOrder
                                     )
-                                }
+                                )
+                            }
+                        }
+                    }
+
+                    // WTR-Lab Specific fallback/enhancement:
+                    // If WTR-Lab is detected, ensure metadata and chapters are completely loaded
+                    val isWtrLabDetected = isWtrLab || json.optBoolean("isWtrLab", false)
+                    if (isWtrLabDetected) {
+                        val rawId = json.optString("rawId", "")
+                        val chapterCount = json.optInt("chapterCount", 0)
+                        val locale = json.optString("locale", "en").ifBlank { "en" }
+                        val serieSlug = json.optString("serieSlug", "")
+
+                        // If rawNextData is available and fields need filling
+                        val rawNextData = json.optString("rawNextData", "")
+                        if (rawNextData.isNotBlank() && (title.isBlank() || genresList.isEmpty() || chaptersList.isEmpty())) {
+                            val parsedMeta = WtrLabExtractor.extractMetadataFromNextData(rawNextData, currentUrl)
+                            if (parsedMeta != null) {
+                                if (title.isBlank()) title = parsedMeta.title
+                                if (author.isBlank() || author == "Unknown Author") author = parsedMeta.author
+                                if (description.isBlank()) description = parsedMeta.synopsis
+                                if (coverUrl.isNullOrBlank()) coverUrl = parsedMeta.coverUrl
+                                if (genresList.isEmpty()) genresList.addAll(parsedMeta.genres)
                             }
                         }
 
-                        val data = ScrapedNovelData(
-                            title = title.ifBlank { pageTitle.ifBlank { "Untitled Web Novel" } },
-                            author = author.ifBlank { "Unknown Author" },
-                            coverUrl = coverUrl,
-                            description = description,
-                            genres = genresList,
-                            chapters = chaptersList,
-                            sourceUrl = sourceUrl
-                        )
+                        // If chapters were not retrieved in JS (e.g. synchronous XHR restricted in WebView),
+                        // execute direct HTTP GET in Kotlin using WtrLabExtractor
+                        if (chaptersList.isEmpty() && rawId.isNotBlank()) {
+                            Log.d("NOVEL_SCRAPE_DIAG", "[WTR-LAB] Fetching chapters via Kotlin OkHttp API for raw_id: $rawId...")
+                            ScrapeDiagnosticsManager.log(context, "[WTR-LAB] Fetching chapters via Kotlin OkHttp API for raw_id: $rawId (count: $chapterCount)...")
 
-                        Log.d("NovelScraper", "Extracted novel: '${data.title}', ${chaptersList.size} chapters, ${genresList.size} genres")
-                        scrapedNovelData = data
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        scrapeErrorMessage = "Extraction failed: ${e.localizedMessage ?: "Unknown error"}"
+                            val cookies = CookieManager.getInstance().getCookie("https://wtr-lab.com")
+                            val userAgent = webView.settings.userAgentString
+
+                            val fetchedChapters = withContext(Dispatchers.IO) {
+                                WtrLabExtractor.fetchChaptersFromApi(
+                                    rawId = rawId,
+                                    chapterCount = chapterCount,
+                                    locale = locale,
+                                    serieSlug = serieSlug,
+                                    userAgent = userAgent,
+                                    cookies = cookies,
+                                    referer = currentUrl
+                                )
+                            }
+                            if (fetchedChapters.isNotEmpty()) {
+                                chaptersList.clear()
+                                chaptersList.addAll(fetchedChapters)
+                                ScrapeDiagnosticsManager.log(context, "[WTR-LAB] Successfully fetched ${fetchedChapters.size} chapters via Kotlin OkHttp API!")
+                            }
+                        }
+                    }
+
+                    val data = ScrapedNovelData(
+                        title = title.ifBlank { pageTitle.ifBlank { "Untitled Web Novel" } },
+                        author = author.ifBlank { "Unknown Author" },
+                        coverUrl = coverUrl,
+                        description = description,
+                        genres = genresList,
+                        chapters = chaptersList,
+                        sourceUrl = sourceUrl
+                    )
+
+                    Log.d("NovelScraper", "Extracted novel: '${data.title}', ${chaptersList.size} chapters, ${genresList.size} genres")
+                    scrapedNovelData = data
+                    ScrapeDiagnosticsManager.finishRun(context, "SUCCESS - Extracted '${data.title}', ${chaptersList.size} chapters, ${genresList.size} genres")
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    Log.d("NOVEL_SCRAPE_DIAG", "[EXCEPTION] ${e.message}")
+                    ScrapeDiagnosticsManager.log(context, "[EXCEPTION] ${e.message}")
+                    ScrapeDiagnosticsManager.finishRun(context, "FAILED WITH EXCEPTION - ${e.message}")
+                    scrapeErrorMessage = "Extraction failed: ${e.localizedMessage ?: "Unknown error"}"
+                }
+            }
+        }
+
+        if (isWtrLab) {
+            // For WTR-Lab: No DOM scrolling or TOC clicking needed. Execute extraction immediately!
+            Log.d("NOVEL_SCRAPE_DIAG", "[WTR-LAB] Detected WTR-Lab URL. Skipping DOM scroll heuristics, running direct Next.js & API extraction...")
+            ScrapeDiagnosticsManager.log(context, "[WTR-LAB] Detected WTR-Lab URL. Skipping DOM scroll heuristics, running direct Next.js & API extraction...")
+            webView.evaluateJavascript(WebScrapeScripts.NOVEL_DETAILS_SCRAPE_JS) { rawJson ->
+                processScrapedJson(rawJson)
+            }
+        } else {
+            // Step 1: Programmatically trigger any TOC/accordion and scroll to load all chapters for other websites
+            val prepareJs = """
+                (function() {
+                    try {
+                        console.log('[NOVEL_SCRAPE_DIAG] prepareJs executing: clicking TOC / expand buttons...');
+                        var buttons = document.querySelectorAll('button, [role="tab"], [role="button"], a.nav-link, a.tab, div.tab, span.tab, [data-tab*="chapter"]');
+                        var clicked = 0;
+                        for (var b = 0; b < buttons.length; b++) {
+                            var text = (buttons[b].innerText || '').trim().toLowerCase();
+                            if (text === 'chapters' || text === 'all chapters' || text === 'table of contents' || text === 'toc' || text.indexOf('all chapters') >= 0 || text === 'chapter list') {
+                                buttons[b].click();
+                                clicked++;
+                            }
+                        }
+                        console.log('[NOVEL_SCRAPE_DIAG] prepareJs clicked ' + clicked + ' buttons, scrolling to page bottom...');
+                        window.scrollTo(0, document.body.scrollHeight || document.documentElement.scrollHeight);
+                    } catch(e) {
+                        console.log('[NOVEL_SCRAPE_DIAG] prepareJs error: ' + e.toString());
+                    }
+                })();
+            """.trimIndent()
+
+            webView.evaluateJavascript(prepareJs) {
+                // Step 2: Wait 600ms for lazy rendered DOM elements, then perform deep scrape
+                scope.launch {
+                    delay(600)
+                    Log.d("NOVEL_SCRAPE_DIAG", "Executing NOVEL_DETAILS_SCRAPE_JS...")
+                    ScrapeDiagnosticsManager.log(context, "Executing NOVEL_DETAILS_SCRAPE_JS...")
+                    webView.evaluateJavascript(WebScrapeScripts.NOVEL_DETAILS_SCRAPE_JS) { rawJson ->
+                        processScrapedJson(rawJson)
                     }
                 }
             }
@@ -483,6 +622,30 @@ fun WebBrowserScreen(
                                     tint = if (canGoForward) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outlineVariant
                                 )
                             }
+
+                            Spacer(modifier = Modifier.width(6.dp))
+
+                            FilledTonalButton(
+                                onClick = {
+                                    ScrapeDiagnosticsManager.shareDiagnosticsFile(context)
+                                },
+                                modifier = Modifier
+                                    .height(28.dp)
+                                    .testTag("share_diagnostics_button"),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Share Diag",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
 
                         if (pageTitle.isNotBlank()) {
@@ -581,6 +744,15 @@ fun WebBrowserScreen(
                         }
 
                         webChromeClient = object : WebChromeClient() {
+                            override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                                val msg = consoleMessage?.message() ?: ""
+                                if (msg.contains("NOVEL_SCRAPE_DIAG")) {
+                                    Log.d("NOVEL_SCRAPE_DIAG", "[CONSOLE] $msg")
+                                    ScrapeDiagnosticsManager.log(context, "[CONSOLE] $msg")
+                                }
+                                return super.onConsoleMessage(consoleMessage)
+                            }
+
                             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                                 super.onProgressChanged(view, newProgress)
                                 loadProgress = newProgress / 100f
@@ -801,11 +973,26 @@ fun WebBrowserScreen(
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
-                                TextButton(
-                                    onClick = { runScrapingPass(sheetUrlInput.ifBlank { currentUrl }) },
-                                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Retry Extraction", fontWeight = FontWeight.Bold)
+                                    TextButton(
+                                        onClick = { runScrapingPass(sheetUrlInput.ifBlank { currentUrl }) },
+                                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+                                    ) {
+                                        Text("Retry Extraction", fontWeight = FontWeight.Bold)
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = { ScrapeDiagnosticsManager.shareDiagnosticsFile(context) },
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Share Diagnostics Log", fontSize = 12.sp)
+                                    }
                                 }
                             }
                         }
@@ -922,6 +1109,18 @@ fun WebBrowserScreen(
 
                     Spacer(modifier = Modifier.height(18.dp))
 
+                    // Share diagnostics option in sheet
+                    TextButton(
+                        onClick = { ScrapeDiagnosticsManager.shareDiagnosticsFile(context) },
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Share Diagnostics Log", fontSize = 12.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
                     // Prominent "Add to Library" Button
                     Button(
                         onClick = {
@@ -982,5 +1181,22 @@ fun WebBrowserScreen(
                 e.printStackTrace()
             }
         }
+    }
+}
+
+private fun logDiagChunked(prefix: String, text: String) {
+    if (text.isBlank() || text == "none") {
+        Log.d("NOVEL_SCRAPE_DIAG", "  $prefix: none")
+        return
+    }
+    val chunkSize = 1000
+    var i = 0
+    var part = 1
+    val totalParts = (text.length + chunkSize - 1) / chunkSize
+    while (i < text.length) {
+        val end = (i + chunkSize).coerceAtMost(text.length)
+        Log.d("NOVEL_SCRAPE_DIAG", "  $prefix [Part $part/$totalParts]: ${text.substring(i, end)}")
+        i += chunkSize
+        part++
     }
 }
