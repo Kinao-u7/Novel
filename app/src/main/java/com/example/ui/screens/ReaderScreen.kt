@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.*
 import com.example.data.repository.NovelRepository
 import com.example.tts.TtsManager
+import com.example.ui.components.CleanSlider
 import com.example.ui.theme.calculateOnColor
 import com.example.ui.theme.parseColorHex
 import kotlinx.coroutines.delay
@@ -933,30 +934,27 @@ fun ReaderScreen(
                         if (chapterContent?.isDownloaded == true) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    Icons.Default.CloudDone,
+                                    Icons.Default.Check,
                                     contentDescription = null,
-                                    tint = Color(0xFF10B981),
+                                    tint = readerColors.accent,
                                     modifier = Modifier.size(13.dp)
                                 )
                                 Spacer(modifier = Modifier.width(3.dp))
-                                Text("Downloaded", style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF10B981), fontSize = 10.sp))
+                                Text("Downloaded", style = MaterialTheme.typography.labelSmall.copy(color = readerColors.accent, fontSize = 10.sp))
                             }
                         }
                     }
 
                     // Progress Slider
-                    Slider(
+                    CleanSlider(
                         value = currentChapterIndex.toFloat(),
                         onValueChange = { newIdx ->
                             navigateToChapter(newIdx.toInt())
                         },
                         valueRange = 1f..chapterList.size.coerceAtLeast(1).toFloat(),
                         steps = (chapterList.size - 2).coerceAtLeast(0),
-                        colors = SliderDefaults.colors(
-                            thumbColor = readerColors.accent,
-                            activeTrackColor = readerColors.accent,
-                            inactiveTrackColor = readerColors.onSurface.copy(alpha = 0.18f)
-                        ),
+                        accentColor = readerColors.accent,
+                        trackColor = readerColors.onSurface.copy(alpha = 0.18f),
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -1385,18 +1383,15 @@ fun ReaderScreen(
                             color = readerColors.text.copy(alpha = 0.7f),
                             modifier = Modifier.padding(end = 8.dp)
                         )
-                        Slider(
+                        CleanSlider(
                             value = readerSettings.fontSizeSp.toFloat(),
                             onValueChange = {
                                 repository.updateReaderSettings(readerSettings.copy(fontSizeSp = it.toInt()))
                             },
                             valueRange = 14f..32f,
                             steps = 17,
-                            colors = SliderDefaults.colors(
-                                thumbColor = readerColors.accent,
-                                activeTrackColor = readerColors.accent,
-                                inactiveTrackColor = readerColors.onSurface.copy(alpha = 0.18f)
-                            ),
+                            accentColor = readerColors.accent,
+                            trackColor = readerColors.onSurface.copy(alpha = 0.18f),
                             modifier = Modifier.weight(1f)
                         )
                         Text(
@@ -1951,7 +1946,7 @@ fun ReaderScreen(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     if (ch.isDownloaded) {
-                                        Icon(Icons.Default.CloudDone, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = readerColors.accent, modifier = Modifier.size(16.dp))
                                     }
                                 }
                             }

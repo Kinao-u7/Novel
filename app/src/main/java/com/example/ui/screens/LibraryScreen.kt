@@ -37,11 +37,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Public
@@ -89,7 +93,9 @@ import com.example.ui.components.EmptyStateView
 import com.example.ui.components.NovelCoverImage
 import com.example.ui.components.NovelOptionsBottomSheet
 import com.example.ui.components.PrimaryCtaButton
+import com.example.ui.components.RatingBadge
 import com.example.ui.components.SecondaryOutlinedButton
+import com.example.ui.components.TagPill
 import com.example.ui.theme.BookSerifFontFamily
 import kotlinx.coroutines.launch
 
@@ -114,9 +120,10 @@ fun LibraryScreen(
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf("All") }
-    var isGridView by remember { mutableStateOf(false) }
+    var isGridView by remember { mutableStateOf(repository.isLibraryGridView()) }
     var sortOption by remember { mutableStateOf(LibrarySortOption.RECENT) }
     var showSortMenu by remember { mutableStateOf(false) }
+    var showFilterMenu by remember { mutableStateOf(false) }
     var isImporting by remember { mutableStateOf(false) }
     var selectedNovelForOptions by remember { mutableStateOf<Novel?>(null) }
 
@@ -198,17 +205,63 @@ fun LibraryScreen(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Grid / List toggle
+                    // Grid / List toggle with persistence
                     IconButton(
-                        onClick = { isGridView = !isGridView },
+                        onClick = {
+                            isGridView = !isGridView
+                            repository.setLibraryGridView(isGridView)
+                        },
                         colors = IconButtonDefaults.iconButtonColors(
                             contentColor = MaterialTheme.colorScheme.primary
                         )
                     ) {
                         Icon(
                             imageVector = if (isGridView) Icons.Default.ViewList else Icons.Default.GridView,
-                            contentDescription = "Toggle Grid View"
+                            contentDescription = if (isGridView) "Switch to List View" else "Switch to Grid View"
                         )
+                    }
+
+                    // Filter Menu
+                    Box {
+                        IconButton(onClick = { showFilterMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.FilterList,
+                                contentDescription = "Filter Library",
+                                tint = if (selectedFilter != "All") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showFilterMenu,
+                            onDismissRequest = { showFilterMenu = false }
+                        ) {
+                            val filters = listOf("All", "Reading", "Unread", "Downloaded", "EPUBs", "Completed")
+                            filters.forEach { filter ->
+                                val isSelected = selectedFilter == filter
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            filter,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    },
+                                    leadingIcon = if (isSelected) {
+                                        {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    } else null,
+                                    onClick = {
+                                        selectedFilter = filter
+                                        showFilterMenu = false
+                                    }
+                                )
+                            }
+                        }
                     }
 
                     // Sort menu
@@ -233,6 +286,16 @@ fun LibraryScreen(
                                             color = if (sortOption == opt) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                         )
                                     },
+                                    leadingIcon = if (sortOption == opt) {
+                                        {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    } else null,
                                     onClick = {
                                         sortOption = opt
                                         showSortMenu = false
@@ -243,26 +306,34 @@ fun LibraryScreen(
                     }
 
                     // Import EPUB Button
-                    SecondaryOutlinedButton(
-                        text = "EPUB",
+                    IconButton(
                         onClick = {
                             epubPickerLauncher.launch(
                                 arrayOf("application/epub+zip", "application/octet-stream", "*/*")
                             )
-                        },
-                        icon = if (isImporting) null else Icons.Default.FileOpen,
-                        modifier = Modifier.height(38.dp)
-                    )
+                        }
+                    ) {
+                        if (isImporting) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.FileOpen,
+                                contentDescription = "Import EPUB",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
 
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    // Open Web Browser Button
-                    SecondaryOutlinedButton(
-                        text = "+ Web",
-                        onClick = { onOpenWebBrowser?.invoke("https://wtr-lab.com") },
-                        icon = Icons.Default.Public,
-                        modifier = Modifier.height(38.dp)
-                    )
+                    // Fixed Browse Web Button (renders clean browser globe icon, not broken empty oval)
+                    IconButton(
+                        onClick = { onOpenWebBrowser?.invoke("https://wtr-lab.com") }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Language,
+                            contentDescription = "Browse Web",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 
@@ -298,45 +369,34 @@ fun LibraryScreen(
                 )
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Filter Chips Row with outlined styling
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                val filters = listOf("All", "Reading", "Unread", "Downloaded", "EPUBs", "Completed")
-                items(filters) { filter ->
-                    val isSelected = selectedFilter == filter
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { selectedFilter = filter },
-                        label = {
-                            Text(
-                                filter,
-                                fontSize = 11.5.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                            )
-                        },
-                        shape = RoundedCornerShape(6.dp),
-                        colors = FilterChipDefaults.filterChipColors(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            selectedLabelColor = MaterialTheme.colorScheme.primary
-                        ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            enabled = true,
-                            selected = isSelected,
-                            borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                            selectedBorderColor = MaterialTheme.colorScheme.primary,
-                            selectedBorderWidth = 1.2.dp
+            if (selectedFilter != "All") {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                        .clickable { selectedFilter = "All" }
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                ) {
+                    Text(
+                        text = "Filter: $selectedFilter",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
                         )
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Clear Filter",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(14.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Novels Content
             if (filteredNovels.isEmpty()) {
@@ -422,22 +482,6 @@ fun LibraryScreen(
             }
         }
 
-        // Floating Action Button
-        FloatingActionButton(
-            onClick = {
-                epubPickerLauncher.launch(
-                    arrayOf("application/epub+zip", "application/octet-stream", "*/*")
-                )
-            },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(bottom = 16.dp, end = 16.dp),
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary
-        ) {
-            Icon(Icons.Default.Add, contentDescription = "Import EPUB")
-        }
-
         // Shared Novel Options Bottom Sheet for long-press
         selectedNovelForOptions?.let { novel ->
             NovelOptionsBottomSheet(
@@ -498,10 +542,6 @@ fun LibraryNovelItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val progress = if (novel.totalChapters > 0) {
-        (novel.lastReadChapterIndex.toFloat() / novel.totalChapters.toFloat()).coerceIn(0f, 1f)
-    } else 0f
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -517,91 +557,100 @@ fun LibraryNovelItem(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Top
         ) {
             NovelCoverImage(
                 coverUrl = novel.coverUrl,
                 title = novel.title,
                 modifier = Modifier
-                    .size(width = 64.dp, height = 92.dp)
+                    .size(width = 72.dp, height = 104.dp)
                     .clip(RoundedCornerShape(8.dp))
             )
 
             Spacer(modifier = Modifier.width(14.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = novel.title,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontFamily = BookSerifFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = novel.title,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontFamily = BookSerifFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
 
-                Spacer(modifier = Modifier.height(3.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    RatingBadge(rating = novel.rating)
+                }
 
                 Text(
                     text = novel.author,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    maxLines = 1
                 )
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    val readText = if (novel.lastReadChapterIndex > 0) {
-                        "Ch. ${novel.lastReadChapterIndex} of ${novel.totalChapters}"
-                    } else {
-                        "Unread · ${novel.totalChapters} ch"
-                    }
                     Text(
-                        text = readText,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.2.sp
-                        )
+                        text = "${novel.totalChapters} chapters",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    if (novel.downloadedChaptersCount > 0) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.CloudDownload,
-                                contentDescription = "Downloaded",
-                                tint = Color(0xFF10B981),
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "${novel.downloadedChaptersCount} dl",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    color = Color(0xFF10B981),
-                                    fontSize = 10.sp
-                                )
-                            )
+                    Text(
+                        text = "•",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+
+                    val progressText = if (novel.lastReadChapterIndex > 0) {
+                        "Ch. ${novel.lastReadChapterIndex} read"
+                    } else {
+                        "Unread"
+                    }
+                    Text(
+                        text = progressText,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = novel.description.ifBlank { "No description available." },
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                if (novel.genres.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(novel.genres.take(3)) { genre ->
+                            TagPill(text = genre)
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(3.dp)
-                        .clip(RoundedCornerShape(2.dp)),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant
-                )
             }
         }
     }

@@ -1,8 +1,12 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -34,15 +38,20 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
+import androidx.documentfile.provider.DocumentFile
 import com.example.BuildConfig
 import com.example.data.model.*
 import com.example.data.repository.NovelRepository
 import com.example.data.source.NovelSource
 import com.example.data.source.SourceManager
 import com.example.ui.components.AppSwitch
+import com.example.ui.components.CleanSlider
 import com.example.ui.components.NovelCoverImage
 import com.example.ui.theme.calculateOnColor
 import com.example.ui.theme.parseColorHex
+import kotlinx.coroutines.launch
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -796,7 +805,7 @@ private fun ReaderSettingsPage(repository: NovelRepository) {
                             Text("Font Size", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                             Text("${readerSettings.fontSizeSp} sp", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
                         }
-                        Slider(
+                        CleanSlider(
                             value = readerSettings.fontSizeSp.toFloat(),
                             onValueChange = { repository.updateReaderSettings(readerSettings.copy(fontSizeSp = it.toInt())) },
                             valueRange = 14f..32f,
@@ -877,7 +886,7 @@ private fun ReaderSettingsPage(repository: NovelRepository) {
                             Text("Line Spacing", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                             Text(String.format(Locale.US, "%.1fx", readerSettings.lineSpacingMultiplier), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
                         }
-                        Slider(
+                        CleanSlider(
                             value = readerSettings.lineSpacingMultiplier,
                             onValueChange = { repository.updateReaderSettings(readerSettings.copy(lineSpacingMultiplier = it)) },
                             valueRange = 1.2f..2.4f,
@@ -893,7 +902,7 @@ private fun ReaderSettingsPage(repository: NovelRepository) {
                             Text("Paragraph Spacing", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                             Text("${readerSettings.paragraphSpacingDp} dp", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
                         }
-                        Slider(
+                        CleanSlider(
                             value = readerSettings.paragraphSpacingDp.toFloat(),
                             onValueChange = { repository.updateReaderSettings(readerSettings.copy(paragraphSpacingDp = it.toInt())) },
                             valueRange = 4f..28f,
@@ -909,7 +918,7 @@ private fun ReaderSettingsPage(repository: NovelRepository) {
                             Text("Horizontal Margin", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                             Text("${readerSettings.horizontalMarginDp} dp", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
                         }
-                        Slider(
+                        CleanSlider(
                             value = readerSettings.horizontalMarginDp.toFloat(),
                             onValueChange = { repository.updateReaderSettings(readerSettings.copy(horizontalMarginDp = it.toInt())) },
                             valueRange = 8f..40f,
@@ -1043,7 +1052,7 @@ private fun ReaderSettingsPage(repository: NovelRepository) {
                             Text("Default Speech Rate", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                             Text("${String.format(Locale.US, "%.2fx", readerSettings.ttsSpeechRate)}", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
                         }
-                        Slider(
+                        CleanSlider(
                             value = readerSettings.ttsSpeechRate,
                             onValueChange = { repository.updateReaderSettings(readerSettings.copy(ttsSpeechRate = it)) },
                             valueRange = 0.5f..2.5f,
@@ -1080,7 +1089,7 @@ private fun ReaderSettingsPage(repository: NovelRepository) {
                             Text("Speech Pitch", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                             Text("${String.format(Locale.US, "%.1fx", readerSettings.ttsPitch)}", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
                         }
-                        Slider(
+                        CleanSlider(
                             value = readerSettings.ttsPitch,
                             onValueChange = { repository.updateReaderSettings(readerSettings.copy(ttsPitch = it)) },
                             valueRange = 0.5f..1.5f,
@@ -1374,12 +1383,107 @@ private fun DownloadSettingsPage(repository: NovelRepository) {
                             Text("Simultaneous Downloads", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                             Text("${downloadSettings.simultaneousDownloads} threads", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
                         }
-                        Slider(
+                        CleanSlider(
                             value = downloadSettings.simultaneousDownloads.toFloat(),
                             onValueChange = { repository.updateDownloadSettings(downloadSettings.copy(simultaneousDownloads = it.toInt())) },
                             valueRange = 1f..5f,
                             steps = 3
                         )
+                    }
+                }
+            }
+        }
+
+        item {
+            Text(
+                text = "Download Request Throttling",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        item {
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Enable Download Throttling", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                            Text("Paces requests during bulk downloads to avoid bot detection and Cloudflare CAPTCHA blocks", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        AppSwitch(
+                            checked = downloadSettings.throttlingEnabled,
+                            onCheckedChange = { repository.updateDownloadSettings(downloadSettings.copy(throttlingEnabled = it)) }
+                        )
+                    }
+
+                    if (downloadSettings.throttlingEnabled) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                        Column {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Batch Size Before Delay", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                                Text("Every ${downloadSettings.throttleBatchSize} chapters", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
+                            }
+                            Text(
+                                "Number of chapter download requests before a delay is inserted",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            CleanSlider(
+                                value = downloadSettings.throttleBatchSize.toFloat(),
+                                onValueChange = { repository.updateDownloadSettings(downloadSettings.copy(throttleBatchSize = it.toInt())) },
+                                valueRange = 1f..20f,
+                                steps = 18
+                            )
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                        Column {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Delay Duration", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                                Text(String.format(Locale.US, "%.1f sec", downloadSettings.throttleDelaySeconds), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
+                            }
+                            Text(
+                                "Pause duration inserted between chapter batches",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            CleanSlider(
+                                value = downloadSettings.throttleDelaySeconds,
+                                onValueChange = { repository.updateDownloadSettings(downloadSettings.copy(throttleDelaySeconds = it)) },
+                                valueRange = 0.5f..10.0f,
+                                steps = 18
+                            )
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Random Delay (Jitter)", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                                Text("Adds randomized timing variance to delay intervals to simulate natural human browsing and avoid rigid bot patterns", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            AppSwitch(
+                                checked = downloadSettings.throttleRandomJitter,
+                                onCheckedChange = { repository.updateDownloadSettings(downloadSettings.copy(throttleRandomJitter = it)) }
+                            )
+                        }
                     }
                 }
             }
@@ -1393,7 +1497,9 @@ private fun DownloadSettingsPage(repository: NovelRepository) {
 @Composable
 private fun StorageSettingsPage(repository: NovelRepository) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val libraryNovels by repository.libraryNovels.collectAsState()
+    val downloadSettings by repository.downloadSettings.collectAsState()
     var cacheSizeBytes by remember { mutableStateOf(repository.getCacheSizeBytes()) }
     var storageUsageBytes by remember { mutableStateOf(repository.getStorageUsageBytes()) }
 
@@ -1401,12 +1507,88 @@ private fun StorageSettingsPage(repository: NovelRepository) {
     var showDeleteAllDownloadsConfirm by remember { mutableStateOf(false) }
     var novelToDeleteDownloads by remember { mutableStateOf<Novel?>(null) }
 
+    // Backup dialog state
+    var showBackupDialog by remember { mutableStateOf(false) }
+    var backupCategories by remember { mutableStateOf(BackupCategories()) }
+    var isCreatingBackup by remember { mutableStateOf(false) }
+
+    // Restore dialog state
+    var showRestoreConfirmDialog by remember { mutableStateOf(false) }
+    var pendingRestoreJson by remember { mutableStateOf<String?>(null) }
+    var isRestoring by remember { mutableStateOf(false) }
+
+    // SAF folder picker launcher
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { treeUri: Uri? ->
+        if (treeUri != null) {
+            try {
+                val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                context.contentResolver.takePersistableUriPermission(treeUri, takeFlags)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            val doc = DocumentFile.fromTreeUri(context, treeUri)
+            val displayName = doc?.name ?: treeUri.lastPathSegment ?: "Custom Folder"
+            repository.updateDownloadSettings(
+                downloadSettings.copy(
+                    customDownloadLocationUri = treeUri.toString(),
+                    customDownloadLocationDisplayName = displayName
+                )
+            )
+            Toast.makeText(context, "Download location set to: $displayName", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Backup file share/save launcher
+    val restoreFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { fileUri: Uri? ->
+        if (fileUri != null) {
+            try {
+                context.contentResolver.openInputStream(fileUri)?.use { inputStream ->
+                    val content = inputStream.bufferedReader().use { it.readText() }
+                    pendingRestoreJson = content
+                    showRestoreConfirmDialog = true
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(context, "Failed to read backup file: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     fun formatBytes(bytes: Long): String {
         return when {
             bytes >= 1024 * 1024 * 1024 -> String.format(Locale.US, "%.2f GB", bytes / (1024f * 1024f * 1024f))
             bytes >= 1024 * 1024 -> String.format(Locale.US, "%.1f MB", bytes / (1024f * 1024f))
             bytes >= 1024 -> String.format(Locale.US, "%.1f KB", bytes / 1024f)
             else -> "$bytes B"
+        }
+    }
+
+    fun shareBackup(jsonContent: String) {
+        try {
+            val fileName = "NovelReader_Backup_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.json"
+            val backupFile = File(context.cacheDir, fileName)
+            backupFile.writeText(jsonContent)
+
+            val contentUri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                backupFile
+            )
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(Intent.EXTRA_STREAM, contentUri)
+                putExtra(Intent.EXTRA_SUBJECT, "Novel Reader Backup")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(shareIntent, "Save or Share Backup"))
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(context, "Error sharing backup: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -1444,6 +1626,131 @@ private fun StorageSettingsPage(repository: NovelRepository) {
                             Text("Image thumbnails & API response cache", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text(formatBytes(cacheSizeBytes), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                    }
+                }
+            }
+        }
+
+        // Custom Download Location (SAF)
+        item {
+            Text(
+                text = "Download Location",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        item {
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Storage Destination", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                            val locationText = downloadSettings.customDownloadLocationDisplayName ?: "Default (App Internal Storage)"
+                            Text(
+                                locationText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (downloadSettings.customDownloadLocationUri != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = "Folder",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { folderPickerLauncher.launch(null) },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Choose Folder")
+                        }
+
+                        if (downloadSettings.customDownloadLocationUri != null) {
+                            OutlinedButton(
+                                onClick = {
+                                    repository.updateDownloadSettings(
+                                        downloadSettings.copy(
+                                            customDownloadLocationUri = null,
+                                            customDownloadLocationDisplayName = null
+                                        )
+                                    )
+                                    Toast.makeText(context, "Reset to Internal App Storage", Toast.LENGTH_SHORT).show()
+                                }
+                            ) {
+                                Text("Reset")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Backup & Restore
+        item {
+            Text(
+                text = "Backup & Restore",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        item {
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Create Backup", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                            Text("Export your library, reading progress, sources, bookmarks, and settings", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Button(onClick = { showBackupDialog = true }) {
+                            Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Backup")
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Restore from Backup", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                            Text("Restore your library and data from a previously created JSON file", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        OutlinedButton(onClick = { restoreFileLauncher.launch(arrayOf("application/json", "text/*")) }) {
+                            Icon(Icons.Default.SettingsBackupRestore, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Restore")
+                        }
                     }
                 }
             }
@@ -1552,6 +1859,178 @@ private fun StorageSettingsPage(repository: NovelRepository) {
                 }
             }
         }
+    }
+
+    // Backup Category Selection Dialog
+    if (showBackupDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isCreatingBackup) showBackupDialog = false },
+            title = { Text("Backup Options") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Select categories to include in this backup:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            backupCategories = backupCategories.copy(library = !backupCategories.library)
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = backupCategories.library,
+                            onCheckedChange = { backupCategories = backupCategories.copy(library = it) }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Library (${libraryNovels.size} novels)", style = MaterialTheme.typography.bodyMedium)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            backupCategories = backupCategories.copy(history = !backupCategories.history)
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = backupCategories.history,
+                            onCheckedChange = { backupCategories = backupCategories.copy(history = it) }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Reading History & Positions", style = MaterialTheme.typography.bodyMedium)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            backupCategories = backupCategories.copy(readStatus = !backupCategories.readStatus)
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = backupCategories.readStatus,
+                            onCheckedChange = { backupCategories = backupCategories.copy(readStatus = it) }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Read Status (marked chapters)", style = MaterialTheme.typography.bodyMedium)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            backupCategories = backupCategories.copy(categories = !backupCategories.categories)
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = backupCategories.categories,
+                            onCheckedChange = { backupCategories = backupCategories.copy(categories = it) }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Bookmarks & Term Replacements", style = MaterialTheme.typography.bodyMedium)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            backupCategories = backupCategories.copy(sources = !backupCategories.sources)
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = backupCategories.sources,
+                            onCheckedChange = { backupCategories = backupCategories.copy(sources = it) }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Sources configuration", style = MaterialTheme.typography.bodyMedium)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            backupCategories = backupCategories.copy(appSettings = !backupCategories.appSettings)
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = backupCategories.appSettings,
+                            onCheckedChange = { backupCategories = backupCategories.copy(appSettings = it) }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("App Settings (Reader, Theme, Downloads)", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        coroutineScope.launch {
+                            isCreatingBackup = true
+                            val json = repository.createBackupJson(backupCategories)
+                            isCreatingBackup = false
+                            showBackupDialog = false
+                            shareBackup(json)
+                        }
+                    },
+                    enabled = !isCreatingBackup && (backupCategories.library || backupCategories.history || backupCategories.readStatus || backupCategories.categories || backupCategories.sources || backupCategories.appSettings)
+                ) {
+                    if (isCreatingBackup) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text("Export & Share")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBackupDialog = false }, enabled = !isCreatingBackup) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Restore Confirmation Dialog
+    if (showRestoreConfirmDialog && pendingRestoreJson != null) {
+        AlertDialog(
+            onDismissRequest = { if (!isRestoring) showRestoreConfirmDialog = false },
+            title = { Text("Restore Data?") },
+            text = {
+                Text("This will restore novels, read progress, and settings from the backup file into your current library.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        coroutineScope.launch {
+                            isRestoring = true
+                            val success = repository.restoreBackupFromJson(pendingRestoreJson!!)
+                            isRestoring = false
+                            showRestoreConfirmDialog = false
+                            pendingRestoreJson = null
+                            if (success) {
+                                storageUsageBytes = repository.getStorageUsageBytes()
+                                Toast.makeText(context, "Backup restored successfully!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Failed to restore: invalid backup format", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    enabled = !isRestoring
+                ) {
+                    if (isRestoring) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text("Restore Now")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showRestoreConfirmDialog = false
+                    pendingRestoreJson = null
+                }, enabled = !isRestoring) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     if (showClearCacheConfirm) {

@@ -117,7 +117,24 @@ data class DownloadSettings(
     val wifiOnly: Boolean = true,
     val allowMobileData: Boolean = false,
     val simultaneousDownloads: Int = 3,
-    val autoDownloadNext: Boolean = false
+    val autoDownloadNext: Boolean = false,
+    // Custom Download Location (SAF tree uri)
+    val customDownloadLocationUri: String? = null,
+    val customDownloadLocationDisplayName: String? = null,
+    // Download Request Throttling
+    val throttlingEnabled: Boolean = false,
+    val throttleBatchSize: Int = 5, // requests before delay
+    val throttleDelaySeconds: Float = 2.0f, // configurable delay duration
+    val throttleRandomJitter: Boolean = true // randomized jitter to delay timing
+)
+
+data class BackupCategories(
+    val library: Boolean = true,
+    val sources: Boolean = true,
+    val history: Boolean = true,
+    val categories: Boolean = true,
+    val readStatus: Boolean = true,
+    val appSettings: Boolean = true
 )
 
 data class NotificationSettings(

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -70,6 +71,7 @@ import com.example.ui.components.RatingBadge
 import com.example.ui.components.SecondaryOutlinedButton
 import com.example.ui.components.StatusPill
 import com.example.ui.components.TagPill
+import com.example.ui.components.simpleVerticalScrollbar
 import com.example.ui.theme.BookSerifFontFamily
 import kotlinx.coroutines.launch
 
@@ -158,11 +160,14 @@ fun NovelDetailScreen(
             }
         }
     ) { innerPadding ->
+        val listState = rememberLazyListState()
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 16.dp)
+                .simpleVerticalScrollbar(listState),
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
             // Header Hero Section
@@ -489,12 +494,12 @@ fun ChapterRowItem(
                 }
             }
 
-            // Single icon slot: download state only (no checkmark tick)
+            // Single icon slot: download state only (checkmark with theme accent color when downloaded)
             if (chapter.isDownloaded) {
                 Icon(
-                    imageVector = Icons.Default.CloudDownload,
+                    imageVector = Icons.Default.Check,
                     contentDescription = "Saved Offline",
-                    tint = Color(0xFF10B981),
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(18.dp)
                 )
             } else {

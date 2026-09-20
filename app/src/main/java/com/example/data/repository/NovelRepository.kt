@@ -1,14 +1,18 @@
 package com.example.data.repository
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
+import androidx.core.content.FileProvider
+import androidx.documentfile.provider.DocumentFile
 import com.example.data.epub.EpubParser
 import com.example.data.model.*
 import com.example.data.source.SourceManager
 import com.example.data.source.webscrape.ScrapedNovelData
 import com.example.data.source.webscrape.WebScrapeSource
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,6 +20,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import kotlin.random.Random
 
 class NovelRepository(private val context: Context) {
 
@@ -122,6 +127,15 @@ class NovelRepository(private val context: Context) {
                 e.printStackTrace()
             }
         }
+    }
+
+    // Library View Mode: true for grid/box view, false for strip/list view. Default true for new installs.
+    fun isLibraryGridView(): Boolean {
+        return prefs.getBoolean("library_is_grid_view", true)
+    }
+
+    fun setLibraryGridView(isGrid: Boolean) {
+        prefs.edit().putBoolean("library_is_grid_view", isGrid).apply()
     }
 
     private fun saveLibrary() {
@@ -324,41 +338,134 @@ class NovelRepository(private val context: Context) {
     }
 
     private fun isChapterFilePresent(novelId: String, chapterId: String): Boolean {
-        return getChapterFile(novelId, chapterId).exists()
+        if (getChapterFile(novelId, chapterId).exists()) return true
+        // Check custom storage SAF if enabled
+        val customUriStr = _downloadSettings.value.customDownloadLocationUri
+        if (!customUriStr.isNullOrBlank()) {
+            try {
+                val rootTreeUri = Uri.parse(customUriStr)
+                val rootDoc = DocumentFile.fromTreeUri(context, rootTreeUri)
+                val chaptersDoc = rootDoc?.findFile("chapters")
+                val novelDoc = chaptersDoc?.findFile(novelId)
+                val safeChapterId = chapterId.replace("[^a-zA-Z0-9_.-]".toRegex(), "_")
+                val doc = novelDoc?.findFile("$safeChapterId.json")
+                if (doc != null && doc.exists()) return true
+            } catch (e: Exception) {
+                // fall through
+            }
+        }
+        return false
     }
 
     private fun saveChapterToDisk(content: ChapterContent) {
-        try {
-            val file = getChapterFile(content.novelId, content.chapterId)
+        val jsonString = try {
             val json = JSONObject().apply {
                 put("chapterId", content.chapterId)
                 put("novelId", content.novelId)
                 put("title", content.title)
                 put("paragraphs", JSONArray(content.paragraphs))
             }
-            file.writeText(json.toString())
+            json.toString()
         } catch (e: Exception) {
             e.printStackTrace()
+            return
+        }
+
+        // Always save to internal app storage
+        try {
+            val file = getChapterFile(content.novelId, content.chapterId)
+            file.writeText(jsonString)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        // If custom download location is configured, also write to SAF DocumentFile
+        val customUriStr = _downloadSettings.value.customDownloadLocationUri
+        if (!customUriStr.isNullOrBlank()) {
+            try {
+                val rootTreeUri = Uri.parse(customUriStr)
+                val rootDoc = DocumentFile.fromTreeUri(context, rootTreeUri)
+                if (rootDoc != null && rootDoc.canWrite()) {
+                    var chaptersDoc = rootDoc.findFile("chapters")
+                    if (chaptersDoc == null || !chaptersDoc.isDirectory) {
+                        chaptersDoc = rootDoc.createDirectory("chapters")
+                    }
+                    if (chaptersDoc != null) {
+                        var novelDoc = chaptersDoc.findFile(content.novelId)
+                        if (novelDoc == null || !novelDoc.isDirectory) {
+                            novelDoc = chaptersDoc.createDirectory(content.novelId)
+                        }
+                        if (novelDoc != null) {
+                            val safeChapterId = content.chapterId.replace("[^a-zA-Z0-9_.-]".toRegex(), "_")
+                            val fileName = "$safeChapterId.json"
+                            var targetDoc = novelDoc.findFile(fileName)
+                            if (targetDoc == null) {
+                                targetDoc = novelDoc.createFile("application/json", fileName)
+                            }
+                            if (targetDoc != null) {
+                                context.contentResolver.openOutputStream(targetDoc.uri)?.use { os ->
+                                    os.write(jsonString.toByteArray(Charsets.UTF_8))
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
     private fun readChapterFromDisk(novelId: String, chapterId: String): ChapterContent? {
         val file = getChapterFile(novelId, chapterId)
-        if (!file.exists()) return null
-        return try {
-            val json = JSONObject(file.readText())
-            val pArr = json.getJSONArray("paragraphs")
-            val paragraphs = (0 until pArr.length()).map { pArr.getString(it) }
-            ChapterContent(
-                chapterId = json.getString("chapterId"),
-                novelId = json.getString("novelId"),
-                title = json.getString("title"),
-                paragraphs = paragraphs,
-                isDownloaded = true
-            )
-        } catch (e: Exception) {
-            null
+        if (file.exists()) {
+            try {
+                val json = JSONObject(file.readText())
+                val pArr = json.getJSONArray("paragraphs")
+                val paragraphs = (0 until pArr.length()).map { pArr.getString(it) }
+                return ChapterContent(
+                    chapterId = json.getString("chapterId"),
+                    novelId = json.getString("novelId"),
+                    title = json.getString("title"),
+                    paragraphs = paragraphs,
+                    isDownloaded = true
+                )
+            } catch (e: Exception) {
+                // fall through to check custom location
+            }
         }
+
+        // Try reading from custom SAF folder
+        val customUriStr = _downloadSettings.value.customDownloadLocationUri
+        if (!customUriStr.isNullOrBlank()) {
+            try {
+                val rootTreeUri = Uri.parse(customUriStr)
+                val rootDoc = DocumentFile.fromTreeUri(context, rootTreeUri)
+                val chaptersDoc = rootDoc?.findFile("chapters")
+                val novelDoc = chaptersDoc?.findFile(novelId)
+                val safeChapterId = chapterId.replace("[^a-zA-Z0-9_.-]".toRegex(), "_")
+                val doc = novelDoc?.findFile("$safeChapterId.json")
+                if (doc != null && doc.exists()) {
+                    context.contentResolver.openInputStream(doc.uri)?.use { inputStream ->
+                        val text = inputStream.bufferedReader().use { it.readText() }
+                        val json = JSONObject(text)
+                        val pArr = json.getJSONArray("paragraphs")
+                        val paragraphs = (0 until pArr.length()).map { pArr.getString(it) }
+                        return ChapterContent(
+                            chapterId = json.getString("chapterId"),
+                            novelId = json.getString("novelId"),
+                            title = json.getString("title"),
+                            paragraphs = paragraphs,
+                            isDownloaded = true
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        return null
     }
 
     suspend fun downloadChapter(novel: Novel, chapter: Chapter): Boolean = withContext(Dispatchers.IO) {
@@ -373,9 +480,25 @@ class NovelRepository(private val context: Context) {
         }
     }
 
-    suspend fun downloadChaptersBatch(novel: Novel, chaptersToDownload: List<Chapter>, onProgress: (Int, Int) -> Unit = { _, _ -> }) = withContext(Dispatchers.IO) {
+    suspend fun downloadChaptersBatch(
+        novel: Novel,
+        chaptersToDownload: List<Chapter>,
+        onProgress: (Int, Int) -> Unit = { _, _ -> }
+    ) = withContext(Dispatchers.IO) {
         var completed = 0
-        for (chapter in chaptersToDownload) {
+        val settings = _downloadSettings.value
+
+        for ((index, chapter) in chaptersToDownload.withIndex()) {
+            // Apply throttling before requests if enabled
+            if (settings.throttlingEnabled && index > 0 && index % settings.throttleBatchSize == 0) {
+                var delayMs = (settings.throttleDelaySeconds * 1000).toLong()
+                if (settings.throttleRandomJitter) {
+                    val jitterFactor = Random.nextDouble(0.5, 1.5)
+                    delayMs = (delayMs * jitterFactor).toLong().coerceAtLeast(200L)
+                }
+                delay(delayMs)
+            }
+
             downloadChapter(novel, chapter)
             completed++
             onProgress(completed, chaptersToDownload.size)
@@ -916,6 +1039,12 @@ class NovelRepository(private val context: Context) {
             putBoolean("dl_allow_mobile", settings.allowMobileData)
             putInt("dl_simultaneous", settings.simultaneousDownloads)
             putBoolean("dl_auto_next", settings.autoDownloadNext)
+            putString("dl_custom_location_uri", settings.customDownloadLocationUri)
+            putString("dl_custom_location_display", settings.customDownloadLocationDisplayName)
+            putBoolean("dl_throttling_enabled", settings.throttlingEnabled)
+            putInt("dl_throttle_batch_size", settings.throttleBatchSize)
+            putFloat("dl_throttle_delay_sec", settings.throttleDelaySeconds)
+            putBoolean("dl_throttle_random_jitter", settings.throttleRandomJitter)
             apply()
         }
     }
@@ -925,7 +1054,13 @@ class NovelRepository(private val context: Context) {
             wifiOnly = prefs.getBoolean("dl_wifi_only", true),
             allowMobileData = prefs.getBoolean("dl_allow_mobile", false),
             simultaneousDownloads = prefs.getInt("dl_simultaneous", 3),
-            autoDownloadNext = prefs.getBoolean("dl_auto_next", false)
+            autoDownloadNext = prefs.getBoolean("dl_auto_next", false),
+            customDownloadLocationUri = prefs.getString("dl_custom_location_uri", null),
+            customDownloadLocationDisplayName = prefs.getString("dl_custom_location_display", null),
+            throttlingEnabled = prefs.getBoolean("dl_throttling_enabled", false),
+            throttleBatchSize = prefs.getInt("dl_throttle_batch_size", 5),
+            throttleDelaySeconds = prefs.getFloat("dl_throttle_delay_sec", 2.0f),
+            throttleRandomJitter = prefs.getBoolean("dl_throttle_random_jitter", true)
         )
     }
 
@@ -1082,6 +1217,349 @@ class NovelRepository(private val context: Context) {
 
         _notificationSettings.value = NotificationSettings()
         updateNotificationSettings(NotificationSettings())
+    }
+
+    // --- BACKUP & RESTORE ---
+
+    suspend fun createBackupJson(categories: BackupCategories): String = withContext(Dispatchers.IO) {
+        val root = JSONObject()
+        root.put("backupVersion", 1)
+        root.put("app", "NovelReader")
+        root.put("timestamp", System.currentTimeMillis())
+
+        if (categories.library) {
+            val libArr = JSONArray()
+            for (novel in _libraryNovels.value) {
+                val obj = JSONObject().apply {
+                    put("id", novel.id)
+                    put("title", novel.title)
+                    put("author", novel.author)
+                    put("coverUrl", novel.coverUrl)
+                    put("description", novel.description)
+                    put("genres", JSONArray(novel.genres))
+                    put("status", novel.status)
+                    put("sourceId", novel.sourceId)
+                    put("sourceName", novel.sourceName)
+                    put("lastReadChapterId", novel.lastReadChapterId)
+                    put("lastReadChapterTitle", novel.lastReadChapterTitle)
+                    put("lastReadChapterIndex", novel.lastReadChapterIndex)
+                    put("lastReadScrollPosition", novel.lastReadScrollPosition)
+                    put("totalChapters", novel.totalChapters)
+                    put("downloadedChaptersCount", novel.downloadedChaptersCount)
+                    put("rating", novel.rating.toDouble())
+                    put("lastReadTimestamp", novel.lastReadTimestamp)
+                    put("isEpub", novel.isEpub)
+                    put("rawId", novel.rawId)
+                    put("locale", novel.locale)
+                }
+                libArr.put(obj)
+            }
+            root.put("library", libArr)
+        }
+
+        if (categories.history) {
+            val histArr = JSONArray()
+            for (novel in _libraryNovels.value.filter { it.lastReadTimestamp > 0L }) {
+                val hObj = JSONObject().apply {
+                    put("novelId", novel.id)
+                    put("lastReadChapterId", novel.lastReadChapterId)
+                    put("lastReadChapterTitle", novel.lastReadChapterTitle)
+                    put("lastReadChapterIndex", novel.lastReadChapterIndex)
+                    put("lastReadScrollPosition", novel.lastReadScrollPosition)
+                    put("lastReadTimestamp", novel.lastReadTimestamp)
+                }
+                histArr.put(hObj)
+            }
+            root.put("history", histArr)
+        }
+
+        if (categories.readStatus) {
+            val readObj = JSONObject()
+            for ((novelId, chapterSet) in _readChapters.value) {
+                readObj.put(novelId, JSONArray(chapterSet.toList()))
+            }
+            root.put("readStatus", readObj)
+        }
+
+        if (categories.categories) {
+            val bmArr = JSONArray()
+            for (b in _bookmarks.value) {
+                bmArr.put(JSONObject().apply {
+                    put("id", b.id)
+                    put("novelId", b.novelId)
+                    put("chapterId", b.chapterId)
+                    put("chapterTitle", b.chapterTitle)
+                    put("paragraphIndex", b.paragraphIndex)
+                    put("excerpt", b.excerpt)
+                    put("note", b.note)
+                    put("timestamp", b.timestamp)
+                })
+            }
+            root.put("bookmarks", bmArr)
+
+            val rulesArr = JSONArray()
+            for (r in _termReplacements.value) {
+                rulesArr.put(JSONObject().apply {
+                    put("id", r.id)
+                    put("original", r.original)
+                    put("replacement", r.replacement)
+                    put("isEnabled", r.isEnabled)
+                })
+            }
+            root.put("termReplacements", rulesArr)
+        }
+
+        if (categories.sources) {
+            val sourcesArr = JSONArray()
+            for (s in SourceManager.sources.value) {
+                sourcesArr.put(JSONObject().apply {
+                    put("id", s.id)
+                    put("name", s.name)
+                    put("language", s.language)
+                    put("version", s.version)
+                    put("description", s.description)
+                    put("isLocal", s.isLocal)
+                })
+            }
+            root.put("sources", sourcesArr)
+        }
+
+        if (categories.appSettings) {
+            val settingsObj = JSONObject().apply {
+                val rs = _readerSettings.value
+                val rsObj = JSONObject().apply {
+                    put("theme", rs.theme.name)
+                    put("fontSizeSp", rs.fontSizeSp)
+                    put("fontWeight", rs.fontWeight.name)
+                    put("lineSpacingMultiplier", rs.lineSpacingMultiplier.toDouble())
+                    put("paragraphSpacingDp", rs.paragraphSpacingDp)
+                    put("letterSpacingSp", rs.letterSpacingSp.toDouble())
+                    put("textAlign", rs.textAlign.name)
+                    put("horizontalMarginDp", rs.horizontalMarginDp)
+                    put("verticalMarginDp", rs.verticalMarginDp)
+                    put("contentWidthPercent", rs.contentWidthPercent)
+                    put("paragraphIndentation", rs.paragraphIndentation)
+                    put("marginType", rs.marginType.name)
+                    put("fontType", rs.fontType.name)
+                    put("readingMode", rs.readingMode.name)
+                    put("autoScrollSpeed", rs.autoScrollSpeed)
+                    put("isJustified", rs.isJustified)
+                    put("toolbarPosition", rs.toolbarPosition.name)
+                    put("showStatusBar", rs.showStatusBar)
+                    put("enabledToolbarActions", JSONArray(rs.enabledToolbarActions))
+                    put("globalTermReplacementsEnabled", rs.globalTermReplacementsEnabled)
+                }
+                put("readerSettings", rsObj)
+
+                val ts = _themeSettings.value
+                val tsObj = JSONObject().apply {
+                    put("themeMode", ts.themeMode.name)
+                    put("accentColorHex", ts.accentColorHex)
+                    put("useDynamicColor", ts.useDynamicColor)
+                }
+                put("themeSettings", tsObj)
+
+                val ds = _downloadSettings.value
+                val dsObj = JSONObject().apply {
+                    put("wifiOnly", ds.wifiOnly)
+                    put("allowMobileData", ds.allowMobileData)
+                    put("simultaneousDownloads", ds.simultaneousDownloads)
+                    put("autoDownloadNext", ds.autoDownloadNext)
+                    put("throttlingEnabled", ds.throttlingEnabled)
+                    put("throttleBatchSize", ds.throttleBatchSize)
+                    put("throttleDelaySeconds", ds.throttleDelaySeconds.toDouble())
+                    put("throttleRandomJitter", ds.throttleRandomJitter)
+                }
+                put("downloadSettings", dsObj)
+            }
+            root.put("appSettings", settingsObj)
+        }
+
+        root.toString(2)
+    }
+
+    suspend fun restoreBackupFromJson(jsonString: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val root = JSONObject(jsonString)
+
+            if (root.has("library")) {
+                val libArr = root.getJSONArray("library")
+                val restoredList = mutableListOf<Novel>()
+                for (i in 0 until libArr.length()) {
+                    val obj = libArr.getJSONObject(i)
+                    val genresList = mutableListOf<String>()
+                    val gArr = obj.optJSONArray("genres")
+                    if (gArr != null) {
+                        for (g in 0 until gArr.length()) genresList.add(gArr.getString(g))
+                    }
+                    restoredList.add(
+                        Novel(
+                            id = obj.getString("id"),
+                            title = obj.getString("title"),
+                            author = obj.optString("author", "Unknown"),
+                            coverUrl = if (obj.has("coverUrl") && !obj.isNull("coverUrl")) obj.getString("coverUrl") else null,
+                            description = obj.optString("description", ""),
+                            genres = genresList,
+                            status = obj.optString("status", "Ongoing"),
+                            sourceId = obj.optString("sourceId", "unknown"),
+                            sourceName = obj.optString("sourceName", "Unknown"),
+                            inLibrary = true,
+                            lastReadChapterId = if (obj.has("lastReadChapterId") && !obj.isNull("lastReadChapterId")) obj.getString("lastReadChapterId") else null,
+                            lastReadChapterTitle = if (obj.has("lastReadChapterTitle") && !obj.isNull("lastReadChapterTitle")) obj.getString("lastReadChapterTitle") else null,
+                            lastReadChapterIndex = obj.optInt("lastReadChapterIndex", 0),
+                            lastReadScrollPosition = obj.optInt("lastReadScrollPosition", 0),
+                            totalChapters = obj.optInt("totalChapters", 0),
+                            downloadedChaptersCount = obj.optInt("downloadedChaptersCount", 0),
+                            rating = obj.optDouble("rating", 4.8).toFloat(),
+                            lastReadTimestamp = obj.optLong("lastReadTimestamp", 0L),
+                            isEpub = obj.optBoolean("isEpub", false),
+                            rawId = if (obj.has("rawId") && !obj.isNull("rawId")) obj.getString("rawId") else null,
+                            locale = if (obj.has("locale") && !obj.isNull("locale")) obj.getString("locale") else null
+                        )
+                    )
+                }
+                // Merge with existing library
+                val current = _libraryNovels.value.toMutableList()
+                for (item in restoredList) {
+                    val idx = current.indexOfFirst { it.id == item.id }
+                    if (idx >= 0) {
+                        current[idx] = item
+                    } else {
+                        current.add(item)
+                    }
+                }
+                _libraryNovels.value = current
+                saveLibrary()
+            }
+
+            if (root.has("history")) {
+                val histArr = root.getJSONArray("history")
+                val current = _libraryNovels.value.toMutableList()
+                for (i in 0 until histArr.length()) {
+                    val hObj = histArr.getJSONObject(i)
+                    val nId = hObj.getString("novelId")
+                    val idx = current.indexOfFirst { it.id == nId }
+                    if (idx >= 0) {
+                        current[idx] = current[idx].copy(
+                            lastReadChapterId = hObj.optString("lastReadChapterId", null),
+                            lastReadChapterTitle = hObj.optString("lastReadChapterTitle", null),
+                            lastReadChapterIndex = hObj.optInt("lastReadChapterIndex", 0),
+                            lastReadScrollPosition = hObj.optInt("lastReadScrollPosition", 0),
+                            lastReadTimestamp = hObj.optLong("lastReadTimestamp", 0L)
+                        )
+                    }
+                }
+                _libraryNovels.value = current
+                saveLibrary()
+            }
+
+            if (root.has("readStatus")) {
+                val readObj = root.getJSONObject("readStatus")
+                val currentMap = _readChapters.value.toMutableMap()
+                val keys = readObj.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val arr = readObj.getJSONArray(k)
+                    val set = (0 until arr.length()).map { arr.getString(it) }.toSet()
+                    val existing = currentMap[k] ?: emptySet()
+                    currentMap[k] = existing + set
+                }
+                _readChapters.value = currentMap
+                val saveObj = JSONObject()
+                for ((k, s) in currentMap) {
+                    saveObj.put(k, JSONArray(s.toList()))
+                }
+                prefs.edit().putString("read_chapters_json", saveObj.toString()).apply()
+            }
+
+            if (root.has("bookmarks")) {
+                val bmArr = root.getJSONArray("bookmarks")
+                val currentBookmarks = _bookmarks.value.toMutableList()
+                for (i in 0 until bmArr.length()) {
+                    val o = bmArr.getJSONObject(i)
+                    val bmId = o.getString("id")
+                    if (currentBookmarks.none { it.id == bmId }) {
+                        currentBookmarks.add(
+                            Bookmark(
+                                id = bmId,
+                                novelId = o.getString("novelId"),
+                                chapterId = o.getString("chapterId"),
+                                chapterTitle = o.getString("chapterTitle"),
+                                paragraphIndex = o.getInt("paragraphIndex"),
+                                excerpt = o.getString("excerpt"),
+                                note = o.optString("note", ""),
+                                timestamp = o.getLong("timestamp")
+                            )
+                        )
+                    }
+                }
+                _bookmarks.value = currentBookmarks
+                saveBookmarks()
+            }
+
+            if (root.has("termReplacements")) {
+                val trArr = root.getJSONArray("termReplacements")
+                val currentRules = _termReplacements.value.toMutableList()
+                for (i in 0 until trArr.length()) {
+                    val o = trArr.getJSONObject(i)
+                    val rId = o.getString("id")
+                    if (currentRules.none { it.id == rId }) {
+                        currentRules.add(
+                            TermReplacementRule(
+                                id = rId,
+                                original = o.getString("original"),
+                                replacement = o.getString("replacement"),
+                                isEnabled = o.optBoolean("isEnabled", true)
+                            )
+                        )
+                    }
+                }
+                _termReplacements.value = currentRules
+                saveTermReplacements()
+            }
+
+            if (root.has("appSettings")) {
+                val setObj = root.getJSONObject("appSettings")
+                if (setObj.has("readerSettings")) {
+                    val rs = setObj.getJSONObject("readerSettings")
+                    val currentRs = _readerSettings.value
+                    val newRs = currentRs.copy(
+                        theme = runCatching { ReaderTheme.valueOf(rs.getString("theme")) }.getOrDefault(currentRs.theme),
+                        fontSizeSp = rs.optInt("fontSizeSp", currentRs.fontSizeSp),
+                        lineSpacingMultiplier = rs.optDouble("lineSpacingMultiplier", currentRs.lineSpacingMultiplier.toDouble()).toFloat()
+                    )
+                    updateReaderSettings(newRs)
+                }
+                if (setObj.has("themeSettings")) {
+                    val ts = setObj.getJSONObject("themeSettings")
+                    val currentTs = _themeSettings.value
+                    val newTs = currentTs.copy(
+                        themeMode = runCatching { AppThemeMode.valueOf(ts.getString("themeMode")) }.getOrDefault(currentTs.themeMode),
+                        accentColorHex = ts.optString("accentColorHex", currentTs.accentColorHex),
+                        useDynamicColor = ts.optBoolean("useDynamicColor", currentTs.useDynamicColor)
+                    )
+                    updateThemeSettings(newTs)
+                }
+                if (setObj.has("downloadSettings")) {
+                    val ds = setObj.getJSONObject("downloadSettings")
+                    val currentDs = _downloadSettings.value
+                    val newDs = currentDs.copy(
+                        wifiOnly = ds.optBoolean("wifiOnly", currentDs.wifiOnly),
+                        allowMobileData = ds.optBoolean("allowMobileData", currentDs.allowMobileData),
+                        throttlingEnabled = ds.optBoolean("throttlingEnabled", currentDs.throttlingEnabled),
+                        throttleBatchSize = ds.optInt("throttleBatchSize", currentDs.throttleBatchSize),
+                        throttleDelaySeconds = ds.optDouble("throttleDelaySeconds", currentDs.throttleDelaySeconds.toDouble()).toFloat(),
+                        throttleRandomJitter = ds.optBoolean("throttleRandomJitter", currentDs.throttleRandomJitter)
+                    )
+                    updateDownloadSettings(newDs)
+                }
+            }
+
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
     }
 
     private fun getFolderSize(dir: File): Long {

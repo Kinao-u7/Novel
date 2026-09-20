@@ -1,26 +1,24 @@
 package com.example.ui
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -33,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.documentfile.provider.DocumentFile
 import com.example.data.model.Novel
 import com.example.data.repository.NovelRepository
 import com.example.data.source.SourceManager
@@ -71,9 +70,40 @@ fun NovelReaderApp(
     val context = LocalContext.current
     val repo = repository ?: remember { NovelRepository(context) }
     val libraryNovels by repo.libraryNovels.collectAsState()
+    val downloadSettings by repo.downloadSettings.collectAsState()
 
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Main) }
     var currentTab by remember { mutableStateOf(MainTab.LIBRARY) }
+
+    // First setup storage folder prompt
+    val prefs = remember { context.getSharedPreferences("novel_reader_prefs", Context.MODE_PRIVATE) }
+    var showSetupStoragePrompt by remember {
+        mutableStateOf(!prefs.getBoolean("setup_storage_prompt_shown", false))
+    }
+
+    val firstRunFolderPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { treeUri: Uri? ->
+        if (treeUri != null) {
+            try {
+                val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                context.contentResolver.takePersistableUriPermission(treeUri, takeFlags)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            val doc = DocumentFile.fromTreeUri(context, treeUri)
+            val displayName = doc?.name ?: treeUri.lastPathSegment ?: "Custom Folder"
+            repo.updateDownloadSettings(
+                downloadSettings.copy(
+                    customDownloadLocationUri = treeUri.toString(),
+                    customDownloadLocationDisplayName = displayName
+                )
+            )
+            Toast.makeText(context, "Storage folder set to: $displayName", Toast.LENGTH_SHORT).show()
+        }
+        prefs.edit().putBoolean("setup_storage_prompt_shown", true).apply()
+        showSetupStoragePrompt = false
+    }
 
     // First run initialization: pre-seed featured novels into library if totally empty
     LaunchedEffect(Unit) {
@@ -312,5 +342,43 @@ fun NovelReaderApp(
                 )
             }
         }
+    }
+
+    if (showSetupStoragePrompt) {
+        AlertDialog(
+            onDismissRequest = {
+                prefs.edit().putBoolean("setup_storage_prompt_shown", true).apply()
+                showSetupStoragePrompt = false
+            },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Folder,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = {
+                Text("Choose Download Location", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text("Would you like to select a custom folder on your device for storing downloaded novel chapters? You can also skip this and use the default internal app storage, or change it anytime in Settings.")
+            },
+            confirmButton = {
+                Button(onClick = { firstRunFolderPicker.launch(null) }) {
+                    Text("Select Folder")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        prefs.edit().putBoolean("setup_storage_prompt_shown", true).apply()
+                        showSetupStoragePrompt = false
+                    }
+                ) {
+                    Text("Skip (Use Internal)")
+                }
+            }
+        )
     }
 }

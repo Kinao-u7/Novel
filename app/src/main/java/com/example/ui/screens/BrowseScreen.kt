@@ -1,6 +1,10 @@
 package com.example.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,23 +23,30 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddLink
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -44,17 +55,21 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -68,13 +83,16 @@ import com.example.ui.components.NovelCoverImage
 import com.example.ui.components.RatingBadge
 import com.example.ui.components.TagPill
 import com.example.ui.theme.BookSerifFontFamily
+import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BrowseScreen(
     repository: NovelRepository,
     onOpenNovel: (Novel) -> Unit,
     onOpenWebBrowser: (String) -> Unit = {}
 ) {
+    val scope = rememberCoroutineScope()
     val sources by SourceManager.sources.collectAsState()
     val activeSourceId by SourceManager.activeSourceId.collectAsState()
     val libraryNovels by repository.libraryNovels.collectAsState()
@@ -83,6 +101,31 @@ fun BrowseScreen(
     var selectedGenre by remember { mutableStateOf("All") }
     var novelsList by remember { mutableStateOf<List<Novel>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
+
+    var showAddSheet by remember { mutableStateOf(false) }
+    var showCustomSourceDialog by remember { mutableStateOf(false) }
+    var customSourceName by remember { mutableStateOf("") }
+    var customSourceUrl by remember { mutableStateOf("https://") }
+    var isImportingEpub by remember { mutableStateOf(false) }
+
+    val epubPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                isImportingEpub = true
+                try {
+                    val fileName = uri.lastPathSegment ?: "Imported_Novel.epub"
+                    val novel = repository.importEpub(uri, fileName)
+                    onOpenNovel(novel)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    isImportingEpub = false
+                }
+            }
+        }
+    }
 
     // Fetch novels when source or search changes
     LaunchedEffect(activeSourceId, searchQuery) {
@@ -112,11 +155,12 @@ fun BrowseScreen(
         else novelsList.filter { it.genres.contains(selectedGenre) }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp)
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp)
+        ) {
         Spacer(modifier = Modifier.height(16.dp))
 
         // Title Header with Web Browser shortcut
@@ -389,6 +433,204 @@ fun BrowseScreen(
                         }
                     )
                 }
+            }
+        }
+        }
+
+        // Discover Floating Action Button
+        FloatingActionButton(
+            onClick = { showAddSheet = true },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 16.dp, end = 16.dp),
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary
+        ) {
+            Icon(Icons.Default.Add, contentDescription = "Add")
+        }
+
+        // Pull-up Bottom Sheet for Discover Add Actions
+        if (showAddSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showAddSheet = false },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                containerColor = MaterialTheme.colorScheme.surface,
+                dragHandle = {
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 10.dp, bottom = 6.dp)
+                            .size(width = 36.dp, height = 4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(MaterialTheme.colorScheme.outlineVariant)
+                    )
+                }
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .padding(bottom = 32.dp)
+                ) {
+                    Text(
+                        text = "Discover & Add",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontFamily = BookSerifFontFamily,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Option 1: Browse the Web
+                    DiscoverAddOption(
+                        icon = Icons.Default.Language,
+                        title = "Browse the Web",
+                        description = "Search and extract novel chapters from any web source",
+                        onClick = {
+                            showAddSheet = false
+                            onOpenWebBrowser("https://wtr-lab.com")
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Option 2: Add a custom source
+                    DiscoverAddOption(
+                        icon = Icons.Default.AddLink,
+                        title = "Add a Custom Source",
+                        description = "Configure a novel website URL or custom scraper source",
+                        onClick = {
+                            showAddSheet = false
+                            showCustomSourceDialog = true
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Option 3: Import EPUB
+                    DiscoverAddOption(
+                        icon = Icons.Default.FileOpen,
+                        title = "Import EPUB File",
+                        description = "Add a local .epub book file directly to your library",
+                        onClick = {
+                            showAddSheet = false
+                            epubPickerLauncher.launch(
+                                arrayOf("application/epub+zip", "application/octet-stream", "*/*")
+                            )
+                        }
+                    )
+                }
+            }
+        }
+
+        // Dialog to Add a Custom Source
+        if (showCustomSourceDialog) {
+            AlertDialog(
+                onDismissRequest = { showCustomSourceDialog = false },
+                title = {
+                    Text(
+                        text = "Add Custom Source",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Enter a novel site name and URL to open and scrape novels with the in-app browser.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedTextField(
+                            value = customSourceName,
+                            onValueChange = { customSourceName = it },
+                            label = { Text("Source Name") },
+                            placeholder = { Text("e.g. Royal Road") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = customSourceUrl,
+                            onValueChange = { customSourceUrl = it },
+                            label = { Text("Website URL") },
+                            placeholder = { Text("https://...") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val url = if (customSourceUrl.startsWith("http://") || customSourceUrl.startsWith("https://")) {
+                                customSourceUrl
+                            } else {
+                                "https://$customSourceUrl"
+                            }
+                            showCustomSourceDialog = false
+                            onOpenWebBrowser(url)
+                        }
+                    ) {
+                        Text("Open in Browser")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showCustomSourceDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun DiscoverAddOption(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    description: String,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 15.sp),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

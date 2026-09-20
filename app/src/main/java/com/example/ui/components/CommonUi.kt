@@ -22,17 +22,28 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -41,6 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -250,11 +262,11 @@ fun SecondaryOutlinedButton(
 ) {
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.height(46.dp),
+        modifier = modifier.defaultMinSize(minHeight = 36.dp),
         enabled = enabled,
         shape = CircleShape,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f)),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
     ) {
         if (icon != null) {
             Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -462,4 +474,90 @@ fun EmptyStateView(
         }
     }
 }
+
+/**
+ * Minimal thin scrollbar indicator modifier for LazyColumn / chapter list.
+ * Renders as a clean thin line thumb on the right edge without decorative lines or dots.
+ */
+fun Modifier.simpleVerticalScrollbar(
+    state: LazyListState,
+    width: Dp = 3.dp,
+    color: Color = Color.Unspecified
+): Modifier = this.drawWithContent {
+    drawContent()
+
+    val layoutInfo = state.layoutInfo
+    val totalItems = layoutInfo.totalItemsCount
+    val visibleItems = layoutInfo.visibleItemsInfo
+    if (totalItems > 0 && visibleItems.isNotEmpty()) {
+        val firstVisibleItem = visibleItems.first().index
+        val visibleItemCount = visibleItems.size
+
+        val viewportHeight = size.height
+        val scrollbarHeight = ((visibleItemCount.toFloat() / totalItems.toFloat()) * viewportHeight).coerceIn(24.dp.toPx(), viewportHeight)
+        val scrollbarOffset = ((firstVisibleItem.toFloat() / totalItems.toFloat()) * (viewportHeight - scrollbarHeight)).coerceIn(0f, viewportHeight - scrollbarHeight)
+
+        val thumbColor = if (color != Color.Unspecified) color else Color(0xFFE89A3C).copy(alpha = 0.8f)
+        drawRoundRect(
+            color = thumbColor,
+            topLeft = Offset(size.width - width.toPx(), scrollbarOffset),
+            size = Size(width.toPx(), scrollbarHeight),
+            cornerRadius = CornerRadius(width.toPx() / 2, width.toPx() / 2)
+        )
+    }
+}
+
+/**
+ * Clean slider with thin track line (no dots/stop indicators) and round circular thumb,
+ * replacing the heavy default M3 slider with dots.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CleanSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+    steps: Int = 0,
+    onValueChangeFinished: (() -> Unit)? = null,
+    accentColor: Color = MaterialTheme.colorScheme.primary,
+    trackColor: Color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Slider(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        enabled = enabled,
+        valueRange = valueRange,
+        steps = steps,
+        onValueChangeFinished = onValueChangeFinished,
+        interactionSource = interactionSource,
+        thumb = {
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .clip(CircleShape)
+                    .background(if (enabled) accentColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
+            )
+        },
+        track = { sliderState ->
+            SliderDefaults.Track(
+                sliderState = sliderState,
+                modifier = Modifier.height(3.dp),
+                enabled = enabled,
+                colors = SliderDefaults.colors(
+                    activeTrackColor = accentColor,
+                    inactiveTrackColor = trackColor
+                ),
+                drawStopIndicator = null,
+                drawTick = { _, _ -> },
+                thumbTrackGapSize = 0.dp,
+                trackInsideCornerSize = 0.dp
+            )
+        }
+    )
+}
+
 
