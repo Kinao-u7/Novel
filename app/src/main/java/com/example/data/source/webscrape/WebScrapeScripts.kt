@@ -183,7 +183,7 @@ object WebScrapeScripts {
                                         var item = rawChapters[c];
                                         var order = item.order != null ? item.order : (c + 1);
                                         var chTitle = (item.title || item.name || ("Chapter " + order)).trim();
-                                        var chUrl = 'https://wtr-lab.com/' + locale + '/' + serieSlug + '/chapter-' + order;
+                                        var chUrl = 'https://wtr-lab.com/' + locale + '/novel/' + rawId + '/' + serieSlug + '/chapter-' + order;
                                         chapters.push({
                                             title: chTitle,
                                             url: chUrl,

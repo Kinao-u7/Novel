@@ -235,10 +235,11 @@ object WtrLabExtractor {
      * Parses the JSON response from https://wtr-lab.com/api/chapters/{raw_id}?start=1&end={chapter_count}
      * Structure: {"chapters": [{"id", "order", "title", "name", "updated_at"}, ...]}
      * Maps "title" to the chapter title (English/translated) and "order" to chapter number.
-     * Chapter URL: https://wtr-lab.com/{locale}/{serie_slug}/chapter-{order}
+     * Chapter URL: https://wtr-lab.com/{locale}/novel/{raw_id}/{serie_slug}/chapter-{order}
      */
     fun parseChaptersResponse(
         jsonStr: String,
+        rawId: String = "",
         locale: String = "en",
         serieSlug: String = ""
     ): List<ScrapedChapter> {
@@ -255,7 +256,11 @@ object WtrLabExtractor {
                     .ifBlank { item.optString("name").trim() }
                     .ifBlank { "Chapter $order" }
 
-                val chapterUrl = if (serieSlug.isNotBlank()) {
+                val chapterUrl = if (rawId.isNotBlank() && serieSlug.isNotBlank()) {
+                    "https://wtr-lab.com/$effectiveLocale/novel/$rawId/$serieSlug/chapter-$order"
+                } else if (rawId.isNotBlank()) {
+                    "https://wtr-lab.com/$effectiveLocale/novel/$rawId/chapter-$order"
+                } else if (serieSlug.isNotBlank()) {
                     "https://wtr-lab.com/$effectiveLocale/$serieSlug/chapter-$order"
                 } else {
                     "https://wtr-lab.com/$effectiveLocale/chapter-$order"
@@ -323,7 +328,7 @@ object WtrLabExtractor {
                 return emptyList()
             }
 
-            val chapters = parseChaptersResponse(body, locale, serieSlug)
+            val chapters = parseChaptersResponse(body, rawId = rawId, locale = locale, serieSlug = serieSlug)
             Log.d(TAG, "Successfully fetched and parsed ${chapters.size} chapters from WTR-Lab API.")
             chapters
         } catch (e: Exception) {

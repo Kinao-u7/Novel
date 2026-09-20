@@ -111,7 +111,9 @@ class NovelRepository(private val context: Context) {
                             downloadedChaptersCount = obj.optInt("downloadedChaptersCount", 0),
                             rating = obj.optDouble("rating", 4.8).toFloat(),
                             lastReadTimestamp = obj.optLong("lastReadTimestamp", 0L),
-                            isEpub = obj.optBoolean("isEpub", false)
+                            isEpub = obj.optBoolean("isEpub", false),
+                            rawId = if (obj.has("rawId") && !obj.isNull("rawId")) obj.getString("rawId") else null,
+                            locale = if (obj.has("locale") && !obj.isNull("locale")) obj.getString("locale") else null
                         )
                     )
                 }
@@ -144,6 +146,8 @@ class NovelRepository(private val context: Context) {
                 put("rating", novel.rating.toDouble())
                 put("lastReadTimestamp", novel.lastReadTimestamp)
                 put("isEpub", novel.isEpub)
+                put("rawId", novel.rawId)
+                put("locale", novel.locale)
             }
             array.put(obj)
         }
@@ -551,7 +555,9 @@ class NovelRepository(private val context: Context) {
             totalChapters = chapters.size,
             downloadedChaptersCount = 0,
             rating = 5.0f,
-            lastReadTimestamp = System.currentTimeMillis()
+            lastReadTimestamp = System.currentTimeMillis(),
+            rawId = scrapedData.rawId,
+            locale = scrapedData.locale
         )
 
         addToLibrary(novel)

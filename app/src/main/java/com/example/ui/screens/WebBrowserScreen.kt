@@ -312,11 +312,16 @@ fun WebBrowserScreen(
                     // WTR-Lab Specific fallback/enhancement:
                     // If WTR-Lab is detected, ensure metadata and chapters are completely loaded
                     val isWtrLabDetected = isWtrLab || json.optBoolean("isWtrLab", false)
+                    var detectedRawId: String? = null
+                    var detectedLocale: String? = null
+
                     if (isWtrLabDetected) {
                         val rawId = json.optString("rawId", "")
                         val chapterCount = json.optInt("chapterCount", 0)
                         val locale = json.optString("locale", "en").ifBlank { "en" }
                         val serieSlug = json.optString("serieSlug", "")
+                        detectedRawId = rawId.takeIf { it.isNotBlank() }
+                        detectedLocale = locale.takeIf { it.isNotBlank() }
 
                         // If rawNextData is available and fields need filling
                         val rawNextData = json.optString("rawNextData", "")
@@ -328,6 +333,12 @@ fun WebBrowserScreen(
                                 if (description.isBlank()) description = parsedMeta.synopsis
                                 if (coverUrl.isNullOrBlank()) coverUrl = parsedMeta.coverUrl
                                 if (genresList.isEmpty()) genresList.addAll(parsedMeta.genres)
+                                if (detectedRawId.isNullOrBlank() && parsedMeta.rawId.isNotBlank()) {
+                                    detectedRawId = parsedMeta.rawId
+                                }
+                                if (detectedLocale.isNullOrBlank() && parsedMeta.locale.isNotBlank()) {
+                                    detectedLocale = parsedMeta.locale
+                                }
                             }
                         }
 
@@ -366,7 +377,9 @@ fun WebBrowserScreen(
                         description = description,
                         genres = genresList,
                         chapters = chaptersList,
-                        sourceUrl = sourceUrl
+                        sourceUrl = sourceUrl,
+                        rawId = detectedRawId,
+                        locale = detectedLocale
                     )
 
                     Log.d("NovelScraper", "Extracted novel: '${data.title}', ${chaptersList.size} chapters, ${genresList.size} genres")

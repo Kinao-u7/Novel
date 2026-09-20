@@ -152,7 +152,9 @@ data class Novel(
     val downloadedChaptersCount: Int = 0,
     val rating: Float = 4.8f,
     val lastReadTimestamp: Long = 0L,
-    val isEpub: Boolean = false
+    val isEpub: Boolean = false,
+    val rawId: String? = null,
+    val locale: String? = null
 )
 
 data class Chapter(

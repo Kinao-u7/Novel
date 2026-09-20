@@ -13,5 +13,7 @@ data class ScrapedNovelData(
     val description: String,
     val genres: List<String>,
     val chapters: List<ScrapedChapter>,
-    val sourceUrl: String
+    val sourceUrl: String,
+    val rawId: String? = null,
+    val locale: String? = null
 )

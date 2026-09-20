@@ -315,6 +315,10 @@ fun resolveNovelWebUrl(novel: Novel): String {
     return when {
         novel.id.startsWith("http://") || novel.id.startsWith("https://") -> novel.id
         novel.lastReadChapterId?.startsWith("http://") == true || novel.lastReadChapterId?.startsWith("https://") == true -> novel.lastReadChapterId
+        !novel.rawId.isNullOrBlank() -> {
+            val loc = novel.locale?.ifBlank { "en" } ?: "en"
+            "https://wtr-lab.com/$loc/novel/${novel.rawId}"
+        }
         novel.sourceId == "wtr_lab" -> "https://wtr-lab.com"
         else -> "https://www.google.com/search?q=${Uri.encode(novel.title + " novel")}"
     }
