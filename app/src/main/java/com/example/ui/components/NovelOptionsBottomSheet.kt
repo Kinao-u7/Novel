@@ -310,16 +310,25 @@ fun EditNovelDialog(
 
 /**
  * Helper to determine the web URL for a novel when opening in browser.
+ * Always prefers the exact stored source URL verbatim without title searches.
  */
 fun resolveNovelWebUrl(novel: Novel): String {
-    return when {
-        novel.id.startsWith("http://") || novel.id.startsWith("https://") -> novel.id
-        novel.lastReadChapterId?.startsWith("http://") == true || novel.lastReadChapterId?.startsWith("https://") == true -> novel.lastReadChapterId
-        !novel.rawId.isNullOrBlank() -> {
-            val loc = novel.locale?.ifBlank { "en" } ?: "en"
-            "https://wtr-lab.com/$loc/novel/${novel.rawId}"
-        }
-        novel.sourceId == "wtr_lab" -> "https://wtr-lab.com"
-        else -> "https://www.google.com/search?q=${Uri.encode(novel.title + " novel")}"
+    // 1. Verbatim stored source URL from when the novel was originally added
+    if (!novel.sourceUrl.isNullOrBlank()) {
+        return novel.sourceUrl
     }
+    // 2. Direct web ID or chapter URL
+    if (novel.id.startsWith("http://") || novel.id.startsWith("https://")) {
+        return novel.id
+    }
+    if (novel.lastReadChapterId?.startsWith("http://") == true || novel.lastReadChapterId?.startsWith("https://") == true) {
+        return novel.lastReadChapterId
+    }
+    // 3. Fallback for older records with rawId
+    if (!novel.rawId.isNullOrBlank()) {
+        val loc = novel.locale?.ifBlank { "en" } ?: "en"
+        return "https://wtr-lab.com/$loc/novel/${novel.rawId}"
+    }
+    // Default safe catalog fallback (never search for title)
+    return "https://wtr-lab.com"
 }

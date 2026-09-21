@@ -49,7 +49,7 @@ import com.example.ui.screens.SettingsSubPage
 
 enum class MainTab(val title: String) {
     LIBRARY("Library"),
-    BROWSE("Browse"),
+    BROWSE("Discover"),
     DOWNLOADS("Downloads"),
     PROFILE("Profile")
 }
@@ -188,10 +188,10 @@ fun NovelReaderApp(
                                     selected = currentTab == MainTab.BROWSE,
                                     onClick = { currentTab = MainTab.BROWSE },
                                     colors = navColors,
-                                    icon = { Icon(Icons.Default.Explore, contentDescription = "Browse") },
+                                    icon = { Icon(Icons.Default.Explore, contentDescription = "Discover") },
                                     label = {
                                         Text(
-                                            "Browse",
+                                            "Discover",
                                             fontSize = 11.sp,
                                             fontWeight = if (currentTab == MainTab.BROWSE) FontWeight.Bold else FontWeight.Medium
                                         )

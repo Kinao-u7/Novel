@@ -81,6 +81,8 @@ class NovelRepository(private val context: Context) {
         loadReadChaptersIndex()
         loadBookmarks()
         loadTermReplacements()
+        loadCustomSources()
+        loadRequestedSources()
     }
 
     // --- LIBRARY METHODS ---
@@ -118,7 +120,8 @@ class NovelRepository(private val context: Context) {
                             lastReadTimestamp = obj.optLong("lastReadTimestamp", 0L),
                             isEpub = obj.optBoolean("isEpub", false),
                             rawId = if (obj.has("rawId") && !obj.isNull("rawId")) obj.getString("rawId") else null,
-                            locale = if (obj.has("locale") && !obj.isNull("locale")) obj.getString("locale") else null
+                            locale = if (obj.has("locale") && !obj.isNull("locale")) obj.getString("locale") else null,
+                            sourceUrl = if (obj.has("sourceUrl") && !obj.isNull("sourceUrl")) obj.getString("sourceUrl") else null
                         )
                     )
                 }
@@ -162,6 +165,7 @@ class NovelRepository(private val context: Context) {
                 put("isEpub", novel.isEpub)
                 put("rawId", novel.rawId)
                 put("locale", novel.locale)
+                put("sourceUrl", novel.sourceUrl)
             }
             array.put(obj)
         }
@@ -680,7 +684,8 @@ class NovelRepository(private val context: Context) {
             rating = 5.0f,
             lastReadTimestamp = System.currentTimeMillis(),
             rawId = scrapedData.rawId,
-            locale = scrapedData.locale
+            locale = scrapedData.locale,
+            sourceUrl = scrapedData.sourceUrl
         )
 
         addToLibrary(novel)
@@ -1251,6 +1256,7 @@ class NovelRepository(private val context: Context) {
                     put("isEpub", novel.isEpub)
                     put("rawId", novel.rawId)
                     put("locale", novel.locale)
+                    put("sourceUrl", novel.sourceUrl)
                 }
                 libArr.put(obj)
             }
@@ -1414,7 +1420,8 @@ class NovelRepository(private val context: Context) {
                             lastReadTimestamp = obj.optLong("lastReadTimestamp", 0L),
                             isEpub = obj.optBoolean("isEpub", false),
                             rawId = if (obj.has("rawId") && !obj.isNull("rawId")) obj.getString("rawId") else null,
-                            locale = if (obj.has("locale") && !obj.isNull("locale")) obj.getString("locale") else null
+                            locale = if (obj.has("locale") && !obj.isNull("locale")) obj.getString("locale") else null,
+                            sourceUrl = if (obj.has("sourceUrl") && !obj.isNull("sourceUrl")) obj.getString("sourceUrl") else null
                         )
                     )
                 }
@@ -1568,5 +1575,88 @@ class NovelRepository(private val context: Context) {
             size += if (file.isDirectory) getFolderSize(file) else file.length()
         }
         return size
+    }
+
+    // --- CUSTOM SOURCES ---
+    private val _customSources = MutableStateFlow<List<CustomNovelSource>>(emptyList())
+    val customSources: StateFlow<List<CustomNovelSource>> = _customSources.asStateFlow()
+
+    private fun loadCustomSources() {
+        val jsonStr = prefs.getString("custom_novel_sources_json", null)
+        if (!jsonStr.isNullOrBlank()) {
+            try {
+                val arr = JSONArray(jsonStr)
+                val list = mutableListOf<CustomNovelSource>()
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    list.add(
+                        CustomNovelSource(
+                            id = obj.optString("id", java.util.UUID.randomUUID().toString()),
+                            name = obj.getString("name"),
+                            url = obj.getString("url"),
+                            language = obj.optString("language", "English"),
+                            description = obj.optString("description", "Custom web source")
+                        )
+                    )
+                }
+                _customSources.value = list
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun addCustomSource(name: String, url: String, language: String = "English", description: String = "Custom web source") {
+        val normalizedUrl = if (url.startsWith("http://") || url.startsWith("https://")) url else "https://$url"
+        val newSource = CustomNovelSource(
+            name = name,
+            url = normalizedUrl,
+            language = language,
+            description = description
+        )
+        val current = _customSources.value.toMutableList()
+        current.add(newSource)
+        _customSources.value = current
+        saveCustomSources()
+    }
+
+    fun removeCustomSource(id: String) {
+        val current = _customSources.value.filter { it.id != id }
+        _customSources.value = current
+        saveCustomSources()
+    }
+
+    private fun saveCustomSources() {
+        val arr = JSONArray()
+        for (src in _customSources.value) {
+            val obj = JSONObject().apply {
+                put("id", src.id)
+                put("name", src.name)
+                put("url", src.url)
+                put("language", src.language)
+                put("description", src.description)
+            }
+            arr.put(obj)
+        }
+        prefs.edit().putString("custom_novel_sources_json", arr.toString()).apply()
+    }
+
+    // --- REQUESTED SOURCES ---
+    private val _requestedSources = MutableStateFlow<List<String>>(emptyList())
+    val requestedSources: StateFlow<List<String>> = _requestedSources.asStateFlow()
+
+    private fun loadRequestedSources() {
+        val set = prefs.getStringSet("requested_sources_set", emptySet()) ?: emptySet()
+        _requestedSources.value = set.toList()
+    }
+
+    fun requestSource(siteName: String, url: String) {
+        val entry = if (url.isNotBlank()) "$siteName ($url)" else siteName
+        val current = _requestedSources.value.toMutableList()
+        if (!current.contains(entry)) {
+            current.add(entry)
+            _requestedSources.value = current
+            prefs.edit().putStringSet("requested_sources_set", current.toSet()).apply()
+        }
     }
 }

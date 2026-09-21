@@ -230,7 +230,6 @@ fun PrimaryCtaButton(
         onClick = onClick,
         modifier = modifier.height(46.dp),
         enabled = enabled,
-        shape = CircleShape,
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary
@@ -250,7 +249,7 @@ fun PrimaryCtaButton(
 }
 
 /**
- * Secondary outlined pill button, same shape family, lower visual weight.
+ * Secondary outlined button, inheriting theme button shape, lower visual weight.
  */
 @Composable
 fun SecondaryOutlinedButton(
@@ -264,7 +263,6 @@ fun SecondaryOutlinedButton(
         onClick = onClick,
         modifier = modifier.defaultMinSize(minHeight = 36.dp),
         enabled = enabled,
-        shape = CircleShape,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f)),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
     ) {

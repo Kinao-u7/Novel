@@ -805,8 +805,7 @@ fun WebBrowserScreen(
                 .padding(16.dp)
                 .testTag("add_to_library_fab"),
             containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-            shape = CircleShape
+            contentColor = MaterialTheme.colorScheme.onPrimary
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 16.dp),

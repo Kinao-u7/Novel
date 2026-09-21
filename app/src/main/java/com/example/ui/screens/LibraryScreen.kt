@@ -58,6 +58,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedButton
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
@@ -66,6 +67,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -83,6 +85,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -106,6 +109,7 @@ enum class LibrarySortOption(val displayName: String) {
     CHAPTERS("Total Chapters")
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     repository: NovelRepository,
@@ -123,7 +127,7 @@ fun LibraryScreen(
     var isGridView by remember { mutableStateOf(repository.isLibraryGridView()) }
     var sortOption by remember { mutableStateOf(LibrarySortOption.RECENT) }
     var showSortMenu by remember { mutableStateOf(false) }
-    var showFilterMenu by remember { mutableStateOf(false) }
+    var showAddOptionsSheet by remember { mutableStateOf(false) }
     var isImporting by remember { mutableStateOf(false) }
     var selectedNovelForOptions by remember { mutableStateOf<Novel?>(null) }
 
@@ -219,49 +223,6 @@ fun LibraryScreen(
                             imageVector = if (isGridView) Icons.Default.ViewList else Icons.Default.GridView,
                             contentDescription = if (isGridView) "Switch to List View" else "Switch to Grid View"
                         )
-                    }
-
-                    // Filter Menu
-                    Box {
-                        IconButton(onClick = { showFilterMenu = true }) {
-                            Icon(
-                                imageVector = Icons.Default.FilterList,
-                                contentDescription = "Filter Library",
-                                tint = if (selectedFilter != "All") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = showFilterMenu,
-                            onDismissRequest = { showFilterMenu = false }
-                        ) {
-                            val filters = listOf("All", "Reading", "Unread", "Downloaded", "EPUBs", "Completed")
-                            filters.forEach { filter ->
-                                val isSelected = selectedFilter == filter
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            filter,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                        )
-                                    },
-                                    leadingIcon = if (isSelected) {
-                                        {
-                                            Icon(
-                                                imageVector = Icons.Default.Check,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-                                    } else null,
-                                    onClick = {
-                                        selectedFilter = filter
-                                        showFilterMenu = false
-                                    }
-                                )
-                            }
-                        }
                     }
 
                     // Sort menu
@@ -369,34 +330,37 @@ fun LibraryScreen(
                 )
             )
 
-            if (selectedFilter != "All") {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
-                        .clickable { selectedFilter = "All" }
-                        .padding(horizontal = 10.dp, vertical = 5.dp)
-                ) {
-                    Text(
-                        text = "Filter: $selectedFilter",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Dedicated Filter Tabs Row
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(vertical = 2.dp)
+            ) {
+                val filterTabs = listOf("All", "Reading", "Unread", "Downloaded", "EPUBs", "Completed")
+                items(filterTabs) { filter ->
+                    val isSelected = selectedFilter == filter
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { selectedFilter = filter },
+                        label = {
+                            Text(
+                                text = filter,
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                )
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
                         )
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Clear Filter",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(14.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Novels Content
             if (filteredNovels.isEmpty()) {
@@ -477,6 +441,118 @@ fun LibraryScreen(
                             onClick = { onOpenNovel(novel) },
                             onLongClick = { selectedNovelForOptions = novel }
                         )
+                    }
+                }
+            }
+        }
+
+        // Floating Action Button: Add Novel (inherits central theme button/FAB shape)
+        FloatingActionButton(
+            onClick = { showAddOptionsSheet = true },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp)
+                .padding(bottom = 72.dp) // clear bottom navigation bar
+                .testTag("library_add_fab"),
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary
+        ) {
+            Icon(Icons.Default.Add, contentDescription = "Add Novel")
+        }
+
+        // Add Options Bottom Sheet
+        if (showAddOptionsSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showAddOptionsSheet = false },
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .padding(bottom = 32.dp)
+                ) {
+                    Text(
+                        text = "Add to Library",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                showAddOptionsSheet = false
+                                onNavigateToBrowse()
+                            }
+                            .padding(vertical = 12.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Explore,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column {
+                            Text("Discover Sources", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                            Text("Find novel websites and catalog sources", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                showAddOptionsSheet = false
+                                onOpenWebBrowser?.invoke("https://wtr-lab.com")
+                            }
+                            .padding(vertical = 12.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Language,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column {
+                            Text("Open In-App Web Browser", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                            Text("Browse and scrape web novels directly", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                showAddOptionsSheet = false
+                                epubPickerLauncher.launch(
+                                    arrayOf("application/epub+zip", "application/octet-stream", "*/*")
+                                )
+                            }
+                            .padding(vertical = 12.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FileOpen,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column {
+                            Text("Import Local EPUB", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                            Text("Read your local EPUB files", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }

@@ -171,7 +171,8 @@ data class Novel(
     val lastReadTimestamp: Long = 0L,
     val isEpub: Boolean = false,
     val rawId: String? = null,
-    val locale: String? = null
+    val locale: String? = null,
+    val sourceUrl: String? = null
 )
 
 data class Chapter(
@@ -212,3 +213,12 @@ data class ReadingStats(
     val wordsPerMinute: Int = 240,
     val lastSessionTimestamp: Long = System.currentTimeMillis()
 )
+
+data class CustomNovelSource(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String,
+    val url: String,
+    val language: String = "English",
+    val description: String = "Custom web source"
+)
+
