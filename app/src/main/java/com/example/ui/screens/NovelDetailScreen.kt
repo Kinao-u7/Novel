@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material3.Card
@@ -102,11 +103,11 @@ fun NovelDetailScreen(
     val isInLibrary = libraryNovels.any { it.id == novel.id }
     val currentNovelState = libraryNovels.firstOrNull { it.id == novel.id } ?: novel
 
-    // Load chapters
+    // Load chapters (instantly from local storage/cache without re-scraping or fetching)
     LaunchedEffect(novel.id) {
         isLoadingChapters = true
         try {
-            chapters = repository.getChapterList(novel)
+            chapters = repository.getChapterList(novel, forceRefresh = false)
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
@@ -150,12 +151,34 @@ fun NovelDetailScreen(
                     ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                 )
-                IconButton(onClick = { showOptionsMenu = true }) {
-                    Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "Novel Options",
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = {
+                            scope.launch {
+                                isLoadingChapters = true
+                                try {
+                                    chapters = repository.getChapterList(novel, forceRefresh = true)
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                } finally {
+                                    isLoadingChapters = false
+                                }
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh Chapters",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    IconButton(onClick = { showOptionsMenu = true }) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "Novel Options",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
             }
         }

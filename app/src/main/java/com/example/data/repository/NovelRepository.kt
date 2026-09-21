@@ -260,30 +260,27 @@ class NovelRepository(private val context: Context) {
 
     // --- CHAPTERS & OFFLINE STORAGE ---
 
-    suspend fun getChapterList(novel: Novel): List<Chapter> = withContext(Dispatchers.IO) {
-        if (novel.isEpub && localNovelChapters.containsKey(novel.id)) {
-            val chapters = localNovelChapters[novel.id] ?: emptyList()
-            val readSet = _readChapters.value[novel.id] ?: emptySet()
-            return@withContext chapters.map {
-                it.copy(
-                    isDownloaded = true,
-                    isRead = readSet.contains(it.id)
-                )
-            }
-        }
+    suspend fun getChapterList(novel: Novel, forceRefresh: Boolean = false): List<Chapter> = withContext(Dispatchers.IO) {
+        val downloadedSet = _downloadedChapters.value[novel.id] ?: emptySet()
+        val readSet = _readChapters.value[novel.id] ?: emptySet()
 
-        if (novel.sourceId == WebScrapeSource.SOURCE_ID || localNovelChapters.containsKey(novel.id)) {
-            var chapters = localNovelChapters[novel.id]
-            if (chapters == null) {
-                chapters = loadNovelChaptersFromDisk(novel.id)
-                if (chapters.isNotEmpty()) {
-                    localNovelChapters[novel.id] = chapters
+        if (!forceRefresh) {
+            // 1. Check in-memory cache
+            val cachedChapters = localNovelChapters[novel.id]
+            if (!cachedChapters.isNullOrEmpty()) {
+                return@withContext cachedChapters.map { ch ->
+                    ch.copy(
+                        isDownloaded = downloadedSet.contains(ch.id) || isChapterFilePresent(novel.id, ch.id),
+                        isRead = readSet.contains(ch.id)
+                    )
                 }
             }
-            if (!chapters.isNullOrEmpty()) {
-                val downloadedSet = _downloadedChapters.value[novel.id] ?: emptySet()
-                val readSet = _readChapters.value[novel.id] ?: emptySet()
-                return@withContext chapters.map { ch ->
+
+            // 2. Check local disk storage (internal filesDir or custom SAF)
+            val diskChapters = loadNovelChaptersFromDisk(novel.id)
+            if (diskChapters.isNotEmpty()) {
+                localNovelChapters[novel.id] = diskChapters
+                return@withContext diskChapters.map { ch ->
                     ch.copy(
                         isDownloaded = downloadedSet.contains(ch.id) || isChapterFilePresent(novel.id, ch.id),
                         isRead = readSet.contains(ch.id)
@@ -292,10 +289,18 @@ class NovelRepository(private val context: Context) {
             }
         }
 
+        // 3. Fallback: Fetch from Source (only when no local data exists, or user explicitly requested refresh)
         val source = SourceManager.getSourceById(novel.sourceId) ?: SourceManager.getActiveSource()
-        val rawChapters = source.getChapterList(novel.id)
-        val downloadedSet = _downloadedChapters.value[novel.id] ?: emptySet()
-        val readSet = _readChapters.value[novel.id] ?: emptySet()
+        val rawChapters = try {
+            source.getChapterList(novel.id)
+        } catch (e: Exception) {
+            emptyList()
+        }
+
+        if (rawChapters.isNotEmpty()) {
+            localNovelChapters[novel.id] = rawChapters
+            saveNovelChaptersToDisk(novel.id, rawChapters)
+        }
 
         rawChapters.map { ch ->
             ch.copy(
@@ -693,8 +698,7 @@ class NovelRepository(private val context: Context) {
     }
 
     private fun saveNovelChaptersToDisk(novelId: String, chapters: List<Chapter>) {
-        try {
-            val file = File(context.filesDir, "novel_chapters_$novelId.json")
+        val jsonStr = try {
             val array = JSONArray()
             chapters.forEach { ch ->
                 val obj = JSONObject().apply {
@@ -707,35 +711,122 @@ class NovelRepository(private val context: Context) {
                 }
                 array.put(obj)
             }
-            file.writeText(array.toString())
+            array.toString()
+        } catch (e: Exception) {
+            return
+        }
+
+        // Always save to internal filesDir
+        try {
+            val file = File(context.filesDir, "novel_chapters_$novelId.json")
+            file.writeText(jsonStr)
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+
+        // Also save to custom SAF storage if configured
+        val customUriStr = _downloadSettings.value.customDownloadLocationUri
+        if (!customUriStr.isNullOrBlank()) {
+            try {
+                val rootTreeUri = Uri.parse(customUriStr)
+                val rootDoc = DocumentFile.fromTreeUri(context, rootTreeUri)
+                if (rootDoc != null && rootDoc.canWrite()) {
+                    var chaptersDoc = rootDoc.findFile("chapters")
+                    if (chaptersDoc == null || !chaptersDoc.isDirectory) {
+                        chaptersDoc = rootDoc.createDirectory("chapters")
+                    }
+                    if (chaptersDoc != null) {
+                        var novelDoc = chaptersDoc.findFile(novelId)
+                        if (novelDoc == null || !novelDoc.isDirectory) {
+                            novelDoc = chaptersDoc.createDirectory(novelId)
+                        }
+                        if (novelDoc != null) {
+                            var metaDoc = novelDoc.findFile("chapters_meta.json")
+                            if (metaDoc == null) {
+                                metaDoc = novelDoc.createFile("application/json", "chapters_meta.json")
+                            }
+                            if (metaDoc != null) {
+                                context.contentResolver.openOutputStream(metaDoc.uri)?.use { os ->
+                                    os.write(jsonStr.toByteArray(Charsets.UTF_8))
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore SAF permission or IO issues; internal storage is already saved
+            }
         }
     }
 
     private fun loadNovelChaptersFromDisk(novelId: String): List<Chapter> {
         val file = File(context.filesDir, "novel_chapters_$novelId.json")
-        if (!file.exists()) return emptyList()
-        return try {
-            val array = JSONArray(file.readText())
-            val list = mutableListOf<Chapter>()
-            for (i in 0 until array.length()) {
-                val obj = array.getJSONObject(i)
-                list.add(
-                    Chapter(
-                        id = obj.getString("id"),
-                        novelId = obj.getString("novelId"),
-                        title = obj.getString("title"),
-                        chapterIndex = obj.optInt("chapterIndex", i + 1),
-                        releaseDate = obj.optString("releaseDate", "Web"),
-                        wordCount = obj.optInt("wordCount", 0)
+        if (file.exists()) {
+            try {
+                val array = JSONArray(file.readText())
+                val list = mutableListOf<Chapter>()
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    list.add(
+                        Chapter(
+                            id = obj.getString("id"),
+                            novelId = obj.getString("novelId"),
+                            title = obj.getString("title"),
+                            chapterIndex = obj.optInt("chapterIndex", i + 1),
+                            releaseDate = obj.optString("releaseDate", "Web"),
+                            wordCount = obj.optInt("wordCount", 0)
+                        )
                     )
-                )
+                }
+                if (list.isNotEmpty()) return list
+            } catch (e: Exception) {
+                // fall through to SAF check
             }
-            list
-        } catch (e: Exception) {
-            emptyList()
         }
+
+        // Check custom SAF storage if not found in internal storage
+        val customUriStr = _downloadSettings.value.customDownloadLocationUri
+        if (!customUriStr.isNullOrBlank()) {
+            try {
+                val rootTreeUri = Uri.parse(customUriStr)
+                val rootDoc = DocumentFile.fromTreeUri(context, rootTreeUri)
+                val chaptersDoc = rootDoc?.findFile("chapters")
+                val novelDoc = chaptersDoc?.findFile(novelId)
+                val metaDoc = novelDoc?.findFile("chapters_meta.json")
+                    ?: novelDoc?.findFile("novel_chapters_$novelId.json")
+                if (metaDoc != null && metaDoc.exists()) {
+                    context.contentResolver.openInputStream(metaDoc.uri)?.use { inputStream ->
+                        val text = inputStream.bufferedReader().readText()
+                        val array = JSONArray(text)
+                        val list = mutableListOf<Chapter>()
+                        for (i in 0 until array.length()) {
+                            val obj = array.getJSONObject(i)
+                            list.add(
+                                Chapter(
+                                    id = obj.getString("id"),
+                                    novelId = obj.getString("novelId"),
+                                    title = obj.getString("title"),
+                                    chapterIndex = obj.optInt("chapterIndex", i + 1),
+                                    releaseDate = obj.optString("releaseDate", "Web"),
+                                    wordCount = obj.optInt("wordCount", 0)
+                                )
+                            )
+                        }
+                        if (list.isNotEmpty()) {
+                            // Backfill internal cache for instant future loads
+                            try {
+                                file.writeText(text)
+                            } catch (e: Exception) {}
+                            return list
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // fall through
+            }
+        }
+
+        return emptyList()
     }
 
     // --- BOOKMARKS ---

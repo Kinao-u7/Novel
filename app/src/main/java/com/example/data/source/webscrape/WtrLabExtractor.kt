@@ -162,11 +162,21 @@ object WtrLabExtractor {
             var coverUrl: String? = data.optString("image").ifBlank { null }
                 ?: serieData.optString("image").ifBlank { null }
                 ?: serie.optString("image").ifBlank { null }
+                ?: data.optString("raw_image").ifBlank { null }
+                ?: serieData.optString("raw_image").ifBlank { null }
+                ?: serie.optString("raw_image").ifBlank { null }
                 ?: serie.optString("cover").ifBlank { null }
                 ?: serie.optString("cover_url").ifBlank { null }
+                ?: serie.optString("poster").ifBlank { null }
+                ?: serie.optString("thumbnail").ifBlank { null }
 
-            if (coverUrl != null && !coverUrl.startsWith("http")) {
-                coverUrl = "https://wtr-lab.com" + if (coverUrl.startsWith("/")) coverUrl else "/$coverUrl"
+            if (coverUrl != null) {
+                val trimmedCover = coverUrl.trim()
+                coverUrl = when {
+                    trimmedCover.startsWith("http://", ignoreCase = true) || trimmedCover.startsWith("https://", ignoreCase = true) -> trimmedCover
+                    trimmedCover.startsWith("//") -> "https:$trimmedCover"
+                    else -> "https://wtr-lab.com" + if (trimmedCover.startsWith("/")) trimmedCover else "/$trimmedCover"
+                }
             }
 
             // 9. Query & slug resolution: query.locale & query.serie_slug

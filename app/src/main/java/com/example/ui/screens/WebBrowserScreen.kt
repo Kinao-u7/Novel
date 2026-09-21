@@ -71,8 +71,10 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -119,6 +121,25 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+
+private fun resolveAbsoluteUrl(baseUrl: String, relativeUrl: String?): String? {
+    if (relativeUrl.isNullOrBlank()) return null
+    val trimmed = relativeUrl.trim()
+    return try {
+        when {
+            trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true) -> trimmed
+            trimmed.startsWith("//") -> "https:$trimmed"
+            trimmed.startsWith("data:") -> trimmed
+            else -> {
+                val base = java.net.URI(baseUrl)
+                base.resolve(trimmed).toString()
+            }
+        }
+    } catch (e: Exception) {
+        if (trimmed.startsWith("//")) "https:$trimmed"
+        else trimmed
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled")
@@ -276,9 +297,10 @@ fun WebBrowserScreen(
 
                     var title = json.optString("title", "").trim()
                     var author = json.optString("author", "Unknown Author").trim()
-                    var coverUrl = json.optString("coverUrl", "").takeIf { it.isNotBlank() }
-                    var description = json.optString("description", "").trim()
                     val sourceUrl = json.optString("sourceUrl", currentUrl).ifBlank { currentUrl }
+                    var coverUrl = json.optString("coverUrl", "").takeIf { it.isNotBlank() }
+                    coverUrl = resolveAbsoluteUrl(sourceUrl, coverUrl)
+                    var description = json.optString("description", "").trim()
 
                     val genresList = mutableListOf<String>()
                     val gArr = json.optJSONArray("genres")
@@ -331,7 +353,7 @@ fun WebBrowserScreen(
                                 if (title.isBlank()) title = parsedMeta.title
                                 if (author.isBlank() || author == "Unknown Author") author = parsedMeta.author
                                 if (description.isBlank()) description = parsedMeta.synopsis
-                                if (coverUrl.isNullOrBlank()) coverUrl = parsedMeta.coverUrl
+                                if (coverUrl.isNullOrBlank()) coverUrl = resolveAbsoluteUrl(sourceUrl, parsedMeta.coverUrl)
                                 if (genresList.isEmpty()) genresList.addAll(parsedMeta.genres)
                                 if (detectedRawId.isNullOrBlank() && parsedMeta.rawId.isNotBlank()) {
                                     detectedRawId = parsedMeta.rawId
@@ -728,14 +750,27 @@ fun WebBrowserScreen(
                                 return false
                             }
 
+                            override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                                super.doUpdateVisitedHistory(view, url, isReload)
+                                val effectiveUrl = view?.url ?: url
+                                if (!effectiveUrl.isNullOrBlank()) {
+                                    currentUrl = effectiveUrl
+                                    if (!isAddressBarFocused) {
+                                        urlInputValue = TextFieldValue(effectiveUrl, TextRange(effectiveUrl.length))
+                                    }
+                                }
+                                canGoBack = view?.canGoBack() == true
+                                canGoForward = view?.canGoForward() == true
+                            }
+
                             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                                 super.onPageStarted(view, url, favicon)
                                 isLoading = true
-                                if (!url.isNullOrBlank()) {
-                                    currentUrl = url
-                                    if (!isAddressBarFocused) {
-                                        urlInputValue = TextFieldValue(url, TextRange(url.length))
-                                    }
+                                val effectiveUrl = view?.url ?: url
+                                if (!effectiveUrl.isNullOrBlank()) {
+                                    currentUrl = effectiveUrl
+                                    urlInputValue = TextFieldValue(effectiveUrl, TextRange(effectiveUrl.length))
+                                    isAddressBarFocused = false
                                 }
                                 canGoBack = view?.canGoBack() == true
                                 canGoForward = view?.canGoForward() == true
@@ -744,16 +779,25 @@ fun WebBrowserScreen(
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 super.onPageFinished(view, url)
                                 isLoading = false
-                                if (!url.isNullOrBlank()) {
-                                    currentUrl = url
+                                val effectiveUrl = view?.url ?: url
+                                if (!effectiveUrl.isNullOrBlank()) {
+                                    currentUrl = effectiveUrl
                                     if (!isAddressBarFocused) {
-                                        urlInputValue = TextFieldValue(url, TextRange(url.length))
+                                        urlInputValue = TextFieldValue(effectiveUrl, TextRange(effectiveUrl.length))
                                     }
                                 }
                                 pageTitle = view?.title ?: ""
                                 canGoBack = view?.canGoBack() == true
                                 canGoForward = view?.canGoForward() == true
                             }
+                        }
+
+                        setOnTouchListener { _, _ ->
+                            if (isAddressBarFocused) {
+                                focusManager.clearFocus()
+                                isAddressBarFocused = false
+                            }
+                            false
                         }
 
                         webChromeClient = object : WebChromeClient() {
@@ -1137,6 +1181,7 @@ fun WebBrowserScreen(
                     Button(
                         onClick = {
                             val data = scrapedNovelData ?: return@Button
+                            val resolvedCover = resolveAbsoluteUrl(data.sourceUrl, data.coverUrl)
                             if (repository != null) {
                                 val savedNovel = repository.saveWebScrapedNovel(
                                     scrapedData = data,
@@ -1144,13 +1189,22 @@ fun WebBrowserScreen(
                                     customAuthor = data.author,
                                     customSynopsis = data.description,
                                     customTags = data.genres,
-                                    customCoverUrl = data.coverUrl
+                                    customCoverUrl = resolvedCover
                                 )
                                 showAddNovelSheet = false
-                                onNovelSaved?.invoke(savedNovel)
+                                scope.launch {
+                                    val result = snackbarHostState.showSnackbar(
+                                        message = "Added \"${savedNovel.title}\" to Library",
+                                        actionLabel = "Open",
+                                        duration = SnackbarDuration.Short
+                                    )
+                                    if (result == SnackbarResult.ActionPerformed) {
+                                        onNovelSaved?.invoke(savedNovel)
+                                    }
+                                }
                             } else if (onScrapedNovel != null) {
                                 showAddNovelSheet = false
-                                onScrapedNovel.invoke(data)
+                                onScrapedNovel.invoke(data.copy(coverUrl = resolvedCover))
                             }
                         },
                         enabled = !isScraping && scrapedNovelData != null && scrapedNovelData!!.title.isNotBlank(),
@@ -1180,7 +1234,10 @@ fun WebBrowserScreen(
 
         SnackbarHost(
             hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter)
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 16.dp)
         )
     }
 

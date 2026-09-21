@@ -929,9 +929,20 @@ object WebScrapeScripts {
                     chapterContainerOuterHtml: rawContainerHtml
                 };
 
-                // Clean formatting
+                // Clean formatting and normalize cover URL
                 if (result.description) {
                     result.description = result.description.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ').trim();
+                }
+                if (result.coverUrl) {
+                    try {
+                        result.coverUrl = new URL(result.coverUrl, window.location.href).href;
+                    } catch(e) {
+                        if (result.coverUrl.indexOf('//') === 0) {
+                            result.coverUrl = window.location.protocol + result.coverUrl;
+                        } else if (result.coverUrl.indexOf('/') === 0) {
+                            result.coverUrl = window.location.origin + result.coverUrl;
+                        }
+                    }
                 }
             } catch (err) {
                 result.error = err.toString();

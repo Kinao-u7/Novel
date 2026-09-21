@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.example.ui.theme.BookSerifFontFamily
 import com.example.ui.theme.EyebrowStyle
@@ -68,10 +69,44 @@ fun NovelCoverImage(
     title: String = ""
 ) {
     val context = LocalContext.current
-    val imageModel: Any? = when {
-        coverUrl == null -> null
-        coverUrl.startsWith("http://") || coverUrl.startsWith("https://") -> coverUrl
-        else -> File(coverUrl) // Local file path for EPUB covers
+    
+    // Normalize cover URL
+    val normalizedUrl = remember(coverUrl) {
+        val trimmed = coverUrl?.trim()
+        when {
+            trimmed.isNullOrBlank() -> null
+            trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true) -> trimmed
+            trimmed.startsWith("//") -> "https:$trimmed"
+            trimmed.startsWith("/") -> {
+                // If stored as relative path from WTR-Lab or similar scraped site, resolve to https
+                val file = File(trimmed)
+                if (file.exists()) trimmed else "https://wtr-lab.com$trimmed"
+            }
+            else -> {
+                val file = File(trimmed)
+                if (file.exists()) trimmed else null
+            }
+        }
+    }
+
+    val imageRequest = remember(normalizedUrl, context) {
+        if (normalizedUrl == null) null
+        else if (normalizedUrl.startsWith("http://", ignoreCase = true) || normalizedUrl.startsWith("https://", ignoreCase = true)) {
+            val host = try { java.net.URI(normalizedUrl).host } catch (e: Exception) { null }
+            val builder = ImageRequest.Builder(context)
+                .data(normalizedUrl)
+                .crossfade(true)
+                .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36")
+            if (host != null) {
+                builder.addHeader("Referer", "https://$host/")
+            }
+            builder.build()
+        } else {
+            ImageRequest.Builder(context)
+                .data(File(normalizedUrl))
+                .crossfade(true)
+                .build()
+        }
     }
 
     Box(
@@ -92,27 +127,47 @@ fun NovelCoverImage(
             ),
         contentAlignment = Alignment.Center
     ) {
-        if (imageModel != null) {
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(imageModel)
-                    .crossfade(true)
-                    .build(),
+        if (imageRequest != null) {
+            SubcomposeAsyncImage(
+                model = imageRequest,
                 contentDescription = title,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                error = {
+                    NovelCoverPlaceholder(title = title)
+                }
             )
         } else {
-            // Placeholder book visual with warm tone
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Book,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
-                    modifier = Modifier.size(36.dp)
+            NovelCoverPlaceholder(title = title)
+        }
+    }
+}
+
+@Composable
+private fun NovelCoverPlaceholder(title: String) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(6.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Book,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                modifier = Modifier.size(32.dp)
+            )
+            if (title.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = title.take(12),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    maxLines = 1,
+                    textAlign = TextAlign.Center
                 )
             }
         }
