@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -67,7 +68,8 @@ enum class SettingsSubPage(val title: String) {
     NOTIFICATIONS("Notifications"),
     HISTORY("Reading History"),
     STATS("Reading Stats"),
-    GENERAL("General")
+    GENERAL("General"),
+    WHATS_NEW("What's New")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -136,7 +138,11 @@ fun SettingsScreen(
                 SettingsSubPage.NOTIFICATIONS -> NotificationsSettingsPage(repository = repository)
                 SettingsSubPage.HISTORY -> ReadingHistoryPage(repository = repository, onReadChapter = onReadChapter)
                 SettingsSubPage.STATS -> StatsScreen(repository = repository)
-                SettingsSubPage.GENERAL -> GeneralSettingsPage(repository = repository)
+                SettingsSubPage.GENERAL -> GeneralSettingsPage(
+                    repository = repository,
+                    onNavigateToWhatsNew = { currentSubPage = SettingsSubPage.WHATS_NEW }
+                )
+                SettingsSubPage.WHATS_NEW -> WhatsNewPage()
             }
         }
     }
@@ -261,6 +267,13 @@ private fun SettingsHubPage(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                    HubItemRow(
+                        icon = Icons.Default.NewReleases,
+                        title = "What's New",
+                        subtitle = "Changelog and release highlights for v${BuildConfig.VERSION_NAME}",
+                        onClick = { onNavigate(SettingsSubPage.WHATS_NEW) }
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                     HubItemRow(
                         icon = Icons.Default.Info,
                         title = "General",
@@ -1570,6 +1583,13 @@ private fun StorageSettingsPage(repository: NovelRepository) {
     fun shareBackup(jsonContent: String) {
         try {
             val fileName = "NovelReader_Backup_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.json"
+
+            // Save to custom storage location if configured (Backups subfolder)
+            val savedCustomPath = repository.saveBackupToCustomStorage(jsonContent, fileName)
+            if (savedCustomPath != null) {
+                Toast.makeText(context, "Saved to $savedCustomPath", Toast.LENGTH_LONG).show()
+            }
+
             val backupFile = File(context.cacheDir, fileName)
             backupFile.writeText(jsonContent)
 
@@ -1726,7 +1746,13 @@ private fun StorageSettingsPage(repository: NovelRepository) {
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Create Backup", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
-                            Text("Export your library, reading progress, sources, bookmarks, and settings", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            val customFolder = downloadSettings.customDownloadLocationDisplayName
+                            val backupDesc = if (!customFolder.isNullOrBlank()) {
+                                "Saves to $customFolder/Backups/ and opens the system share sheet"
+                            } else {
+                                "Export your library, reading progress, sources, bookmarks, and settings"
+                            }
+                            Text(backupDesc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Button(onClick = { showBackupDialog = true }) {
                             Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -2388,7 +2414,10 @@ private fun ReadingHistoryPage(
 // 8. GENERAL SETTINGS PAGE
 // =============================================================================
 @Composable
-private fun GeneralSettingsPage(repository: NovelRepository) {
+private fun GeneralSettingsPage(
+    repository: NovelRepository,
+    onNavigateToWhatsNew: () -> Unit = {}
+) {
     val context = LocalContext.current
     var showResetDialog by remember { mutableStateOf(false) }
 
@@ -2422,7 +2451,27 @@ private fun GeneralSettingsPage(repository: NovelRepository) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Version", style = MaterialTheme.typography.bodyMedium)
-                        Text(BuildConfig.VERSION_NAME, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                        Text("v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = onNavigateToWhatsNew)
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("What's New / Changelog", style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold))
+                            Text("Release notes and recent highlights", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

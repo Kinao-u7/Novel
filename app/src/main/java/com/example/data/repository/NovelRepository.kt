@@ -365,6 +365,17 @@ class NovelRepository(private val context: Context) {
 
     suspend fun restoreBackupFromJson(jsonString: String): Boolean = backupManager.restoreBackupFromJson(jsonString)
 
+    fun saveBackupToCustomStorage(jsonString: String, fileName: String): String? {
+        val customUriStr = preferencesManager.downloadSettings.value.customDownloadLocationUri
+        return storageManager.saveBackupToCustomStorage(jsonString, fileName, customUriStr)
+    }
+
+    // --- CHANGELOG / WHAT'S NEW ---
+
+    fun getLastSeenChangelogVersion(): Int = preferencesManager.getLastSeenChangelogVersion()
+
+    fun setLastSeenChangelogVersion(versionCode: Int) = preferencesManager.setLastSeenChangelogVersion(versionCode)
+
     // --- CUSTOM SOURCES ---
 
     fun addCustomSource(name: String, url: String, language: String = "English", description: String = "Custom web source") =

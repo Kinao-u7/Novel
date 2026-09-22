@@ -535,4 +535,12 @@ class PreferencesManager(private val context: Context) {
             prefs.edit().putStringSet("requested_sources_set", current.toSet()).apply()
         }
     }
+
+    // --- CHANGELOG / WHAT'S NEW ---
+
+    fun getLastSeenChangelogVersion(): Int = prefs.getInt("last_seen_changelog_version", 0)
+
+    fun setLastSeenChangelogVersion(versionCode: Int) {
+        prefs.edit().putInt("last_seen_changelog_version", versionCode).apply()
+    }
 }

@@ -32,6 +32,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
+import com.example.BuildConfig
+import com.example.data.changelog.ChangelogRepository
 import com.example.data.model.Novel
 import com.example.data.repository.NovelRepository
 import com.example.data.source.SourceManager
@@ -46,6 +48,7 @@ import com.example.ui.screens.ReaderScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.WebBrowserScreen
 import com.example.ui.screens.SettingsSubPage
+import com.example.ui.screens.WhatsNewDialog
 
 enum class MainTab(val title: String) {
     LIBRARY("Library"),
@@ -79,6 +82,16 @@ fun NovelReaderApp(
     val prefs = remember { context.getSharedPreferences("novel_reader_prefs", Context.MODE_PRIVATE) }
     var showSetupStoragePrompt by remember {
         mutableStateOf(!prefs.getBoolean("setup_storage_prompt_shown", false))
+    }
+
+    // What's New dialog: shown once per new version if installed versionCode > last seen
+    val lastSeenVersion = remember { repo.getLastSeenChangelogVersion() }
+    var whatsNewReleaseToShow by remember {
+        mutableStateOf(
+            if (BuildConfig.VERSION_CODE > lastSeenVersion) {
+                ChangelogRepository.getReleaseForVersion(BuildConfig.VERSION_CODE)
+            } else null
+        )
     }
 
     val firstRunFolderPicker = rememberLauncherForActivityResult(
@@ -378,6 +391,16 @@ fun NovelReaderApp(
                 ) {
                     Text("Skip (Use Internal)")
                 }
+            }
+        )
+    }
+
+    whatsNewReleaseToShow?.let { release ->
+        WhatsNewDialog(
+            release = release,
+            onDismiss = {
+                repo.setLastSeenChangelogVersion(BuildConfig.VERSION_CODE)
+                whatsNewReleaseToShow = null
             }
         )
     }

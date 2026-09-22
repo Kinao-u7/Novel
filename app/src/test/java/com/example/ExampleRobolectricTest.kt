@@ -116,4 +116,22 @@ class ExampleRobolectricTest {
     org.junit.Assert.assertTrue(restored)
     org.junit.Assert.assertEquals(24, repo.readerSettings.value.fontSizeSp)
   }
+
+  @Test
+  fun `changelog repository has valid releases and preferences track seen versions`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val repo = com.example.data.repository.NovelRepository(context)
+
+    // Verify ChangelogRepository data
+    val releases = com.example.data.changelog.ChangelogRepository.releases
+    org.junit.Assert.assertTrue(releases.isNotEmpty())
+    val latest = com.example.data.changelog.ChangelogRepository.latestRelease
+    org.junit.Assert.assertNotNull(latest)
+    org.junit.Assert.assertTrue(latest!!.highlights.isNotEmpty())
+
+    // Verify version tracking
+    org.junit.Assert.assertEquals(0, repo.getLastSeenChangelogVersion())
+    repo.setLastSeenChangelogVersion(latest.versionCode)
+    org.junit.Assert.assertEquals(latest.versionCode, repo.getLastSeenChangelogVersion())
+  }
 }

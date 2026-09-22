@@ -411,6 +411,40 @@ class StorageManager(private val context: Context) {
         return before
     }
 
+    /**
+     * Saves a backup JSON string into the "Backups" subfolder inside the user-configured SAF folder.
+     * Returns the user-friendly saved path / display string on success, or null if no custom folder configured or write failed.
+     */
+    fun saveBackupToCustomStorage(jsonString: String, fileName: String, customUriStr: String?): String? {
+        if (customUriStr.isNullOrBlank()) return null
+        return try {
+            val rootTreeUri = Uri.parse(customUriStr)
+            val rootDoc = DocumentFile.fromTreeUri(context, rootTreeUri)
+            if (rootDoc != null && rootDoc.canWrite()) {
+                var backupsDoc = rootDoc.findFile("Backups")
+                if (backupsDoc == null || !backupsDoc.isDirectory) {
+                    backupsDoc = rootDoc.createDirectory("Backups")
+                }
+                if (backupsDoc != null) {
+                    var backupFileDoc = backupsDoc.findFile(fileName)
+                    if (backupFileDoc == null) {
+                        backupFileDoc = backupsDoc.createFile("application/json", fileName)
+                    }
+                    if (backupFileDoc != null) {
+                        context.contentResolver.openOutputStream(backupFileDoc.uri)?.use { os ->
+                            os.write(jsonString.toByteArray(Charsets.UTF_8))
+                        }
+                        val folderName = rootDoc.name ?: "Custom Storage"
+                        "$folderName/Backups/$fileName"
+                    } else null
+                } else null
+            } else null
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
     private fun getFolderSize(dir: File): Long {
         var size: Long = 0
         dir.listFiles()?.forEach { file ->

@@ -5,6 +5,48 @@ plugins {
   alias(libs.plugins.roborazzi)
 }
 
+import java.util.Properties
+
+val versionPropsFile = rootProject.file("version.properties")
+
+fun resolveAppVersion(): Pair<Int, String> {
+  val props = Properties()
+  if (!versionPropsFile.exists()) {
+    props["major"] = "1"
+    props["minor"] = "0"
+    props["patch"] = "0"
+    props["versionCode"] = "1"
+    versionPropsFile.outputStream().use { props.store(it, "Version Properties") }
+  } else {
+    versionPropsFile.inputStream().use { props.load(it) }
+  }
+
+  val major = props.getProperty("major", "1").trim().toIntOrNull() ?: 1
+  val minor = props.getProperty("minor", "0").trim().toIntOrNull() ?: 0
+  var patch = props.getProperty("patch", "0").trim().toIntOrNull() ?: 0
+  var code = props.getProperty("versionCode", "1").trim().toIntOrNull() ?: 1
+
+  val isBuilding = gradle.startParameter.taskNames.any { taskName ->
+    val t = taskName.lowercase()
+    t.contains("assemble") || t.contains("bundle") || t.contains("package") ||
+      (t.contains("build") && !t.contains("unittest") && !t.contains("test"))
+  }
+
+  if (isBuilding) {
+    patch += 1
+    code += 1
+    props["major"] = major.toString()
+    props["minor"] = minor.toString()
+    props["patch"] = patch.toString()
+    props["versionCode"] = code.toString()
+    versionPropsFile.outputStream().use { props.store(it, "Auto-incremented on build") }
+  }
+
+  return Pair(code, "$major.$minor.$patch")
+}
+
+val (appVersionCode, appVersionName) = resolveAppVersion()
+
 android {
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
@@ -13,8 +55,8 @@ android {
     applicationId = "com.novelreader.app"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0.0"
+    versionCode = appVersionCode
+    versionName = appVersionName
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -56,6 +98,15 @@ android {
   dependenciesInfo {
     includeInApk = false
     includeInBundle = true
+  }
+}
+
+val androidComponents = extensions.getByType(com.android.build.api.variant.ApplicationAndroidComponentsExtension::class.java)
+
+androidComponents.onVariants { variant ->
+  variant.outputs.forEach { output ->
+    val outputImpl = output as? com.android.build.api.variant.impl.VariantOutputImpl
+    outputImpl?.outputFileName?.set("NovelReader-${variant.name}-v$appVersionName.apk")
   }
 }
 
