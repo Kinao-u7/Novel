@@ -390,8 +390,21 @@ fun ReaderScreen(
     val displayParagraphs = remember(chapterContent?.paragraphs, termRules) {
         chapterContent?.paragraphs?.map { applyTermReplacements(it, termRules) } ?: emptyList()
     }
-    val displayTitle = remember(chapterContent?.title, termRules) {
-        applyTermReplacements(chapterContent?.title ?: novel.title, termRules)
+
+    val currentChapterInfo = remember(chapterList, currentChapterId, currentChapterIndex) {
+        chapterList.firstOrNull { it.id == currentChapterId }
+            ?: chapterList.firstOrNull { it.chapterIndex == currentChapterIndex }
+    }
+
+    val resolvedChapterTitle = remember(chapterContent?.title, currentChapterInfo?.title, currentChapterIndex) {
+        val raw = chapterContent?.title?.takeIf { it.isNotBlank() }
+            ?: currentChapterInfo?.title?.takeIf { it.isNotBlank() }
+            ?: "Chapter $currentChapterIndex"
+        com.example.data.source.webscrape.WtrLabExtractor.cleanWtrLabTokens(raw)
+    }
+
+    val displayTitle = remember(resolvedChapterTitle, termRules) {
+        applyTermReplacements(resolvedChapterTitle, termRules)
     }
 
     val totalPages = remember(displayParagraphs.size) {

@@ -17,11 +17,23 @@ data class WtrLabMetadata(
     val coverUrl: String?,
     val locale: String,
     val serieSlug: String,
-    val sourceUrl: String
+    val sourceUrl: String,
+    val rating: Float? = null
 )
 
 object WtrLabExtractor {
     private const val TAG = "WtrLabExtractor"
+
+    /**
+     * Resolves and strips WTR-Lab glossary/machine-translation placeholder tokens such as
+     * "%{Soul Land|RG91bHVvIERhbHU}" or "%{Tang San}" into clean displayable text ("Soul Land" / "Tang San").
+     */
+    fun cleanWtrLabTokens(text: String): String {
+        if (text.isBlank() || !text.contains("%{")) return text
+        return text.replace(Regex("""%\{([^|%]+)(?:\|[^}%]*)?\}""")) { matchResult ->
+            matchResult.groupValues[1].trim()
+        }.trim()
+    }
 
     private val httpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -58,13 +70,14 @@ object WtrLabExtractor {
             val data = serieData.optJSONObject("data") ?: JSONObject()
 
             // 1. Title: props.pageProps.serie.serie_data.data.title
-            var title = data.optString("title").trim()
-            if (title.isBlank()) {
-                title = serieData.optString("title").trim()
-            }
-            if (title.isBlank()) {
-                title = serie.optString("title").trim()
-            }
+            // Check if cleaner title field exists in serie.title or serieData.title vs data.title
+            val dataTitle = data.optString("title").trim()
+            val serieDataTitle = serieData.optString("title").trim()
+            val serieTitle = serie.optString("title").trim()
+            val candidateTitles = listOf(dataTitle, serieDataTitle, serieTitle).filter { it.isNotBlank() }
+            val cleanCandidate = candidateTitles.firstOrNull { !it.contains("%{") }
+            var title = cleanCandidate ?: candidateTitles.firstOrNull() ?: "Untitled Web Novel"
+            title = cleanWtrLabTokens(title)
 
             // 2. Author: props.pageProps.serie.serie_data.data.author (fallback: serie_data.author)
             var author = data.optString("author").trim()
@@ -89,6 +102,7 @@ object WtrLabExtractor {
             if (author.isBlank()) {
                 author = "Unknown Author"
             }
+            author = cleanWtrLabTokens(author)
 
             // 3. Synopsis: props.pageProps.serie.serie_data.data.description
             var synopsis = data.optString("description").trim()
@@ -100,6 +114,7 @@ object WtrLabExtractor {
             }
             // Strip HTML tags and clean whitespace
             synopsis = synopsis.replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim()
+            synopsis = cleanWtrLabTokens(synopsis)
 
             // 4. raw_id: props.pageProps.serie.serie_data.raw_id
             var rawId = serieData.optString("raw_id").trim()
@@ -223,6 +238,21 @@ object WtrLabExtractor {
                 }
             }
 
+            // 10. Rating: props.pageProps.serie.serie_data.rating (or serie.rating / data.rating)
+            var ratingValue: Float? = null
+            if (serieData.has("rating") && !serieData.isNull("rating")) {
+                ratingValue = serieData.optDouble("rating", 0.0).toFloat().takeIf { it > 0f }
+            }
+            if (ratingValue == null && serie.has("rating") && !serie.isNull("rating")) {
+                ratingValue = serie.optDouble("rating", 0.0).toFloat().takeIf { it > 0f }
+            }
+            if (ratingValue == null && data.has("rating") && !data.isNull("rating")) {
+                ratingValue = data.optDouble("rating", 0.0).toFloat().takeIf { it > 0f }
+            }
+            val normalizedRating = ratingValue?.let { r ->
+                if (r > 5.0f && r <= 10.0f) r / 2.0f else r
+            }
+
             WtrLabMetadata(
                 title = title,
                 author = author,
@@ -233,7 +263,8 @@ object WtrLabExtractor {
                 coverUrl = coverUrl,
                 locale = locale.ifBlank { "en" },
                 serieSlug = serieSlug,
-                sourceUrl = pageUrl
+                sourceUrl = pageUrl,
+                rating = normalizedRating
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing Next.js __NEXT_DATA__ for WTR-Lab: ${e.message}", e)
@@ -262,9 +293,10 @@ object WtrLabExtractor {
             for (i in 0 until chaptersArr.length()) {
                 val item = chaptersArr.optJSONObject(i) ?: continue
                 val order = item.optInt("order", i + 1)
-                val title = item.optString("title").trim()
+                val rawChapterTitle = item.optString("title").trim()
                     .ifBlank { item.optString("name").trim() }
                     .ifBlank { "Chapter $order" }
+                val title = cleanWtrLabTokens(rawChapterTitle)
 
                 val chapterUrl = if (rawId.isNotBlank() && serieSlug.isNotBlank()) {
                     "https://wtr-lab.com/$effectiveLocale/novel/$rawId/$serieSlug/chapter-$order"

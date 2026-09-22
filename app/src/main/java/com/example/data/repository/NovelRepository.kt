@@ -111,6 +111,21 @@ class NovelRepository(private val context: Context) {
         }
 
         // 3. Fallback: Fetch from Source (only when no local data exists, or user explicitly requested refresh)
+        // For local EPUB or Web scraped novels, chapters are local - do not fall back to online dummy sources!
+        if (novel.sourceId == WebScrapeSource.SOURCE_ID || novel.isEpub) {
+            val diskChapters = storageManager.loadNovelChaptersFromDisk(novel.id, customUriStr)
+            if (diskChapters.isNotEmpty()) {
+                storageManager.putCachedChapters(novel.id, diskChapters)
+                return@withContext diskChapters.map { ch ->
+                    ch.copy(
+                        isDownloaded = downloadedSet.contains(ch.id) || storageManager.isChapterFilePresent(novel.id, ch.id, customUriStr),
+                        isRead = readSet.contains(ch.id)
+                    )
+                }
+            }
+            return@withContext emptyList()
+        }
+
         val source = SourceManager.getSourceById(novel.sourceId) ?: SourceManager.getActiveSource()
         val rawChapters = try {
             source.getChapterList(novel.id)
@@ -129,6 +144,17 @@ class NovelRepository(private val context: Context) {
                 isRead = readSet.contains(ch.id)
             )
         }
+    }
+
+    fun getCachedChapters(novelId: String): List<Chapter>? = storageManager.getCachedChapters(novelId)
+
+    fun loadChaptersFromDiskFast(novelId: String): List<Chapter> {
+        val customUriStr = preferencesManager.downloadSettings.value.customDownloadLocationUri
+        val list = storageManager.loadNovelChaptersFromDisk(novelId, customUriStr)
+        if (list.isNotEmpty()) {
+            storageManager.putCachedChapters(novelId, list)
+        }
+        return list
     }
 
     suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent = withContext(Dispatchers.IO) {
@@ -224,11 +250,15 @@ class NovelRepository(private val context: Context) {
             "Web"
         }
 
+        val cleanTitle = com.example.data.source.webscrape.WtrLabExtractor.cleanWtrLabTokens(customTitle.ifBlank { "Untitled Web Novel" })
+        val cleanAuthor = com.example.data.source.webscrape.WtrLabExtractor.cleanWtrLabTokens(customAuthor.ifBlank { "Unknown Author" })
+        val cleanSynopsis = com.example.data.source.webscrape.WtrLabExtractor.cleanWtrLabTokens(customSynopsis.ifBlank { "Added from $host" })
+
         val chapters = scrapedData.chapters.mapIndexed { index, ch ->
             Chapter(
                 id = ch.url,
                 novelId = novelId,
-                title = ch.title,
+                title = com.example.data.source.webscrape.WtrLabExtractor.cleanWtrLabTokens(ch.title),
                 chapterIndex = index + 1,
                 releaseDate = "Web",
                 isDownloaded = false,
@@ -243,10 +273,10 @@ class NovelRepository(private val context: Context) {
 
         val novel = Novel(
             id = novelId,
-            title = customTitle.ifBlank { "Untitled Web Novel" },
-            author = customAuthor.ifBlank { "Unknown Author" },
+            title = cleanTitle,
+            author = cleanAuthor,
             coverUrl = customCoverUrl?.takeIf { it.isNotBlank() },
-            description = customSynopsis.ifBlank { "Added from $host" },
+            description = cleanSynopsis,
             genres = customTags.ifEmpty { listOf("Web Novel") },
             status = "Web",
             sourceId = WebScrapeSource.SOURCE_ID,
@@ -254,7 +284,7 @@ class NovelRepository(private val context: Context) {
             inLibrary = true,
             totalChapters = chapters.size,
             downloadedChaptersCount = 0,
-            rating = 5.0f,
+            rating = scrapedData.rating?.takeIf { it > 0f } ?: 4.8f,
             lastReadTimestamp = System.currentTimeMillis(),
             rawId = scrapedData.rawId,
             locale = scrapedData.locale,

@@ -1,5 +1,11 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
@@ -89,8 +95,14 @@ fun NovelDetailScreen(
     val downloadedMap by repository.downloadedChapters.collectAsState()
     val readMap by repository.readChapters.collectAsState()
 
-    var chapters by remember { mutableStateOf<List<Chapter>>(emptyList()) }
-    var isLoadingChapters by remember { mutableStateOf(true) }
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+
+    val initialChapters = remember(novel.id) {
+        repository.getCachedChapters(novel.id) ?: repository.loadChaptersFromDiskFast(novel.id)
+    }
+    var chapters by remember(novel.id) { mutableStateOf(initialChapters) }
+    var isLoadingChapters by remember(novel.id) { mutableStateOf(initialChapters.isEmpty()) }
     var isDescending by remember { mutableStateOf(false) }
     var chapterSearchQuery by remember { mutableStateOf("") }
     var isExpandedSynopsis by remember { mutableStateOf(false) }
@@ -105,9 +117,14 @@ fun NovelDetailScreen(
 
     // Load chapters (instantly from local storage/cache without re-scraping or fetching)
     LaunchedEffect(novel.id) {
-        isLoadingChapters = true
+        if (chapters.isEmpty()) {
+            isLoadingChapters = true
+        }
         try {
-            chapters = repository.getChapterList(novel, forceRefresh = false)
+            val list = repository.getChapterList(novel, forceRefresh = false)
+            if (list.isNotEmpty()) {
+                chapters = list
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
@@ -223,7 +240,15 @@ fun NovelDetailScreen(
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = (-0.5).sp,
                                 lineHeight = 26.sp
-                            )
+                            ),
+                            modifier = Modifier.pointerInput(novel.title) {
+                                detectTapGestures(
+                                    onLongPress = {
+                                        clipboardManager.setText(AnnotatedString(novel.title))
+                                        Toast.makeText(context, "Copied title to clipboard", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                            }
                         )
 
                         Spacer(modifier = Modifier.height(4.dp))
@@ -231,7 +256,15 @@ fun NovelDetailScreen(
                         Text(
                             text = "by ${novel.author}",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.pointerInput(novel.author) {
+                                detectTapGestures(
+                                    onLongPress = {
+                                        clipboardManager.setText(AnnotatedString(novel.author))
+                                        Toast.makeText(context, "Copied author to clipboard", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                            }
                         )
 
                         Spacer(modifier = Modifier.height(10.dp))

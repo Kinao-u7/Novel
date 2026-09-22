@@ -78,10 +78,10 @@ fun ConfirmNovelScreen(
     val context = LocalContext.current
 
     // Always editable inline fields initialized with extracted values
-    var title by remember { mutableStateOf(scrapedData.title) }
-    var author by remember { mutableStateOf(scrapedData.author) }
+    var title by remember { mutableStateOf(com.example.data.source.webscrape.WtrLabExtractor.cleanWtrLabTokens(scrapedData.title)) }
+    var author by remember { mutableStateOf(com.example.data.source.webscrape.WtrLabExtractor.cleanWtrLabTokens(scrapedData.author)) }
     var coverUrl by remember { mutableStateOf(scrapedData.coverUrl ?: "") }
-    var synopsis by remember { mutableStateOf(scrapedData.description) }
+    var synopsis by remember { mutableStateOf(com.example.data.source.webscrape.WtrLabExtractor.cleanWtrLabTokens(scrapedData.description)) }
     var tagsText by remember { mutableStateOf(scrapedData.genres.joinToString(", ")) }
 
     var isChaptersExpanded by remember { mutableStateOf(false) }

@@ -33,8 +33,13 @@ class StorageManager(private val context: Context) {
         localChapterCache[chapterId] = content
     }
 
+    private fun getSafeNovelId(novelId: String): String {
+        return novelId.replace("[^a-zA-Z0-9_.-]".toRegex(), "_")
+    }
+
     private fun getChaptersDir(novelId: String): File {
-        val dir = File(context.filesDir, "chapters/$novelId")
+        val safeId = getSafeNovelId(novelId)
+        val dir = File(context.filesDir, "chapters/$safeId")
         if (!dir.exists()) dir.mkdirs()
         return dir
     }
@@ -45,27 +50,16 @@ class StorageManager(private val context: Context) {
     }
 
     private fun getNovelChaptersFile(novelId: String): File {
-        return File(context.filesDir, "novel_chapters_$novelId.json")
+        val safeId = getSafeNovelId(novelId)
+        return File(context.filesDir, "novel_chapters_$safeId.json")
     }
 
     fun isChapterFilePresent(novelId: String, chapterId: String, customUriStr: String?): Boolean {
         // Fast path: internal storage check
         if (getChapterFile(novelId, chapterId).exists()) return true
-
-        // Secondary path: custom SAF storage if configured
-        if (!customUriStr.isNullOrBlank()) {
-            try {
-                val rootTreeUri = Uri.parse(customUriStr)
-                val rootDoc = DocumentFile.fromTreeUri(context, rootTreeUri)
-                val chaptersDoc = rootDoc?.findFile("chapters")
-                val novelDoc = chaptersDoc?.findFile(novelId)
-                val safeChapterId = chapterId.replace("[^a-zA-Z0-9_.-]".toRegex(), "_")
-                val doc = novelDoc?.findFile("$safeChapterId.json")
-                if (doc != null && doc.exists()) return true
-            } catch (e: Exception) {
-                // Ignore SAF permission or resolution errors
-            }
-        }
+        // Legacy internal check without safe ID
+        val legacyFile = File(context.filesDir, "chapters/$novelId/${chapterId.replace("[^a-zA-Z0-9_.-]".toRegex(), "_")}.json")
+        if (legacyFile.exists()) return true
         return false
     }
 
@@ -185,6 +179,23 @@ class StorageManager(private val context: Context) {
         return null
     }
 
+    // Facade alias methods for clean API
+    fun saveChapter(content: ChapterContent, customUriStr: String? = null) {
+        saveChapterToDisk(content, customUriStr)
+    }
+
+    fun getChapter(novelId: String, chapterId: String, customUriStr: String? = null): ChapterContent? {
+        return readChapterFromDisk(novelId, chapterId, customUriStr)
+    }
+
+    fun saveChapterIndex(novelId: String, chapters: List<Chapter>, customUriStr: String? = null) {
+        saveNovelChaptersToDisk(novelId, chapters, customUriStr)
+    }
+
+    fun getChapterIndex(novelId: String, customUriStr: String? = null): List<Chapter> {
+        return loadNovelChaptersFromDisk(novelId, customUriStr)
+    }
+
     fun saveNovelChaptersToDisk(novelId: String, chapters: List<Chapter>, customUriStr: String?) {
         val jsonStr = try {
             val array = JSONArray()
@@ -204,12 +215,29 @@ class StorageManager(private val context: Context) {
             return
         }
 
-        // 1. Always save to internal filesDir
+        // 1. Always save to internal filesDir in multiple robust locations:
+        // a. Inside novel's chapters directory (same folder structure as chapter content)
+        try {
+            val chaptersDir = getChaptersDir(novelId)
+            File(chaptersDir, "chapters_meta.json").writeText(jsonStr)
+            File(chaptersDir, "chapters.json").writeText(jsonStr)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        // b. In filesDir root with safe novel ID
         try {
             val file = getNovelChaptersFile(novelId)
             file.writeText(jsonStr)
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+
+        // c. In filesDir root with exact novel ID if different
+        if (getSafeNovelId(novelId) != novelId) {
+            try {
+                File(context.filesDir, "novel_chapters_$novelId.json").writeText(jsonStr)
+            } catch (e: Exception) {}
         }
 
         // 2. Also save to custom SAF storage if configured
@@ -223,9 +251,11 @@ class StorageManager(private val context: Context) {
                         chaptersDoc = rootDoc.createDirectory("chapters")
                     }
                     if (chaptersDoc != null) {
-                        var novelDoc = chaptersDoc.findFile(novelId)
+                        val safeNovelId = getSafeNovelId(novelId)
+                        var novelDoc = chaptersDoc.findFile(safeNovelId)
+                            ?: chaptersDoc.findFile(novelId)
                         if (novelDoc == null || !novelDoc.isDirectory) {
-                            novelDoc = chaptersDoc.createDirectory(novelId)
+                            novelDoc = chaptersDoc.createDirectory(safeNovelId)
                         }
                         if (novelDoc != null) {
                             var metaDoc = novelDoc.findFile("chapters_meta.json")
@@ -246,31 +276,52 @@ class StorageManager(private val context: Context) {
         }
     }
 
+    private fun parseChaptersJsonArray(array: JSONArray, fallbackNovelId: String): List<Chapter> {
+        val list = mutableListOf<Chapter>()
+        for (i in 0 until array.length()) {
+            val obj = array.optJSONObject(i) ?: continue
+            val id = obj.optString("id", "").ifBlank { "${fallbackNovelId}_ch_${i + 1}" }
+            val nId = obj.optString("novelId", fallbackNovelId).ifBlank { fallbackNovelId }
+            val rawTitle = obj.optString("title", "Chapter ${i + 1}").ifBlank { "Chapter ${i + 1}" }
+            val title = com.example.data.source.webscrape.WtrLabExtractor.cleanWtrLabTokens(rawTitle)
+            val chapterIndex = obj.optInt("chapterIndex", i + 1)
+            val releaseDate = obj.optString("releaseDate", "Web")
+            val wordCount = obj.optInt("wordCount", 0)
+
+            list.add(
+                Chapter(
+                    id = id,
+                    novelId = nId,
+                    title = title,
+                    chapterIndex = chapterIndex,
+                    releaseDate = releaseDate,
+                    wordCount = wordCount
+                )
+            )
+        }
+        return list
+    }
+
     fun loadNovelChaptersFromDisk(novelId: String, customUriStr: String?): List<Chapter> {
-        // Fix for SAF re-fetch bug:
-        // Always check internal filesDir first. If present and valid, return immediately
-        // without waiting for SAF permission resolution or tree traversal.
-        val file = getNovelChaptersFile(novelId)
-        if (file.exists()) {
-            try {
-                val array = JSONArray(file.readText())
-                val list = mutableListOf<Chapter>()
-                for (i in 0 until array.length()) {
-                    val obj = array.getJSONObject(i)
-                    list.add(
-                        Chapter(
-                            id = obj.getString("id"),
-                            novelId = obj.getString("novelId"),
-                            title = obj.getString("title"),
-                            chapterIndex = obj.optInt("chapterIndex", i + 1),
-                            releaseDate = obj.optString("releaseDate", "Web"),
-                            wordCount = obj.optInt("wordCount", 0)
-                        )
-                    )
+        // Fix for chapter list re-fetching:
+        // Always check internal filesDir first across all candidate file locations.
+        val candidateFiles = listOf(
+            File(getChaptersDir(novelId), "chapters_meta.json"),
+            File(getChaptersDir(novelId), "chapters.json"),
+            getNovelChaptersFile(novelId),
+            File(context.filesDir, "novel_chapters_$novelId.json")
+        )
+
+        for (candidate in candidateFiles) {
+            if (candidate.exists() && candidate.length() > 0) {
+                try {
+                    val text = candidate.readText()
+                    val array = JSONArray(text)
+                    val list = parseChaptersJsonArray(array, novelId)
+                    if (list.isNotEmpty()) return list
+                } catch (e: Exception) {
+                    // Try next candidate
                 }
-                if (list.isNotEmpty()) return list
-            } catch (e: Exception) {
-                // Corrupted file, try SAF fallback
             }
         }
 
@@ -280,31 +331,22 @@ class StorageManager(private val context: Context) {
                 val rootTreeUri = Uri.parse(customUriStr)
                 val rootDoc = DocumentFile.fromTreeUri(context, rootTreeUri)
                 val chaptersDoc = rootDoc?.findFile("chapters")
-                val novelDoc = chaptersDoc?.findFile(novelId)
+                val safeNovelId = getSafeNovelId(novelId)
+                val novelDoc = chaptersDoc?.findFile(safeNovelId)
+                    ?: chaptersDoc?.findFile(novelId)
                 val metaDoc = novelDoc?.findFile("chapters_meta.json")
                     ?: novelDoc?.findFile("novel_chapters_$novelId.json")
+                    ?: novelDoc?.findFile("novel_chapters_$safeNovelId.json")
                 if (metaDoc != null && metaDoc.exists()) {
                     context.contentResolver.openInputStream(metaDoc.uri)?.use { inputStream ->
                         val text = inputStream.bufferedReader().readText()
                         val array = JSONArray(text)
-                        val list = mutableListOf<Chapter>()
-                        for (i in 0 until array.length()) {
-                            val obj = array.getJSONObject(i)
-                            list.add(
-                                Chapter(
-                                    id = obj.getString("id"),
-                                    novelId = obj.getString("novelId"),
-                                    title = obj.getString("title"),
-                                    chapterIndex = obj.optInt("chapterIndex", i + 1),
-                                    releaseDate = obj.optString("releaseDate", "Web"),
-                                    wordCount = obj.optInt("wordCount", 0)
-                                )
-                            )
-                        }
+                        val list = parseChaptersJsonArray(array, novelId)
                         if (list.isNotEmpty()) {
                             // Backfill internal cache for instant future loads
                             try {
-                                file.writeText(text)
+                                getNovelChaptersFile(novelId).writeText(text)
+                                File(getChaptersDir(novelId), "chapters_meta.json").writeText(text)
                             } catch (e: Exception) {}
                             return list
                         }

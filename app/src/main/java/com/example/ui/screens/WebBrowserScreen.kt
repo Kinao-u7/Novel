@@ -295,12 +295,13 @@ fun WebBrowserScreen(
                     Log.d("NOVEL_SCRAPE_DIAG", "====================== NOVEL EXTRACTION REPORT END ========================")
                     ScrapeDiagnosticsManager.log(context, "====================== NOVEL EXTRACTION REPORT END ========================")
 
-                    var title = json.optString("title", "").trim()
-                    var author = json.optString("author", "Unknown Author").trim()
+                    var title = WtrLabExtractor.cleanWtrLabTokens(json.optString("title", "").trim())
+                    var author = WtrLabExtractor.cleanWtrLabTokens(json.optString("author", "Unknown Author").trim())
                     val sourceUrl = json.optString("sourceUrl", currentUrl).ifBlank { currentUrl }
                     var coverUrl = json.optString("coverUrl", "").takeIf { it.isNotBlank() }
                     coverUrl = resolveAbsoluteUrl(sourceUrl, coverUrl)
-                    var description = json.optString("description", "").trim()
+                    var description = WtrLabExtractor.cleanWtrLabTokens(json.optString("description", "").trim())
+                    var extractedRating: Float? = json.optDouble("rating", 0.0).toFloat().takeIf { it > 0f }
 
                     val genresList = mutableListOf<String>()
                     val gArr = json.optJSONArray("genres")
@@ -361,6 +362,7 @@ fun WebBrowserScreen(
                                 if (detectedLocale.isNullOrBlank() && parsedMeta.locale.isNotBlank()) {
                                     detectedLocale = parsedMeta.locale
                                 }
+                                parsedMeta.rating?.let { extractedRating = it }
                             }
                         }
 
@@ -401,7 +403,8 @@ fun WebBrowserScreen(
                         chapters = chaptersList,
                         sourceUrl = sourceUrl,
                         rawId = detectedRawId,
-                        locale = detectedLocale
+                        locale = detectedLocale,
+                        rating = extractedRating
                     )
 
                     Log.d("NovelScraper", "Extracted novel: '${data.title}', ${chaptersList.size} chapters, ${genresList.size} genres")

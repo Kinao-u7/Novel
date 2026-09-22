@@ -47,6 +47,10 @@ object WebScrapeScripts {
             // SITE-SPECIFIC OVERRIDE: WTR-Lab exact metadata & chapter API extraction
             var currentHost = window.location.hostname.toLowerCase();
             var isWtrLab = currentHost.indexOf('wtr-lab.com') !== -1;
+            function cleanWtrTokens(str) {
+                if (!str) return '';
+                return str.replace(/%\{([^|%]+)(?:\|[^}%]*)?\}/g, '$1').trim();
+            }
             if (isWtrLab) {
                 diag("[WTR-LAB] Detected WTR-Lab domain (" + currentHost + "). Initiating exact Next.js data & API extraction...");
                 var nextScript = document.getElementById("__NEXT_DATA__");
@@ -59,7 +63,11 @@ object WebScrapeScripts {
                         var innerData = (serieData && serieData.data) || {};
 
                         // - Title: props.pageProps.serie.serie_data.data.title
-                        var title = (innerData.title || serieData.title || serie.title || "").trim();
+                        var rawTitle = (innerData.title || serieData.title || serie.title || "").trim();
+                        var cleanCandidate = [serie.title, serieData.title, innerData.title].filter(function(t) {
+                            return t && t.indexOf('%{') === -1 && t.trim().length > 0;
+                        })[0];
+                        var title = cleanWtrTokens(cleanCandidate || rawTitle);
 
                         // - Author: props.pageProps.serie.serie_data.data.author (or top-level serie_data.author as fallback)
                         var author = "";
@@ -72,11 +80,25 @@ object WebScrapeScripts {
                         if (!author && serie.author) {
                             author = typeof serie.author === 'string' ? serie.author : (serie.author.name || "");
                         }
-                        author = author.trim() || "Unknown Author";
+                        author = cleanWtrTokens(author.trim() || "Unknown Author");
 
                         // - Synopsis: props.pageProps.serie.serie_data.data.description
                         var description = (innerData.description || serieData.description || serie.description || "").trim();
                         description = description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                        description = cleanWtrTokens(description);
+
+                        // - Rating: props.pageProps.serie.serie_data.rating (or serie.rating / data.rating)
+                        var ratingVal = null;
+                        if (serieData.rating != null && !isNaN(Number(serieData.rating))) {
+                            ratingVal = Number(serieData.rating);
+                        } else if (serie.rating != null && !isNaN(Number(serie.rating))) {
+                            ratingVal = Number(serie.rating);
+                        } else if (innerData.rating != null && !isNaN(Number(innerData.rating))) {
+                            ratingVal = Number(innerData.rating);
+                        }
+                        if (ratingVal != null && ratingVal > 5.0 && ratingVal <= 10.0) {
+                            ratingVal = ratingVal / 2.0;
+                        }
 
                         // - raw_id: props.pageProps.serie.serie_data.raw_id
                         var rawId = "";
@@ -182,7 +204,8 @@ object WebScrapeScripts {
                                     for (var c = 0; c < rawChapters.length; c++) {
                                         var item = rawChapters[c];
                                         var order = item.order != null ? item.order : (c + 1);
-                                        var chTitle = (item.title || item.name || ("Chapter " + order)).trim();
+                                        var rawChTitle = (item.title || item.name || ("Chapter " + order)).trim();
+                                        var chTitle = cleanWtrTokens(rawChTitle);
                                         var chUrl = 'https://wtr-lab.com/' + locale + '/novel/' + rawId + '/' + serieSlug + '/chapter-' + order;
                                         chapters.push({
                                             title: chTitle,
@@ -209,6 +232,7 @@ object WebScrapeScripts {
                         result.locale = locale;
                         result.serieSlug = serieSlug;
                         result.isWtrLab = true;
+                        result.rating = ratingVal;
                         result.rawNextData = nextScript.textContent;
 
                         result._siteStructureDiag = {
