@@ -70,6 +70,14 @@ class NovelRepository(private val context: Context) {
     private val _readingStats = MutableStateFlow(loadReadingStats())
     val readingStats: StateFlow<ReadingStats> = _readingStats.asStateFlow()
 
+    // Custom Sources state
+    private val _customSources = MutableStateFlow<List<CustomNovelSource>>(emptyList())
+    val customSources: StateFlow<List<CustomNovelSource>> = _customSources.asStateFlow()
+
+    // Requested Sources state
+    private val _requestedSources = MutableStateFlow<List<String>>(emptyList())
+    val requestedSources: StateFlow<List<String>> = _requestedSources.asStateFlow()
+
     // In-memory cache for EPUB chapters and custom chapters
     private val localChapterCache = mutableMapOf<String, ChapterContent>()
     private val localNovelChapters = mutableMapOf<String, List<Chapter>>()
@@ -1669,9 +1677,6 @@ class NovelRepository(private val context: Context) {
     }
 
     // --- CUSTOM SOURCES ---
-    private val _customSources = MutableStateFlow<List<CustomNovelSource>>(emptyList())
-    val customSources: StateFlow<List<CustomNovelSource>> = _customSources.asStateFlow()
-
     private fun loadCustomSources() {
         val jsonStr = prefs.getString("custom_novel_sources_json", null)
         if (!jsonStr.isNullOrBlank()) {
@@ -1733,9 +1738,6 @@ class NovelRepository(private val context: Context) {
     }
 
     // --- REQUESTED SOURCES ---
-    private val _requestedSources = MutableStateFlow<List<String>>(emptyList())
-    val requestedSources: StateFlow<List<String>> = _requestedSources.asStateFlow()
-
     private fun loadRequestedSources() {
         val set = prefs.getStringSet("requested_sources_set", emptySet()) ?: emptySet()
         _requestedSources.value = set.toList()
