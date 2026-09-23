@@ -233,8 +233,10 @@ class BackupManager(
                     val idx = current.indexOfFirst { it.id == nId }
                     if (idx >= 0) {
                         current[idx] = current[idx].copy(
-                            lastReadChapterId = hObj.optString("lastReadChapterId", null),
-                            lastReadChapterTitle = hObj.optString("lastReadChapterTitle", null),
+                            lastReadChapterId = if (hObj.has("lastReadChapterId") && !hObj.isNull("lastReadChapterId"))
+                                hObj.getString("lastReadChapterId").takeIf { it.isNotBlank() && it != "null" } else null,
+                            lastReadChapterTitle = if (hObj.has("lastReadChapterTitle") && !hObj.isNull("lastReadChapterTitle"))
+                                hObj.getString("lastReadChapterTitle").takeIf { it.isNotBlank() && it != "null" } else null,
                             lastReadChapterIndex = hObj.optInt("lastReadChapterIndex", 0),
                             lastReadScrollPosition = hObj.optInt("lastReadScrollPosition", 0),
                             lastReadTimestamp = hObj.optLong("lastReadTimestamp", 0L)

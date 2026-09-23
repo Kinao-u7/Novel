@@ -35,17 +35,21 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.Novel
@@ -79,14 +83,27 @@ fun DownloadsScreen(
         }
     }
 
-    val storageSizeBytes = remember(downloadedNovels) {
-        repository.getStorageUsageBytes()
+    var storageSizeBytes by remember { mutableStateOf<Long?>(null) }
+    var isCalculatingStorage by remember { mutableStateOf(true) }
+
+    LaunchedEffect(downloadedNovels) {
+        isCalculatingStorage = true
+        val bytes = withContext(Dispatchers.IO) {
+            repository.getStorageUsageBytes()
+        }
+        storageSizeBytes = bytes
+        isCalculatingStorage = false
     }
 
-    val storageFormatted = remember(storageSizeBytes) {
-        val mb = storageSizeBytes.toDouble() / (1024 * 1024)
-        if (mb < 1.0) String.format(java.util.Locale.US, "%.1f KB", storageSizeBytes.toDouble() / 1024)
-        else String.format(java.util.Locale.US, "%.2f MB", mb)
+    val storageFormatted = remember(storageSizeBytes, isCalculatingStorage) {
+        if (isCalculatingStorage || storageSizeBytes == null) {
+            "Calculating..."
+        } else {
+            val bytes = storageSizeBytes ?: 0L
+            val mb = bytes.toDouble() / (1024 * 1024)
+            if (mb < 1.0) String.format(java.util.Locale.US, "%.1f KB", bytes.toDouble() / 1024)
+            else String.format(java.util.Locale.US, "%.2f MB", mb)
+        }
     }
 
     Column(
@@ -195,6 +212,7 @@ fun DownloadsScreen(
                                 NovelCoverImage(
                                     coverUrl = novel.coverUrl,
                                     title = novel.title,
+                                    size = DpSize(60.dp, 86.dp),
                                     modifier = Modifier.size(width = 60.dp, height = 86.dp)
                                 )
                             }

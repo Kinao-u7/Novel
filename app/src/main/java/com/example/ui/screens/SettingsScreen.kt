@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
@@ -51,7 +52,9 @@ import com.example.ui.components.CleanSlider
 import com.example.ui.components.NovelCoverImage
 import com.example.ui.theme.calculateOnColor
 import com.example.ui.theme.parseColorHex
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -1513,8 +1516,22 @@ private fun StorageSettingsPage(repository: NovelRepository) {
     val coroutineScope = rememberCoroutineScope()
     val libraryNovels by repository.libraryNovels.collectAsState()
     val downloadSettings by repository.downloadSettings.collectAsState()
-    var cacheSizeBytes by remember { mutableStateOf(repository.getCacheSizeBytes()) }
-    var storageUsageBytes by remember { mutableStateOf(repository.getStorageUsageBytes()) }
+    var cacheSizeBytes by remember { mutableStateOf<Long?>(null) }
+    var storageUsageBytes by remember { mutableStateOf<Long?>(null) }
+    var isCalculatingStorage by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        isCalculatingStorage = true
+        withContext(Dispatchers.IO) {
+            val cache = repository.getCacheSizeBytes()
+            val storage = repository.getStorageUsageBytes()
+            withContext(Dispatchers.Main) {
+                cacheSizeBytes = cache
+                storageUsageBytes = storage
+                isCalculatingStorage = false
+            }
+        }
+    }
 
     var showClearCacheConfirm by remember { mutableStateOf(false) }
     var showDeleteAllDownloadsConfirm by remember { mutableStateOf(false) }
@@ -1571,7 +1588,8 @@ private fun StorageSettingsPage(repository: NovelRepository) {
         }
     }
 
-    fun formatBytes(bytes: Long): String {
+    fun formatBytes(bytes: Long?): String {
+        if (bytes == null) return "Calculating..."
         return when {
             bytes >= 1024 * 1024 * 1024 -> String.format(Locale.US, "%.2f GB", bytes / (1024f * 1024f * 1024f))
             bytes >= 1024 * 1024 -> String.format(Locale.US, "%.1f MB", bytes / (1024f * 1024f))
@@ -2032,7 +2050,12 @@ private fun StorageSettingsPage(repository: NovelRepository) {
                             showRestoreConfirmDialog = false
                             pendingRestoreJson = null
                             if (success) {
-                                storageUsageBytes = repository.getStorageUsageBytes()
+                                coroutineScope.launch(Dispatchers.IO) {
+                                    val newStorage = repository.getStorageUsageBytes()
+                                    withContext(Dispatchers.Main) {
+                                        storageUsageBytes = newStorage
+                                    }
+                                }
                                 Toast.makeText(context, "Backup restored successfully!", Toast.LENGTH_SHORT).show()
                             } else {
                                 Toast.makeText(context, "Failed to restore: invalid backup format", Toast.LENGTH_LONG).show()
@@ -2067,11 +2090,17 @@ private fun StorageSettingsPage(repository: NovelRepository) {
             confirmButton = {
                 TextButton(
                     onClick = {
-                        val freed = repository.clearCache()
-                        cacheSizeBytes = repository.getCacheSizeBytes()
-                        storageUsageBytes = repository.getStorageUsageBytes()
-                        showClearCacheConfirm = false
-                        Toast.makeText(context, "Freed ${formatBytes(freed)}", Toast.LENGTH_SHORT).show()
+                        coroutineScope.launch(Dispatchers.IO) {
+                            val freed = repository.clearCache()
+                            val newCache = repository.getCacheSizeBytes()
+                            val newStorage = repository.getStorageUsageBytes()
+                            withContext(Dispatchers.Main) {
+                                cacheSizeBytes = newCache
+                                storageUsageBytes = newStorage
+                                showClearCacheConfirm = false
+                                Toast.makeText(context, "Freed ${formatBytes(freed)}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     }
                 ) {
                     Text("Clear Cache")
@@ -2091,10 +2120,15 @@ private fun StorageSettingsPage(repository: NovelRepository) {
             confirmButton = {
                 Button(
                     onClick = {
-                        repository.deleteAllDownloadedContent()
-                        storageUsageBytes = repository.getStorageUsageBytes()
-                        showDeleteAllDownloadsConfirm = false
-                        Toast.makeText(context, "All downloads deleted", Toast.LENGTH_SHORT).show()
+                        coroutineScope.launch(Dispatchers.IO) {
+                            repository.deleteAllDownloadedContent()
+                            val newStorage = repository.getStorageUsageBytes()
+                            withContext(Dispatchers.Main) {
+                                storageUsageBytes = newStorage
+                                showDeleteAllDownloadsConfirm = false
+                                Toast.makeText(context, "All downloads deleted", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
@@ -2115,9 +2149,14 @@ private fun StorageSettingsPage(repository: NovelRepository) {
             confirmButton = {
                 Button(
                     onClick = {
-                        repository.deleteNovelDownloads(novel.id)
-                        storageUsageBytes = repository.getStorageUsageBytes()
-                        novelToDeleteDownloads = null
+                        coroutineScope.launch(Dispatchers.IO) {
+                            repository.deleteNovelDownloads(novel.id)
+                            val newStorage = repository.getStorageUsageBytes()
+                            withContext(Dispatchers.Main) {
+                                storageUsageBytes = newStorage
+                                novelToDeleteDownloads = null
+                            }
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
@@ -2353,6 +2392,7 @@ private fun ReadingHistoryPage(
                             NovelCoverImage(
                                 coverUrl = novel.coverUrl,
                                 title = novel.title,
+                                size = DpSize(46.dp, 66.dp),
                                 modifier = Modifier
                                     .size(width = 46.dp, height = 66.dp)
                                     .clip(RoundedCornerShape(6.dp))

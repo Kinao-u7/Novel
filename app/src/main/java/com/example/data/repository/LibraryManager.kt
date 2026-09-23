@@ -2,13 +2,24 @@ package com.example.data.repository
 
 import com.example.data.model.Bookmark
 import com.example.data.model.Novel
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
 class LibraryManager(private val preferencesManager: PreferencesManager) {
+
+    private val persistScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, e ->
+            e.printStackTrace()
+        }
+    )
 
     private val _libraryNovels = MutableStateFlow<List<Novel>>(emptyList())
     val libraryNovels: StateFlow<List<Novel>> = _libraryNovels.asStateFlow()
@@ -187,6 +198,29 @@ class LibraryManager(private val preferencesManager: PreferencesManager) {
 
         if (wordsReadDelta > 0) {
             preferencesManager.recordReadingSession(minutesDelta = 1, wordsDelta = wordsReadDelta)
+        }
+    }
+
+    fun persistReadingProgressAsync(
+        novelId: String,
+        chapterId: String,
+        chapterTitle: String,
+        chapterIndex: Int,
+        scrollPosition: Int,
+        wordsReadDelta: Int = 0
+    ) {
+        persistScope.launch {
+            updateReadingProgress(novelId, chapterId, chapterTitle, chapterIndex, scrollPosition, wordsReadDelta)
+        }
+    }
+
+    fun saveChapterReadingPositionAsync(
+        novelId: String,
+        chapterId: String,
+        position: Int
+    ) {
+        persistScope.launch {
+            preferencesManager.saveChapterReadingPosition(novelId, chapterId, position)
         }
     }
 

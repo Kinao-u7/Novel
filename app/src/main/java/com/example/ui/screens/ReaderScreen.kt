@@ -50,7 +50,13 @@ import com.example.tts.TtsManager
 import com.example.ui.components.CleanSlider
 import com.example.ui.theme.calculateOnColor
 import com.example.ui.theme.parseColorHex
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -199,7 +205,7 @@ fun rememberClockTime(): String {
     return timeStr
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, FlowPreview::class)
 @Composable
 fun ReaderScreen(
     novel: Novel,
@@ -334,22 +340,49 @@ fun ReaderScreen(
         }
     }
 
-    // Save reading progress continuously as user scrolls (Continuous Mode)
-    LaunchedEffect(listState.firstVisibleItemIndex) {
-        if (chapterLoadState is ChapterLoadState.Success && chapterContent != null) {
-            val idx = listState.firstVisibleItemIndex
-            repository.saveChapterReadingPosition(novel.id, currentChapterId, idx)
-            if (idx > 0) {
-                repository.updateReadingProgress(
-                    novelId = novel.id,
-                    chapterId = currentChapterId,
-                    chapterTitle = chapterContent?.title ?: "Chapter $currentChapterIndex",
-                    chapterIndex = currentChapterIndex,
-                    scrollPosition = idx,
-                    wordsReadDelta = 0
-                )
+    // Tier 1: in-memory only. No disk I/O.
+    var pendingScrollIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(listState, currentChapterId) {
+        snapshotFlow { listState.firstVisibleItemIndex }
+            .collect { pendingScrollIndex = it }
+    }
+
+    // Tier 2: lightweight offset write, debounced 1200ms.
+    LaunchedEffect(listState, currentChapterId) {
+        snapshotFlow { listState.firstVisibleItemIndex }
+            .debounce(1_200L)
+            .distinctUntilChanged()
+            .collect { idx ->
+                if (chapterLoadState is ChapterLoadState.Success
+                        && chapterContent != null && idx > 0) {
+                    repository.saveChapterReadingPosition(novel.id, currentChapterId, idx)
+                }
             }
-        }
+    }
+
+    // Tier 3: full write, only on scroll-stop.
+    LaunchedEffect(listState, currentChapterId) {
+        snapshotFlow { listState.isScrollInProgress }
+            .drop(1)
+            .distinctUntilChanged()
+            .filter { !it }
+            .collect {
+                if (chapterLoadState is ChapterLoadState.Success
+                        && chapterContent != null) {
+                    val idx = listState.firstVisibleItemIndex
+                    if (idx > 0) {
+                        repository.saveChapterReadingPosition(novel.id, currentChapterId, idx)
+                        repository.updateReadingProgress(
+                            novelId = novel.id,
+                            chapterId = currentChapterId,
+                            chapterTitle = chapterContent?.title ?: "Chapter $currentChapterIndex",
+                            chapterIndex = currentChapterIndex,
+                            scrollPosition = idx,
+                            wordsReadDelta = 0
+                        )
+                    }
+                }
+            }
     }
 
     // Save reading progress as user navigates pages (Paginated Mode)
@@ -364,6 +397,28 @@ fun ReaderScreen(
                 scrollPosition = currentPageIndex,
                 wordsReadDelta = 0
             )
+        }
+    }
+
+    // Persist reading position on exit or chapter change
+    DisposableEffect(currentChapterId) {
+        onDispose {
+            val pos = if (readerSettings.readingMode == ReadingMode.PAGINATED) {
+                currentPageIndex
+            } else {
+                listState.firstVisibleItemIndex
+            }
+            if (pos > 0) {
+                repository.saveChapterReadingPositionAsync(novel.id, currentChapterId, pos)
+                repository.persistReadingProgressAsync(
+                    novelId = novel.id,
+                    chapterId = currentChapterId,
+                    chapterTitle = chapterContent?.title ?: "Chapter $currentChapterIndex",
+                    chapterIndex = currentChapterIndex,
+                    scrollPosition = pos,
+                    wordsReadDelta = 0
+                )
+            }
         }
     }
 

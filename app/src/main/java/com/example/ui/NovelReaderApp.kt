@@ -72,9 +72,6 @@ fun NovelReaderApp(
 ) {
     val context = LocalContext.current
     val repo = repository ?: remember { NovelRepository(context) }
-    val libraryNovels by repo.libraryNovels.collectAsState()
-    val downloadSettings by repo.downloadSettings.collectAsState()
-
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Main) }
     var currentTab by remember { mutableStateOf(MainTab.LIBRARY) }
 
@@ -107,7 +104,7 @@ fun NovelReaderApp(
             val doc = DocumentFile.fromTreeUri(context, treeUri)
             val displayName = doc?.name ?: treeUri.lastPathSegment ?: "Custom Folder"
             repo.updateDownloadSettings(
-                downloadSettings.copy(
+                repo.downloadSettings.value.copy(
                     customDownloadLocationUri = treeUri.toString(),
                     customDownloadLocationDisplayName = displayName
                 )
@@ -120,7 +117,7 @@ fun NovelReaderApp(
 
     // First run initialization: pre-seed featured novels into library if totally empty
     LaunchedEffect(Unit) {
-        if (libraryNovels.isEmpty()) {
+        if (repo.libraryNovels.value.isEmpty()) {
             val defaultSource = SourceManager.getActiveSource()
             val popular = defaultSource.getPopularNovels()
             popular.firstOrNull()?.let { firstNovel ->

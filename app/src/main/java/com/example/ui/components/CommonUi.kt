@@ -55,57 +55,86 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.net.Uri
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.DpSize
 import coil.compose.AsyncImage
-import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.example.ui.theme.BookSerifFontFamily
 import com.example.ui.theme.EyebrowStyle
 import java.io.File
 
+private sealed class CoverData {
+    data class Remote(val url: String) : CoverData()
+    data class LocalFile(val file: File) : CoverData()
+    data class ContentUri(val uri: Uri) : CoverData()
+}
+
 @Composable
 fun NovelCoverImage(
     coverUrl: String?,
     modifier: Modifier = Modifier,
-    title: String = ""
+    title: String = "",
+    size: DpSize = DpSize(120.dp, 180.dp)
 ) {
     val context = LocalContext.current
-    
-    // Normalize cover URL
-    val normalizedUrl = remember(coverUrl) {
+    val density = LocalDensity.current
+    val widthPx = remember(size, density) { with(density) { size.width.roundToPx() } }
+    val heightPx = remember(size, density) { with(density) { size.height.roundToPx() } }
+
+    val coverData = remember(coverUrl) {
         val trimmed = coverUrl?.trim()
         when {
             trimmed.isNullOrBlank() -> null
-            trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true) -> trimmed
-            trimmed.startsWith("//") -> "https:$trimmed"
+            trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true) -> {
+                CoverData.Remote(trimmed)
+            }
+            trimmed.startsWith("file://", ignoreCase = true) -> {
+                val parsedPath = try { Uri.parse(trimmed).path } catch (e: Exception) { null }
+                if (!parsedPath.isNullOrBlank()) CoverData.LocalFile(File(parsedPath)) else null
+            }
+            trimmed.startsWith("content://", ignoreCase = true) -> {
+                try { CoverData.ContentUri(Uri.parse(trimmed)) } catch (e: Exception) { null }
+            }
+            trimmed.startsWith("//") -> {
+                CoverData.Remote("https:$trimmed")
+            }
             trimmed.startsWith("/") -> {
-                // If stored as relative path from WTR-Lab or similar scraped site, resolve to https
-                val file = File(trimmed)
-                if (file.exists()) trimmed else "https://wtr-lab.com$trimmed"
+                CoverData.LocalFile(File(trimmed))
             }
-            else -> {
-                val file = File(trimmed)
-                if (file.exists()) trimmed else null
-            }
+            else -> null
         }
     }
 
-    val imageRequest = remember(normalizedUrl, context) {
-        if (normalizedUrl == null) null
-        else if (normalizedUrl.startsWith("http://", ignoreCase = true) || normalizedUrl.startsWith("https://", ignoreCase = true)) {
-            val host = try { java.net.URI(normalizedUrl).host } catch (e: Exception) { null }
-            val builder = ImageRequest.Builder(context)
-                .data(normalizedUrl)
-                .crossfade(true)
-                .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36")
-            if (host != null) {
-                builder.addHeader("Referer", "https://$host/")
+    val imageRequest = remember(coverData, context, widthPx, heightPx) {
+        when (coverData) {
+            null -> null
+            is CoverData.Remote -> {
+                val host = try { java.net.URI(coverData.url).host } catch (e: Exception) { null }
+                val builder = ImageRequest.Builder(context)
+                    .data(coverData.url)
+                    .size(widthPx, heightPx)
+                    .crossfade(true)
+                    .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36")
+                if (host != null) {
+                    builder.addHeader("Referer", "https://$host/")
+                }
+                builder.build()
             }
-            builder.build()
-        } else {
-            ImageRequest.Builder(context)
-                .data(File(normalizedUrl))
-                .crossfade(true)
-                .build()
+            is CoverData.LocalFile -> {
+                ImageRequest.Builder(context)
+                    .data(coverData.file)
+                    .size(widthPx, heightPx)
+                    .crossfade(true)
+                    .build()
+            }
+            is CoverData.ContentUri -> {
+                ImageRequest.Builder(context)
+                    .data(coverData.uri)
+                    .size(widthPx, heightPx)
+                    .crossfade(true)
+                    .build()
+            }
         }
     }
 
@@ -127,18 +156,15 @@ fun NovelCoverImage(
             ),
         contentAlignment = Alignment.Center
     ) {
+        NovelCoverPlaceholder(title = title)
+
         if (imageRequest != null) {
-            SubcomposeAsyncImage(
+            AsyncImage(
                 model = imageRequest,
                 contentDescription = title,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-                error = {
-                    NovelCoverPlaceholder(title = title)
-                }
+                modifier = Modifier.fillMaxSize()
             )
-        } else {
-            NovelCoverPlaceholder(title = title)
         }
     }
 }

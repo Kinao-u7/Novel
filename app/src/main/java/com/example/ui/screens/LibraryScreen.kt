@@ -88,6 +88,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.Novel
@@ -590,6 +591,7 @@ fun LibraryGridItem(
         NovelCoverImage(
             coverUrl = novel.coverUrl,
             title = novel.title,
+            size = DpSize(160.dp, 235.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(0.68f)
@@ -638,6 +640,7 @@ fun LibraryNovelItem(
             NovelCoverImage(
                 coverUrl = novel.coverUrl,
                 title = novel.title,
+                size = DpSize(72.dp, 104.dp),
                 modifier = Modifier
                     .size(width = 72.dp, height = 104.dp)
                     .clip(RoundedCornerShape(8.dp))

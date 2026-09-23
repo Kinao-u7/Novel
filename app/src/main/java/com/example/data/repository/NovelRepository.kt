@@ -76,6 +76,21 @@ class NovelRepository(private val context: Context) {
         wordsReadDelta: Int = 0
     ) = libraryManager.updateReadingProgress(novelId, chapterId, chapterTitle, chapterIndex, scrollPosition, wordsReadDelta)
 
+    fun persistReadingProgressAsync(
+        novelId: String,
+        chapterId: String,
+        chapterTitle: String,
+        chapterIndex: Int,
+        scrollPosition: Int,
+        wordsReadDelta: Int = 0
+    ) = libraryManager.persistReadingProgressAsync(novelId, chapterId, chapterTitle, chapterIndex, scrollPosition, wordsReadDelta)
+
+    fun saveChapterReadingPositionAsync(
+        novelId: String,
+        chapterId: String,
+        position: Int
+    ) = libraryManager.saveChapterReadingPositionAsync(novelId, chapterId, position)
+
     fun getReadingHistory(): List<Novel> = libraryManager.getReadingHistory()
 
     // --- CHAPTERS & OFFLINE STORAGE ---

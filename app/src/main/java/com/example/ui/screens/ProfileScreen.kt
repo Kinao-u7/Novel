@@ -15,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,9 +42,11 @@ fun ProfileScreen(
     val notifications by repository.notifications.collectAsState()
 
     // Find the most recently read novel
-    val lastReadNovel = libraryNovels
-        .filter { it.lastReadTimestamp > 0 }
-        .maxByOrNull { it.lastReadTimestamp }
+    val lastReadNovel = remember(libraryNovels) {
+        libraryNovels
+            .filter { it.lastReadTimestamp > 0 }
+            .maxByOrNull { it.lastReadTimestamp }
+    }
 
     LazyColumn(
         modifier = Modifier

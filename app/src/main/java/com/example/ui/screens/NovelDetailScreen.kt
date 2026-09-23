@@ -65,6 +65,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.Chapter
@@ -99,7 +100,7 @@ fun NovelDetailScreen(
     val clipboardManager = LocalClipboardManager.current
 
     val initialChapters = remember(novel.id) {
-        repository.getCachedChapters(novel.id) ?: repository.loadChaptersFromDiskFast(novel.id)
+        repository.getCachedChapters(novel.id) ?: emptyList()
     }
     var chapters by remember(novel.id) { mutableStateOf(initialChapters) }
     var isLoadingChapters by remember(novel.id) { mutableStateOf(initialChapters.isEmpty()) }
@@ -226,6 +227,7 @@ fun NovelDetailScreen(
                         NovelCoverImage(
                             coverUrl = novel.coverUrl,
                             title = novel.title,
+                            size = DpSize(112.dp, 162.dp),
                             modifier = Modifier.size(width = 112.dp, height = 162.dp)
                         )
                     }
