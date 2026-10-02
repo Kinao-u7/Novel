@@ -22,7 +22,8 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -242,9 +243,21 @@ fun ReaderScreen(
     var reloadTrigger by remember { mutableIntStateOf(0) }
 
     // Reading Modes State
-    val listState = rememberLazyListState()
+    val initialScrollIndex = remember(currentChapterId) {
+        repository.getChapterReadingPosition(novel.id, currentChapterId)
+    }
+    val listState = rememberSaveable(
+        currentChapterId,
+        saver = LazyListState.Saver
+    ) {
+        LazyListState(
+            firstVisibleItemIndex = initialScrollIndex,
+            firstVisibleItemScrollOffset = 0
+        )
+    }
     var currentPageIndex by remember { mutableIntStateOf(0) }
     var currentReadingOffset by remember { mutableIntStateOf(0) }
+    var pendingRestorePage by remember { mutableStateOf<Int?>(null) }
 
     // UI overlays & Sheets
     var showControls by remember { mutableStateOf(false) }
@@ -322,15 +335,9 @@ fun ReaderScreen(
 
             // Restore saved position independently for this chapter
             val savedPos = repository.getChapterReadingPosition(novel.id, currentChapterId)
-            currentPageIndex = savedPos.coerceAtLeast(0)
-            currentReadingOffset = 0
-
-            // Restore continuous scroll
-            if (savedPos > 0 && content.paragraphs.isNotEmpty()) {
-                listState.scrollToItem(savedPos.coerceIn(0, content.paragraphs.size - 1))
-            } else {
-                listState.scrollToItem(0)
-            }
+            val restoredPage = savedPos.coerceAtLeast(0)
+            currentPageIndex = restoredPage
+            pendingRestorePage = restoredPage
 
             // Update reading progress in repository
             repository.updateReadingProgress(
@@ -395,20 +402,23 @@ fun ReaderScreen(
     // Save reading progress as user navigates pages (Paginated Mode)
     LaunchedEffect(currentPageIndex) {
         if (chapterLoadState is ChapterLoadState.Success && chapterContent != null) {
-            repository.saveChapterReadingPosition(novel.id, currentChapterId, currentPageIndex)
-            repository.updateReadingProgress(
-                novelId = novel.id,
-                chapterId = currentChapterId,
-                chapterTitle = chapterContent?.title ?: "Chapter $currentChapterIndex",
-                chapterIndex = currentChapterIndex,
-                scrollPosition = currentPageIndex,
-                wordsReadDelta = 0
-            )
+            if (pendingRestorePage == null) {
+                repository.saveChapterReadingPosition(novel.id, currentChapterId, currentPageIndex)
+                repository.updateReadingProgress(
+                    novelId = novel.id,
+                    chapterId = currentChapterId,
+                    chapterTitle = chapterContent?.title ?: "Chapter $currentChapterIndex",
+                    chapterIndex = currentChapterIndex,
+                    scrollPosition = currentPageIndex,
+                    wordsReadDelta = 0
+                )
+            }
         }
     }
 
     // Persist reading position on exit or chapter change
     DisposableEffect(currentChapterId) {
+        val chapterIdAtComposition = currentChapterId
         onDispose {
             val pos = if (readerSettings.readingMode == ReadingMode.PAGINATED) {
                 currentPageIndex
@@ -416,10 +426,10 @@ fun ReaderScreen(
                 listState.firstVisibleItemIndex
             }
             if (pos > 0) {
-                repository.saveChapterReadingPositionAsync(novel.id, currentChapterId, pos)
+                repository.saveChapterReadingPositionAsync(novel.id, chapterIdAtComposition, pos)
                 repository.persistReadingProgressAsync(
                     novelId = novel.id,
-                    chapterId = currentChapterId,
+                    chapterId = chapterIdAtComposition,
                     chapterTitle = chapterContent?.title ?: "Chapter $currentChapterIndex",
                     chapterIndex = currentChapterIndex,
                     scrollPosition = pos,
@@ -611,15 +621,23 @@ fun ReaderScreen(
         // Reflow position preservation: update currentPageIndex to the page containing currentReadingOffset
         LaunchedEffect(pages) {
             if (pages.isNotEmpty()) {
-                val targetIndex = pages.indexOfFirst { page ->
-                    currentReadingOffset >= page.startOffset && currentReadingOffset < page.endOffset
-                }.let { idx ->
-                    if (idx >= 0) {
-                        idx
-                    } else if (currentReadingOffset >= (pages.lastOrNull()?.endOffset ?: 0)) {
-                        pages.size - 1
-                    } else {
-                        0
+                val pending = pendingRestorePage
+                val targetIndex = if (pending != null) {
+                    pendingRestorePage = null
+                    val clamped = pending.coerceIn(0, pages.size - 1)
+                    currentReadingOffset = pages.getOrNull(clamped)?.startOffset ?: 0
+                    clamped
+                } else {
+                    pages.indexOfFirst { page ->
+                        currentReadingOffset >= page.startOffset && currentReadingOffset < page.endOffset
+                    }.let { idx ->
+                        if (idx >= 0) {
+                            idx
+                        } else if (currentReadingOffset >= (pages.lastOrNull()?.endOffset ?: 0)) {
+                            pages.size - 1
+                        } else {
+                            0
+                        }
                     }
                 }
                 if (targetIndex != currentPageIndex) {
