@@ -45,8 +45,6 @@ import androidx.documentfile.provider.DocumentFile
 import com.example.BuildConfig
 import com.example.data.model.*
 import com.example.data.repository.NovelRepository
-import com.example.data.source.NovelSource
-import com.example.data.source.SourceManager
 import com.example.ui.components.AppSwitch
 import com.example.ui.components.CleanSlider
 import com.example.ui.components.NovelCoverImage
@@ -65,9 +63,8 @@ enum class SettingsSubPage(val title: String) {
     HUB("Settings"),
     APPEARANCE("Appearance"),
     READER("Reader"),
-    SOURCES("Sources"),
     DOWNLOADS("Downloads"),
-    STORAGE("Storage & Cache"),
+    STORAGE("Storage"),
     NOTIFICATIONS("Notifications"),
     HISTORY("Reading History"),
     STATS("Reading Stats"),
@@ -135,7 +132,6 @@ fun SettingsScreen(
                 )
                 SettingsSubPage.APPEARANCE -> AppearanceSettingsPage(repository = repository)
                 SettingsSubPage.READER -> ReaderSettingsPage(repository = repository)
-                SettingsSubPage.SOURCES -> SourcesSettingsPage()
                 SettingsSubPage.DOWNLOADS -> DownloadSettingsPage(repository = repository)
                 SettingsSubPage.STORAGE -> StorageSettingsPage(repository = repository)
                 SettingsSubPage.NOTIFICATIONS -> NotificationsSettingsPage(repository = repository)
@@ -199,13 +195,6 @@ private fun SettingsHubPage(
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                     HubItemRow(
-                        icon = Icons.Default.Extension,
-                        title = "Sources",
-                        subtitle = "Manage active catalog sources and plugins",
-                        onClick = { onNavigate(SettingsSubPage.SOURCES) }
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                    HubItemRow(
                         icon = Icons.Default.CloudDownload,
                         title = "Downloads",
                         subtitle = "Wi-Fi only (${if (downloadSettings.wifiOnly) "Enabled" else "Disabled"}), Simultaneous (${downloadSettings.simultaneousDownloads})",
@@ -229,7 +218,7 @@ private fun SettingsHubPage(
                 Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
                     HubItemRow(
                         icon = Icons.Default.Storage,
-                        title = "Storage & Cache",
+                        title = "Storage",
                         subtitle = "Storage size, cache cleaning, delete downloaded chapters",
                         onClick = { onNavigate(SettingsSubPage.STORAGE) }
                     )
@@ -1244,94 +1233,7 @@ private fun ReaderSettingsPage(repository: NovelRepository) {
 }
 
 // =============================================================================
-// 3. SOURCES SETTINGS PAGE
-// =============================================================================
-@Composable
-private fun SourcesSettingsPage() {
-    val sources by SourceManager.sources.collectAsState()
-    val activeSourceId by SourceManager.activeSourceId.collectAsState()
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(bottom = 40.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        item {
-            Column {
-                Text(
-                    text = "Novel Catalog Sources",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "Select active scraper plugin to browse and download web novels",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        items(sources, key = { it.id }) { source ->
-            val isActive = source.id == activeSourceId
-            Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { SourceManager.setActiveSource(source.id) }
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = source.name,
-                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
-                            )
-                            if (isActive) {
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = MaterialTheme.colorScheme.primary
-                                ) {
-                                    Text(
-                                        text = "ACTIVE",
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                    )
-                                }
-                            }
-                        }
-                        Text(
-                            text = "${source.description} (${source.language.uppercase()})",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    RadioButton(
-                        selected = isActive,
-                        onClick = { SourceManager.setActiveSource(source.id) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-// =============================================================================
-// 4. DOWNLOADS SETTINGS PAGE
+// 3. DOWNLOADS SETTINGS PAGE
 // =============================================================================
 @Composable
 private fun DownloadSettingsPage(repository: NovelRepository) {
@@ -2302,6 +2204,10 @@ private fun ReadingHistoryPage(
     repository: NovelRepository,
     onReadChapter: (Novel, String, Int) -> Unit
 ) {
+    val themeSettings by repository.themeSettings.collectAsState()
+    val accent = remember(themeSettings.accentColorHex) {
+        parseColorHex(themeSettings.accentColorHex)
+    }
     val libraryNovels by repository.libraryNovels.collectAsState()
     val historyNovels = remember(libraryNovels) {
         libraryNovels
@@ -2365,7 +2271,7 @@ private fun ReadingHistoryPage(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.2.sp
                         ),
-                        color = Color(0xFFF59E0B), // Amber accent color
+                        color = accent,
                         modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
                     )
                 }

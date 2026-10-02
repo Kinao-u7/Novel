@@ -71,6 +71,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.Chapter
 import com.example.data.model.Novel
 import com.example.data.repository.NovelRepository
+import com.example.ui.components.DownloadedBadge
 import com.example.ui.components.EditorialSectionHeader
 import com.example.ui.components.NovelCoverImage
 import com.example.ui.components.NovelOptionsBottomSheet
@@ -552,14 +553,18 @@ fun ChapterRowItem(
                 }
             }
 
-            // Single icon slot: download state only (checkmark with theme accent color when downloaded)
+            // Single icon slot: download state only (filled badge with white check when downloaded)
             if (chapter.isDownloaded) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = "Saved Offline",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
-                )
+                Box(
+                    modifier = Modifier.size(28.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    DownloadedBadge(
+                        accentColor = MaterialTheme.colorScheme.primary,
+                        size = 16.dp,
+                        contentDescription = "Saved Offline"
+                    )
+                }
             } else {
                 IconButton(
                     onClick = onDownload,

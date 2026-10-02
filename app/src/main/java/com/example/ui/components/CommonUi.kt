@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -637,6 +638,33 @@ fun CleanSlider(
             )
         }
     )
+}
+
+/**
+ * Filled circular badge with a white checkmark indicating downloaded offline status.
+ */
+@Composable
+fun DownloadedBadge(
+    modifier: Modifier = Modifier,
+    accentColor: Color = MaterialTheme.colorScheme.primary,
+    checkColor: Color = Color.White,
+    size: Dp = 15.dp,
+    contentDescription: String? = "Downloaded"
+) {
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(accentColor),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.Check,
+            contentDescription = contentDescription,
+            tint = checkColor,
+            modifier = Modifier.size((size.value * 0.72f).dp)
+        )
+    }
 }
 
 

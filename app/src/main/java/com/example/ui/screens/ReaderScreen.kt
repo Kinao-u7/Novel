@@ -38,16 +38,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import com.example.data.model.*
 import com.example.data.repository.NovelRepository
 import com.example.tts.TtsManager
 import com.example.ui.components.CleanSlider
+import com.example.ui.components.DownloadedBadge
 import com.example.ui.theme.calculateOnColor
 import com.example.ui.theme.parseColorHex
 import androidx.compose.runtime.snapshotFlow
@@ -205,6 +211,8 @@ fun rememberClockTime(): String {
     return timeStr
 }
 
+data class TextPage(val startOffset: Int, val endOffset: Int)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, FlowPreview::class)
 @Composable
 fun ReaderScreen(
@@ -236,7 +244,7 @@ fun ReaderScreen(
     // Reading Modes State
     val listState = rememberLazyListState()
     var currentPageIndex by remember { mutableIntStateOf(0) }
-    val paragraphsPerPage = 6
+    var currentReadingOffset by remember { mutableIntStateOf(0) }
 
     // UI overlays & Sheets
     var showControls by remember { mutableStateOf(false) }
@@ -314,9 +322,8 @@ fun ReaderScreen(
 
             // Restore saved position independently for this chapter
             val savedPos = repository.getChapterReadingPosition(novel.id, currentChapterId)
-
-            val totalPages = (content.paragraphs.size + paragraphsPerPage - 1) / paragraphsPerPage
-            currentPageIndex = savedPos.coerceIn(0, (totalPages - 1).coerceAtLeast(0))
+            currentPageIndex = savedPos.coerceAtLeast(0)
+            currentReadingOffset = 0
 
             // Restore continuous scroll
             if (savedPos > 0 && content.paragraphs.isNotEmpty()) {
@@ -462,10 +469,27 @@ fun ReaderScreen(
         applyTermReplacements(resolvedChapterTitle, termRules)
     }
 
-    val totalPages = remember(displayParagraphs.size) {
-        if (displayParagraphs.isNotEmpty()) {
-            (displayParagraphs.size + paragraphsPerPage - 1) / paragraphsPerPage
-        } else 1
+    val fullText = remember(displayParagraphs) {
+        displayParagraphs.joinToString("\n\n")
+    }
+
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+
+    val readerTextStyle = remember(
+        currentFontFamily,
+        readerSettings.fontSizeSp,
+        readerSettings.lineSpacingMultiplier,
+        readerSettings.isJustified,
+        readerColors.text
+    ) {
+        TextStyle(
+            fontFamily = currentFontFamily,
+            fontSize = readerSettings.fontSizeSp.sp,
+            lineHeight = (readerSettings.fontSizeSp * readerSettings.lineSpacingMultiplier).sp,
+            color = readerColors.text,
+            textAlign = if (readerSettings.isJustified) TextAlign.Justify else TextAlign.Start
+        )
     }
 
     // Helper to navigate between chapters
@@ -485,11 +509,132 @@ fun ReaderScreen(
     }
 
     // Main Scaffold Layout
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(readerColors.background)
     ) {
+        val horizontalPadding = readerSettings.marginType.horizontalPaddingDp.dp
+        val topPadding = if (readerSettings.showStatusBar) 52.dp else 40.dp
+        val bottomPadding = 48.dp
+
+        val availableWidthPx = remember(maxWidth, horizontalPadding, density) {
+            with(density) {
+                (maxWidth - (horizontalPadding * 2)).roundToPx().coerceAtLeast(100)
+            }
+        }
+        val availableHeightPx = remember(maxHeight, topPadding, bottomPadding, density) {
+            with(density) {
+                (maxHeight - topPadding - bottomPadding).roundToPx().coerceAtLeast(100)
+            }
+        }
+
+        val headerHeightPx = remember(
+            displayTitle,
+            currentChapterIndex,
+            currentFontFamily,
+            readerSettings.fontSizeSp,
+            availableWidthPx,
+            density
+        ) {
+            if (displayTitle.isBlank()) 0 else {
+                val titleStyle = TextStyle(
+                    fontFamily = currentFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = (readerSettings.fontSizeSp + 5).sp,
+                    lineHeight = (readerSettings.fontSizeSp + 9).sp
+                )
+                val titleResult = textMeasurer.measure(
+                    text = displayTitle,
+                    style = titleStyle,
+                    constraints = Constraints(maxWidth = availableWidthPx)
+                )
+                with(density) { (12 + 6 + 12 + 1 + 20).dp.roundToPx() + 18.sp.roundToPx() } + titleResult.size.height
+            }
+        }
+
+        val pages = remember(
+            fullText,
+            readerTextStyle,
+            availableWidthPx,
+            availableHeightPx,
+            headerHeightPx
+        ) {
+            if (fullText.isEmpty() || availableWidthPx <= 0 || availableHeightPx <= 0) {
+                listOf(TextPage(0, 0))
+            } else {
+                val layoutResult = textMeasurer.measure(
+                    text = fullText,
+                    style = readerTextStyle,
+                    constraints = Constraints(maxWidth = availableWidthPx)
+                )
+                val totalLines = layoutResult.lineCount
+                if (totalLines == 0) {
+                    listOf(TextPage(0, 0))
+                } else {
+                    val pageList = mutableListOf<TextPage>()
+                    var currentStartLine = 0
+
+                    while (currentStartLine < totalLines) {
+                        val pageAvailableHeight = if (pageList.isEmpty()) {
+                            (availableHeightPx - headerHeightPx).coerceAtLeast(availableHeightPx / 3)
+                        } else {
+                            availableHeightPx
+                        }
+
+                        val pageStartTop = layoutResult.getLineTop(currentStartLine)
+                        var currentEndLine = currentStartLine
+
+                        while (currentEndLine + 1 < totalLines) {
+                            val nextBottom = layoutResult.getLineBottom(currentEndLine + 1)
+                            if (nextBottom - pageStartTop <= pageAvailableHeight) {
+                                currentEndLine++
+                            } else {
+                                break
+                            }
+                        }
+
+                        val startOffset = layoutResult.getLineStart(currentStartLine)
+                        val endOffset = layoutResult.getLineEnd(currentEndLine)
+                        pageList.add(TextPage(startOffset, endOffset))
+
+                        currentStartLine = currentEndLine + 1
+                    }
+
+                    if (pageList.isEmpty()) listOf(TextPage(0, 0)) else pageList
+                }
+            }
+        }
+
+        val totalPages = pages.size.coerceAtLeast(1)
+
+        // Reflow position preservation: update currentPageIndex to the page containing currentReadingOffset
+        LaunchedEffect(pages) {
+            if (pages.isNotEmpty()) {
+                val targetIndex = pages.indexOfFirst { page ->
+                    currentReadingOffset >= page.startOffset && currentReadingOffset < page.endOffset
+                }.let { idx ->
+                    if (idx >= 0) {
+                        idx
+                    } else if (currentReadingOffset >= (pages.lastOrNull()?.endOffset ?: 0)) {
+                        pages.size - 1
+                    } else {
+                        0
+                    }
+                }
+                if (targetIndex != currentPageIndex) {
+                    currentPageIndex = targetIndex.coerceIn(0, pages.size - 1)
+                }
+            }
+        }
+
+        // Track currentReadingOffset whenever page index changes
+        LaunchedEffect(currentPageIndex, pages) {
+            val start = pages.getOrNull(currentPageIndex)?.startOffset
+            if (start != null) {
+                currentReadingOffset = start
+            }
+        }
         // -------------------------------------------------------------
         // MAIN READING VIEWPORT
         // -------------------------------------------------------------
@@ -701,9 +846,12 @@ fun ReaderScreen(
                     // -------------------------------------------------------------
                     // PAGINATED READING MODE
                     // -------------------------------------------------------------
-                    val pageParagraphs = displayParagraphs
-                        .chunked(paragraphsPerPage)
-                        .getOrElse(currentPageIndex) { emptyList() }
+                    val page = pages.getOrNull(currentPageIndex)
+                    val pageText = if (page != null && page.startOffset < page.endOffset && page.endOffset <= fullText.length) {
+                        fullText.substring(page.startOffset, page.endOffset).trimEnd()
+                    } else {
+                        ""
+                    }
 
                     Box(
                         modifier = Modifier
@@ -734,16 +882,14 @@ fun ReaderScreen(
                                 )
                             }
                             .padding(
-                                top = if (readerSettings.showStatusBar) 52.dp else 40.dp,
-                                bottom = 48.dp,
-                                start = readerSettings.marginType.horizontalPaddingDp.dp,
-                                end = readerSettings.marginType.horizontalPaddingDp.dp
+                                top = topPadding,
+                                bottom = bottomPadding,
+                                start = horizontalPadding,
+                                end = horizontalPadding
                             )
                     ) {
                         Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
+                            modifier = Modifier.fillMaxSize()
                         ) {
                             if (currentPageIndex == 0) {
                                 Column(
@@ -776,15 +922,11 @@ fun ReaderScreen(
                                 }
                             }
 
-                            pageParagraphs.forEach { p ->
+                            if (pageText.isNotEmpty()) {
                                 Text(
-                                    text = p,
-                                    fontFamily = currentFontFamily,
-                                    fontSize = readerSettings.fontSizeSp.sp,
-                                    lineHeight = (readerSettings.fontSizeSp * readerSettings.lineSpacingMultiplier).sp,
-                                    color = readerColors.text,
-                                    textAlign = if (readerSettings.isJustified) TextAlign.Justify else TextAlign.Start,
-                                    modifier = Modifier.padding(bottom = (readerSettings.fontSizeSp * 0.8f).dp)
+                                    text = pageText,
+                                    style = readerTextStyle,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         }
@@ -1001,26 +1143,44 @@ fun ReaderScreen(
                         )
                         if (chapterContent?.isDownloaded == true) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = readerColors.accent,
-                                    modifier = Modifier.size(13.dp)
+                                DownloadedBadge(
+                                    accentColor = readerColors.accent,
+                                    size = 14.dp
                                 )
-                                Spacer(modifier = Modifier.width(3.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text("Downloaded", style = MaterialTheme.typography.labelSmall.copy(color = readerColors.accent, fontSize = 10.sp))
                             }
                         }
                     }
 
-                    // Progress Slider
+                    // Progress Slider: seeks within the current chapter's content
+                    val isContinuous = readerSettings.readingMode == ReadingMode.CONTINUOUS
+                    val maxSliderValue = if (isContinuous) {
+                        (displayParagraphs.size - 1).coerceAtLeast(0)
+                    } else {
+                        (totalPages - 1).coerceAtLeast(0)
+                    }
+                    val currentSliderValue = if (isContinuous) {
+                        listState.firstVisibleItemIndex.coerceIn(0, maxSliderValue).toFloat()
+                    } else {
+                        currentPageIndex.coerceIn(0, maxSliderValue).toFloat()
+                    }
+
                     CleanSlider(
-                        value = currentChapterIndex.toFloat(),
-                        onValueChange = { newIdx ->
-                            navigateToChapter(newIdx.toInt())
+                        value = if (maxSliderValue > 0) currentSliderValue else 0f,
+                        onValueChange = { newValue ->
+                            val rounded = newValue.roundToInt()
+                            if (isContinuous) {
+                                scope.launch {
+                                    listState.scrollToItem(rounded.coerceIn(0, maxSliderValue))
+                                }
+                            } else {
+                                currentPageIndex = rounded.coerceIn(0, maxSliderValue)
+                            }
                         },
-                        valueRange = 1f..chapterList.size.coerceAtLeast(1).toFloat(),
-                        steps = (chapterList.size - 2).coerceAtLeast(0),
+                        enabled = maxSliderValue > 0,
+                        valueRange = 0f..maxSliderValue.coerceAtLeast(1).toFloat(),
+                        steps = (maxSliderValue - 1).coerceAtLeast(0),
                         accentColor = readerColors.accent,
                         trackColor = readerColors.onSurface.copy(alpha = 0.18f),
                         modifier = Modifier.fillMaxWidth()
@@ -2014,7 +2174,10 @@ fun ReaderScreen(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     if (ch.isDownloaded) {
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = readerColors.accent, modifier = Modifier.size(16.dp))
+                                        DownloadedBadge(
+                                            accentColor = readerColors.accent,
+                                            size = 15.dp
+                                        )
                                     }
                                 }
                             }
@@ -2171,7 +2334,15 @@ private fun ToolbarActionButton(
             "reading_mode" -> if (readingMode == ReadingMode.PAGINATED) readerColors.accent else readerColors.onSurface
             else -> readerColors.onSurface
         }
-        Icon(action.icon, contentDescription = action.description, tint = tint)
+        val icon = when (action.id) {
+            "reading_mode" -> if (readingMode == ReadingMode.PAGINATED) Icons.Default.AutoStories else Icons.Default.SwapVert
+            else -> action.icon
+        }
+        val description = when (action.id) {
+            "reading_mode" -> if (readingMode == ReadingMode.PAGINATED) "Reading Mode: Paginated" else "Reading Mode: Continuous"
+            else -> action.description
+        }
+        Icon(icon, contentDescription = description, tint = tint)
     }
 }
 
