@@ -137,6 +137,25 @@ fun NovelDetailScreen(
     val downloadedSet = downloadedMap[novel.id] ?: emptySet()
     val readSet = readMap[novel.id] ?: emptySet()
 
+    val undownloadedChapters = remember(chapters, downloadedSet) {
+        chapters.filter { !downloadedSet.contains(it.id) }
+    }
+    val nextChId = remember(currentNovelState.lastReadChapterId, chapters, novel.id) {
+        currentNovelState.lastReadChapterId ?: chapters.firstOrNull()?.id ?: "${novel.id}_ch_1"
+    }
+    val nextChIdx = remember(currentNovelState.lastReadChapterIndex) {
+        if (currentNovelState.lastReadChapterIndex > 0) currentNovelState.lastReadChapterIndex else 1
+    }
+    val readButtonLabel = remember(currentNovelState.lastReadChapterIndex, nextChIdx) {
+        if (currentNovelState.lastReadChapterIndex > 0) {
+            "Continue Ch. $nextChIdx"
+        } else {
+            "Start Reading"
+        }
+    }
+
+    val listState = rememberLazyListState()
+
     val sortedAndFilteredChapters = remember(chapters, isDescending, chapterSearchQuery, downloadedSet, readSet) {
         var list = chapters.map { ch ->
             ch.copy(
@@ -202,7 +221,6 @@ fun NovelDetailScreen(
             }
         }
     ) { innerPadding ->
-        val listState = rememberLazyListState()
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -297,16 +315,6 @@ fun NovelDetailScreen(
             // Action Buttons (Consolidated Single Row: Continue / Read + Download)
             item {
                 Spacer(modifier = Modifier.height(14.dp))
-
-                val nextChId = currentNovelState.lastReadChapterId ?: chapters.firstOrNull()?.id ?: "${novel.id}_ch_1"
-                val nextChIdx = if (currentNovelState.lastReadChapterIndex > 0) currentNovelState.lastReadChapterIndex else 1
-                val readButtonLabel = if (currentNovelState.lastReadChapterIndex > 0) {
-                    "Continue Ch. $nextChIdx"
-                } else {
-                    "Start Reading"
-                }
-
-                val undownloadedChapters = chapters.filter { !downloadedSet.contains(it.id) }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),

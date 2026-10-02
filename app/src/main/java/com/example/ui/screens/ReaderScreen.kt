@@ -455,7 +455,7 @@ fun ReaderScreen(
         FontType.SANS -> FontFamily.SansSerif
         FontType.SERIF -> FontFamily.Serif
         FontType.MONOSPACE -> FontFamily.Monospace
-        FontType.ROUNDED -> FontFamily.Default
+        FontType.ROUNDED -> FontFamily(android.graphics.Typeface.create("sans-serif-rounded", android.graphics.Typeface.NORMAL))
     }
 
     // Processed text with Term Replacements

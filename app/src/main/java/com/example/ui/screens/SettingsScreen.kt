@@ -603,7 +603,7 @@ private fun ReaderSettingsPage(repository: NovelRepository) {
         FontType.SERIF -> FontFamily.Serif
         FontType.SANS -> FontFamily.SansSerif
         FontType.MONOSPACE -> FontFamily.Monospace
-        FontType.ROUNDED -> FontFamily.Default
+        FontType.ROUNDED -> FontFamily(android.graphics.Typeface.create("sans-serif-rounded", android.graphics.Typeface.NORMAL))
     }
 
     val currentFontWeight = when (readerSettings.fontWeight) {
