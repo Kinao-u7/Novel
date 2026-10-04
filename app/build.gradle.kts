@@ -9,43 +9,60 @@ import java.util.Properties
 
 val versionPropsFile = rootProject.file("version.properties")
 
-fun resolveAppVersion(): Pair<Int, String> {
+fun readVersionProps(): Properties {
   val props = Properties()
-  if (!versionPropsFile.exists()) {
+  if (versionPropsFile.exists()) {
+    versionPropsFile.inputStream().use { props.load(it) }
+  } else {
     props["major"] = "1"
     props["minor"] = "0"
     props["patch"] = "0"
     props["versionCode"] = "1"
-    versionPropsFile.outputStream().use { props.store(it, "Version Properties") }
-  } else {
-    versionPropsFile.inputStream().use { props.load(it) }
   }
+  return props
+}
 
+fun writeVersionProps(props: Properties, comment: String) {
+  versionPropsFile.outputStream().use { props.store(it, comment) }
+}
+
+fun incrementVersionProps(props: Properties) {
+  val patch = props.getProperty("patch", "0").trim().toIntOrNull() ?: 0
+  val code = props.getProperty("versionCode", "1").trim().toIntOrNull() ?: 1
+  props["patch"] = (patch + 1).toString()
+  props["versionCode"] = (code + 1).toString()
+}
+
+fun currentVersionPair(props: Properties): Pair<Int, String> {
   val major = props.getProperty("major", "1").trim().toIntOrNull() ?: 1
   val minor = props.getProperty("minor", "0").trim().toIntOrNull() ?: 0
-  var patch = props.getProperty("patch", "0").trim().toIntOrNull() ?: 0
-  var code = props.getProperty("versionCode", "1").trim().toIntOrNull() ?: 1
-
-  val isBuilding = gradle.startParameter.taskNames.any { taskName ->
-    val t = taskName.lowercase()
-    t.contains("assemble") || t.contains("bundle") || t.contains("package") ||
-      (t.contains("build") && !t.contains("unittest") && !t.contains("test"))
-  }
-
-  if (isBuilding) {
-    patch += 1
-    code += 1
-    props["major"] = major.toString()
-    props["minor"] = minor.toString()
-    props["patch"] = patch.toString()
-    props["versionCode"] = code.toString()
-    versionPropsFile.outputStream().use { props.store(it, "Auto-incremented on build") }
-  }
-
+  val patch = props.getProperty("patch", "0").trim().toIntOrNull() ?: 0
+  val code = props.getProperty("versionCode", "1").trim().toIntOrNull() ?: 1
   return Pair(code, "$major.$minor.$patch")
 }
 
-val (appVersionCode, appVersionName) = resolveAppVersion()
+// Read current values once, at configuration time.
+val initialVersionProps = readVersionProps()
+val (appVersionCode, appVersionName) = currentVersionPair(initialVersionProps)
+
+// Register a task that increments the version properties file.
+// This runs BEFORE assembleDebug/assembleRelease via a doFirst
+// on those tasks (see below).
+tasks.register("incrementVersion") {
+  doLast {
+    val props = readVersionProps()
+    incrementVersionProps(props)
+    writeVersionProps(props, "Auto-incremented on build")
+  }
+}
+
+// Hook the increment task onto the assemble tasks, so it runs
+// every time a debug or release APK is assembled.
+tasks.matching { task ->
+  task.name == "assembleDebug" || task.name == "assembleRelease"
+}.configureEach {
+  dependsOn("incrementVersion")
+}
 
 android {
   namespace = "com.example"
