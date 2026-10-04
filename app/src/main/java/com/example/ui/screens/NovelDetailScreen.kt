@@ -134,8 +134,12 @@ fun NovelDetailScreen(
         }
     }
 
-    val downloadedSet = downloadedMap[novel.id] ?: emptySet()
-    val readSet = readMap[novel.id] ?: emptySet()
+    val downloadedSet = remember(downloadedMap, novel.id) {
+        downloadedMap[novel.id] ?: emptySet()
+    }
+    val readSet = remember(readMap, novel.id) {
+        readMap[novel.id] ?: emptySet()
+    }
 
     val undownloadedChapters = remember(chapters, downloadedSet) {
         chapters.filter { !downloadedSet.contains(it.id) }
