@@ -7,6 +7,11 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
@@ -152,7 +157,14 @@ fun NovelReaderApp(
         }
     }
 
-    when (val screen = currentScreen) {
+    AnimatedContent(
+        targetState = currentScreen,
+        transitionSpec = {
+            fadeIn(animationSpec = tween(120)) togetherWith ExitTransition.None
+        },
+        label = "ScreenTransition"
+    ) { screen ->
+        when (screen) {
             is Screen.Main -> {
                 Scaffold(
                     bottomBar = {
@@ -343,6 +355,7 @@ fun NovelReaderApp(
                 )
             }
         }
+    }
 
     if (showSetupStoragePrompt) {
         AlertDialog(
