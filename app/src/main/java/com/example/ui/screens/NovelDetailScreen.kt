@@ -115,7 +115,9 @@ fun NovelDetailScreen(
     var batchProgress by remember { mutableStateOf(Pair(0, 0)) }
 
     val isInLibrary = libraryNovels.any { it.id == novel.id }
-    val currentNovelState = libraryNovels.firstOrNull { it.id == novel.id } ?: novel
+    val currentNovelState = remember(libraryNovels, novel.id) {
+        libraryNovels.firstOrNull { it.id == novel.id } ?: novel
+    }
 
     // Load chapters (instantly from local storage/cache without re-scraping or fetching)
     LaunchedEffect(novel.id) {
@@ -141,10 +143,14 @@ fun NovelDetailScreen(
         readMap[novel.id] ?: emptySet()
     }
 
-    val undownloadedChapters = remember(chapters, downloadedSet) {
+    val undownloadedChapters = remember(chapters.size, chapters, downloadedSet) {
         chapters.filter { !downloadedSet.contains(it.id) }
     }
-    val nextChId = remember(currentNovelState.lastReadChapterId, chapters, novel.id) {
+    val nextChId = remember(
+        currentNovelState.lastReadChapterId,
+        chapters.firstOrNull()?.id,
+        novel.id
+    ) {
         currentNovelState.lastReadChapterId ?: chapters.firstOrNull()?.id ?: "${novel.id}_ch_1"
     }
     val nextChIdx = remember(currentNovelState.lastReadChapterIndex) {
@@ -160,7 +166,14 @@ fun NovelDetailScreen(
 
     val listState = rememberLazyListState()
 
-    val sortedAndFilteredChapters = remember(chapters, isDescending, chapterSearchQuery, downloadedSet, readSet) {
+    val sortedAndFilteredChapters = remember(
+        chapters.size,
+        chapters,
+        isDescending,
+        chapterSearchQuery,
+        downloadedSet,
+        readSet
+    ) {
         var list = chapters.map { ch ->
             ch.copy(
                 isDownloaded = downloadedSet.contains(ch.id) || ch.isDownloaded,
