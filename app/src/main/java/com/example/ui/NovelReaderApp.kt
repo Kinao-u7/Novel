@@ -7,10 +7,6 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
@@ -156,12 +152,7 @@ fun NovelReaderApp(
         }
     }
 
-    AnimatedContent(
-        targetState = currentScreen,
-        transitionSpec = { fadeIn() togetherWith fadeOut() },
-        label = "ScreenTransition"
-    ) { screen ->
-        when (screen) {
+    when (val screen = currentScreen) {
             is Screen.Main -> {
                 Scaffold(
                     bottomBar = {
@@ -352,7 +343,6 @@ fun NovelReaderApp(
                 )
             }
         }
-    }
 
     if (showSetupStoragePrompt) {
         AlertDialog(
