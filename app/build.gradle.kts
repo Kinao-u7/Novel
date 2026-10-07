@@ -49,10 +49,20 @@ val (appVersionCode, appVersionName) = currentVersionPair(initialVersionProps)
 // This runs BEFORE assembleDebug/assembleRelease via a doFirst
 // on those tasks (see below).
 tasks.register("incrementVersion") {
+  notCompatibleWithConfigurationCache(
+    "Reads and writes version.properties; not cacheable."
+  )
+  val propsFile = rootProject.file("version.properties")
   doLast {
-    val props = readVersionProps()
-    incrementVersionProps(props)
-    writeVersionProps(props, "Auto-incremented on build")
+    val props = java.util.Properties()
+    if (propsFile.exists()) {
+      propsFile.inputStream().use { props.load(it) }
+    }
+    val patch = props.getProperty("patch", "0").trim().toIntOrNull() ?: 0
+    val code = props.getProperty("versionCode", "1").trim().toIntOrNull() ?: 1
+    props["patch"] = (patch + 1).toString()
+    props["versionCode"] = (code + 1).toString()
+    propsFile.outputStream().use { props.store(it, "Auto-incremented on build") }
   }
 }
 

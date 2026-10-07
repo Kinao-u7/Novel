@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -36,10 +37,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -293,6 +299,23 @@ fun ReaderScreen(
     DisposableEffect(Unit) {
         onDispose {
             ttsManager.release()
+        }
+    }
+
+    // Immersive mode: hide system bars when reading, restore on exit
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        val window = (view.context as? Activity)?.window
+        if (window != null) {
+            val controller = WindowCompat.getInsetsController(window, view)
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            onDispose {
+                controller.show(WindowInsetsCompat.Type.systemBars())
+            }
+        } else {
+            onDispose { }
         }
     }
 
@@ -1132,13 +1155,9 @@ fun ReaderScreen(
             )
         ) {
             Surface(
-                color = readerColors.surface.copy(alpha = 0.96f),
-                shape = if (readerSettings.toolbarPosition == ToolbarPosition.TOP)
-                    RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)
-                else
-                    RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-                border = BorderStroke(1.dp, readerColors.onSurface.copy(alpha = 0.08f)),
-                shadowElevation = 8.dp,
+                color = readerColors.background,
+                shape = RectangleShape,
+                shadowElevation = 0.dp,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = if (readerSettings.toolbarPosition == ToolbarPosition.TOP) 58.dp else 0.dp)
