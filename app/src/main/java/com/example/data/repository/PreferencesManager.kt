@@ -74,6 +74,28 @@ class PreferencesManager(private val context: Context) {
         prefs.edit().putString("library_novels_json", jsonString).apply()
     }
 
+    fun saveLibraryBackupJson(jsonString: String) {
+        prefs.edit().putString("library_novels_json_bak", jsonString).apply()
+    }
+
+    fun loadLibraryBackupJson(): String? {
+        return prefs.getString("library_novels_json_bak", null)
+    }
+
+    fun saveCorruptedLibraryBackup(rawString: String) {
+        if (!prefs.contains("library_novels_json_corrupted")) {
+            prefs.edit().putString("library_novels_json_corrupted", rawString).apply()
+        }
+    }
+
+    fun isEpubCoversMigrated(): Boolean {
+        return prefs.getBoolean("epub_covers_migrated", false)
+    }
+
+    fun setEpubCoversMigrated(migrated: Boolean) {
+        prefs.edit().putBoolean("epub_covers_migrated", migrated).apply()
+    }
+
     fun loadDownloadedIndexJson(): String? {
         return prefs.getString("downloaded_index_json", null)
     }

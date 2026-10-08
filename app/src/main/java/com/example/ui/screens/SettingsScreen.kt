@@ -1764,7 +1764,7 @@ private fun StorageSettingsPage(repository: NovelRepository) {
             )
         }
 
-        val downloadedNovels = libraryNovels.filter { it.downloadedChaptersCount > 0 }
+        val downloadedNovels = libraryNovels.filter { it.downloadedChaptersCount > 0 && !it.isEpub && it.sourceId != "local_epub" }
         if (downloadedNovels.isEmpty()) {
             item {
                 Surface(
@@ -2018,7 +2018,7 @@ private fun StorageSettingsPage(repository: NovelRepository) {
         AlertDialog(
             onDismissRequest = { showDeleteAllDownloadsConfirm = false },
             title = { Text("Delete All Offline Downloads?") },
-            text = { Text("This will delete all saved chapter text files from your device. You will need internet connection to read them again.") },
+            text = { Text("This will delete all saved chapter text files from your device. Imported EPUBs and your library will not be affected.") },
             confirmButton = {
                 Button(
                     onClick = {

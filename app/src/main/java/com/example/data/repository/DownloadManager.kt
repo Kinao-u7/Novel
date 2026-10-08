@@ -118,8 +118,15 @@ class DownloadManager(
         }
     }
 
-    fun deleteDownloadedNovelChapters(novelId: String) {
-        storageManager.deleteNovelChapters(novelId)
+    suspend fun deleteDownloadedNovelChapters(novelId: String) = withContext(Dispatchers.IO) {
+        val novel = libraryManager.libraryNovels.value.find { it.id == novelId }
+        val isEpub = novel?.let { it.isEpub || it.sourceId == "local_epub" } ?: novelId.startsWith("epub_")
+        if (isEpub) {
+            return@withContext
+        }
+
+        val customUri = preferencesManager.downloadSettings.value.customDownloadLocationUri
+        storageManager.deleteNovelChapters(novelId, isEpub = false, customUriStr = customUri)
 
         val current = _downloadedChapters.value.toMutableMap()
         current.remove(novelId)
@@ -129,15 +136,25 @@ class DownloadManager(
         libraryManager.updateDownloadedCount(novelId, 0)
     }
 
-    fun deleteAllDownloadedContent(): Int {
-        val count = storageManager.deleteAllDownloadedContent()
-        _downloadedChapters.value = emptyMap()
+    suspend fun deleteAllDownloadedContent(): Int = withContext(Dispatchers.IO) {
+        val epubNovelIds = libraryManager.libraryNovels.value
+            .filter { it.isEpub || it.sourceId == "local_epub" || it.id.startsWith("epub_") }
+            .map { it.id }
+            .toSet()
+
+        val customUri = preferencesManager.downloadSettings.value.customDownloadLocationUri
+        val count = storageManager.deleteAllDownloadedContent(customUri, epubNovelIds)
+
+        // Keep downloaded records for EPUBs, remove all other novels
+        val retained = _downloadedChapters.value.filterKeys { epubNovelIds.contains(it) }
+        _downloadedChapters.value = retained
         saveDownloadedChaptersIndex()
-        libraryManager.resetAllDownloadedCounts()
-        return count
+
+        libraryManager.resetNonEpubDownloadedCounts(epubNovelIds)
+        count
     }
 
-    fun deleteNovelDownloads(novelId: String) {
+    suspend fun deleteNovelDownloads(novelId: String) {
         deleteDownloadedNovelChapters(novelId)
     }
 

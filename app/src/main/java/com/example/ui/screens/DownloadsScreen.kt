@@ -40,8 +40,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,6 +70,7 @@ fun DownloadsScreen(
     val downloadedMap by repository.downloadedChapters.collectAsState()
 
     var novelToDelete by remember { mutableStateOf<Novel?>(null) }
+    val coroutineScope = rememberCoroutineScope()
 
     val downloadedNovels = remember(libraryNovels, downloadedMap) {
         libraryNovels.filter { novel ->
@@ -287,7 +290,9 @@ fun DownloadsScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        repository.deleteDownloadedNovelChapters(targetNovel.id)
+                        coroutineScope.launch {
+                            repository.deleteDownloadedNovelChapters(targetNovel.id)
+                        }
                         novelToDelete = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)

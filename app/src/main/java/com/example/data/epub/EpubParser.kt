@@ -117,7 +117,9 @@ object EpubParser {
             val imageBytes = entries[key] ?: entries[resolvedCoverHref]
             if (imageBytes != null && imageBytes.isNotEmpty()) {
                 try {
-                    val coverFile = File(context.cacheDir, "cover_${System.currentTimeMillis()}.jpg")
+                    val coversDir = File(context.filesDir, "covers")
+                    if (!coversDir.exists()) coversDir.mkdirs()
+                    val coverFile = File(coversDir, "cover_${System.currentTimeMillis()}.jpg")
                     FileOutputStream(coverFile).use { it.write(imageBytes) }
                     coverFilePath = coverFile.absolutePath
                 } catch (e: Exception) {

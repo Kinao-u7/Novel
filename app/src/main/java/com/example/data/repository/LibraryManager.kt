@@ -41,44 +41,72 @@ class LibraryManager(private val preferencesManager: PreferencesManager) {
     private fun loadLibrary() {
         val jsonString = preferencesManager.loadLibraryJson()
         if (!jsonString.isNullOrBlank()) {
-            try {
-                val array = JSONArray(jsonString)
+            val array = try {
+                JSONArray(jsonString)
+            } catch (e: Exception) {
+                preferencesManager.saveCorruptedLibraryBackup(jsonString)
+                null
+            }
+
+            if (array != null) {
                 val list = mutableListOf<Novel>()
+                var anyRecordSkipped = false
                 for (i in 0 until array.length()) {
-                    val obj = array.getJSONObject(i)
-                    list.add(
-                        Novel(
-                            id = obj.getString("id"),
-                            title = obj.getString("title"),
-                            author = obj.getString("author"),
-                            coverUrl = if (obj.has("coverUrl") && !obj.isNull("coverUrl")) obj.getString("coverUrl") else null,
-                            description = obj.getString("description"),
-                            genres = if (obj.has("genres")) {
-                                val gArr = obj.getJSONArray("genres")
-                                (0 until gArr.length()).map { gArr.getString(it) }
-                            } else emptyList(),
-                            status = obj.optString("status", "Ongoing"),
-                            sourceId = obj.getString("sourceId"),
-                            sourceName = obj.optString("sourceName", "Source"),
-                            inLibrary = true,
-                            lastReadChapterId = if (obj.has("lastReadChapterId") && !obj.isNull("lastReadChapterId")) obj.getString("lastReadChapterId") else null,
-                            lastReadChapterTitle = if (obj.has("lastReadChapterTitle") && !obj.isNull("lastReadChapterTitle")) obj.getString("lastReadChapterTitle") else null,
-                            lastReadChapterIndex = obj.optInt("lastReadChapterIndex", 0),
-                            lastReadScrollPosition = obj.optInt("lastReadScrollPosition", 0),
-                            totalChapters = obj.optInt("totalChapters", 0),
-                            downloadedChaptersCount = obj.optInt("downloadedChaptersCount", 0),
-                            rating = obj.optDouble("rating", 4.8).toFloat(),
-                            lastReadTimestamp = obj.optLong("lastReadTimestamp", 0L),
-                            isEpub = obj.optBoolean("isEpub", false),
-                            rawId = if (obj.has("rawId") && !obj.isNull("rawId")) obj.getString("rawId") else null,
-                            locale = if (obj.has("locale") && !obj.isNull("locale")) obj.getString("locale") else null,
-                            sourceUrl = if (obj.has("sourceUrl") && !obj.isNull("sourceUrl")) obj.getString("sourceUrl") else null
+                    try {
+                        val obj = array.getJSONObject(i)
+                        val id = obj.optString("id", "")
+                        val title = obj.optString("title", "")
+                        if (id.isBlank() || title.isBlank()) {
+                            anyRecordSkipped = true
+                            continue
+                        }
+
+                        val author = obj.optString("author", "Unknown Author")
+                        val coverUrl = if (obj.has("coverUrl") && !obj.isNull("coverUrl")) obj.optString("coverUrl", null) else null
+                        val description = obj.optString("description", "")
+                        val genres = if (obj.has("genres")) {
+                            val gArr = obj.optJSONArray("genres")
+                            if (gArr != null) (0 until gArr.length()).map { gArr.getString(it) } else emptyList()
+                        } else emptyList()
+                        val status = obj.optString("status", "Ongoing")
+                        val sourceId = obj.optString("sourceId", "unknown")
+                        val sourceName = obj.optString("sourceName", "Source")
+
+                        list.add(
+                            Novel(
+                                id = id,
+                                title = title,
+                                author = author,
+                                coverUrl = coverUrl,
+                                description = description,
+                                genres = genres,
+                                status = status,
+                                sourceId = sourceId,
+                                sourceName = sourceName,
+                                inLibrary = true,
+                                lastReadChapterId = if (obj.has("lastReadChapterId") && !obj.isNull("lastReadChapterId")) obj.optString("lastReadChapterId", null) else null,
+                                lastReadChapterTitle = if (obj.has("lastReadChapterTitle") && !obj.isNull("lastReadChapterTitle")) obj.optString("lastReadChapterTitle", null) else null,
+                                lastReadChapterIndex = obj.optInt("lastReadChapterIndex", 0),
+                                lastReadScrollPosition = obj.optInt("lastReadScrollPosition", 0),
+                                totalChapters = obj.optInt("totalChapters", 0),
+                                downloadedChaptersCount = obj.optInt("downloadedChaptersCount", 0),
+                                rating = obj.optDouble("rating", 4.8).toFloat(),
+                                lastReadTimestamp = obj.optLong("lastReadTimestamp", 0L),
+                                isEpub = obj.optBoolean("isEpub", false),
+                                rawId = if (obj.has("rawId") && !obj.isNull("rawId")) obj.optString("rawId", null) else null,
+                                locale = if (obj.has("locale") && !obj.isNull("locale")) obj.optString("locale", null) else null,
+                                sourceUrl = if (obj.has("sourceUrl") && !obj.isNull("sourceUrl")) obj.optString("sourceUrl", null) else null
+                            )
                         )
-                    )
+                    } catch (e: Exception) {
+                        anyRecordSkipped = true
+                    }
                 }
                 _libraryNovels.value = list
-            } catch (e: Exception) {
-                e.printStackTrace()
+
+                // Take one backup of the library JSON to "library_novels_json_bak" right after a successful load,
+                // and always if any record was skipped.
+                preferencesManager.saveLibraryBackupJson(jsonString)
             }
         }
     }
@@ -238,6 +266,28 @@ class LibraryManager(private val preferencesManager: PreferencesManager) {
         val updated = _libraryNovels.value.map { it.copy(downloadedChaptersCount = 0) }
         _libraryNovels.value = updated
         saveLibrary()
+    }
+
+    fun resetNonEpubDownloadedCounts(epubIds: Set<String>) {
+        val updated = _libraryNovels.value.map { novel ->
+            if (novel.isEpub || novel.sourceId == "local_epub" || epubIds.contains(novel.id)) {
+                novel
+            } else {
+                novel.copy(downloadedChaptersCount = 0)
+            }
+        }
+        _libraryNovels.value = updated
+        saveLibrary()
+    }
+
+    fun updateNovelCoverUrl(novelId: String, newCoverUrl: String) {
+        val current = _libraryNovels.value.toMutableList()
+        val index = current.indexOfFirst { it.id == novelId }
+        if (index >= 0) {
+            current[index] = current[index].copy(coverUrl = newCoverUrl)
+            _libraryNovels.value = current
+            saveLibrary()
+        }
     }
 
     fun setLibraryNovels(novels: List<Novel>) {

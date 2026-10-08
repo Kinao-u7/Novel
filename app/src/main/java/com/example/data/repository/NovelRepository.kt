@@ -6,8 +6,12 @@ import com.example.data.model.*
 import com.example.data.source.SourceManager
 import com.example.data.source.webscrape.ScrapedNovelData
 import com.example.data.source.webscrape.WebScrapeSource
+import java.io.File
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -41,8 +45,38 @@ class NovelRepository(private val context: Context) {
     val customSources: StateFlow<List<CustomNovelSource>> = preferencesManager.customSources
     val requestedSources: StateFlow<List<String>> = preferencesManager.requestedSources
 
+    private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     init {
         SourceManager.registerSource(WebScrapeSource(context))
+        repoScope.launch {
+            migrateEpubCoversIfNeeded()
+        }
+    }
+
+    private fun migrateEpubCoversIfNeeded() {
+        if (preferencesManager.isEpubCoversMigrated()) return
+        try {
+            val cacheDirPath = context.cacheDir.absolutePath
+            val coversDir = File(context.filesDir, "covers")
+            if (!coversDir.exists()) coversDir.mkdirs()
+
+            val novels = libraryManager.libraryNovels.value
+            for (novel in novels) {
+                val coverUrl = novel.coverUrl
+                if (coverUrl != null && (coverUrl.startsWith(cacheDirPath) || coverUrl.contains("/cache/"))) {
+                    val oldFile = File(coverUrl)
+                    if (oldFile.exists() && oldFile.isFile) {
+                        val newFile = File(coversDir, oldFile.name)
+                        oldFile.copyTo(newFile, overwrite = true)
+                        libraryManager.updateNovelCoverUrl(novel.id, newFile.absolutePath)
+                    }
+                }
+            }
+            preferencesManager.setEpubCoversMigrated(true)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     // --- LIBRARY METHODS ---
@@ -217,7 +251,7 @@ class NovelRepository(private val context: Context) {
         }
     }
 
-    fun deleteDownloadedNovelChapters(novelId: String) = downloadManager.deleteDownloadedNovelChapters(novelId)
+    suspend fun deleteDownloadedNovelChapters(novelId: String) = downloadManager.deleteDownloadedNovelChapters(novelId)
 
     // --- READ CHAPTERS TRACKING ---
 
@@ -368,9 +402,9 @@ class NovelRepository(private val context: Context) {
 
     fun clearCache(): Long = storageManager.clearCache()
 
-    fun deleteAllDownloadedContent(): Int = downloadManager.deleteAllDownloadedContent()
+    suspend fun deleteAllDownloadedContent(): Int = downloadManager.deleteAllDownloadedContent()
 
-    fun deleteNovelDownloads(novelId: String) = downloadManager.deleteNovelDownloads(novelId)
+    suspend fun deleteNovelDownloads(novelId: String) = downloadManager.deleteNovelDownloads(novelId)
 
     fun resetAppPreferences() = preferencesManager.resetAppPreferences()
 

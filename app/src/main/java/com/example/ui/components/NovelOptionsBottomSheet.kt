@@ -34,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.Novel
 import com.example.data.repository.NovelRepository
 import com.example.data.source.SourceManager
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,6 +60,7 @@ fun NovelOptionsBottomSheet(
     onOpenInBrowser: ((String) -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val coroutineScope = rememberCoroutineScope()
     var showEditDialog by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
@@ -145,15 +148,17 @@ fun NovelOptionsBottomSheet(
                 }
             )
 
-            // Option 4: Delete downloads (if any downloaded chapters exist)
-            if (novel.downloadedChaptersCount > 0) {
+            // Option 4: Delete downloads (if any downloaded chapters exist, hide for EPUBs)
+            if (novel.downloadedChaptersCount > 0 && !novel.isEpub && novel.sourceId != "local_epub") {
                 NovelOptionItem(
                     icon = Icons.Default.DeleteOutline,
                     title = "Delete downloaded chapters (${novel.downloadedChaptersCount})",
                     iconTint = MaterialTheme.colorScheme.error,
                     textColor = MaterialTheme.colorScheme.error,
                     onClick = {
-                        repository.deleteNovelDownloads(novel.id)
+                        coroutineScope.launch {
+                            repository.deleteNovelDownloads(novel.id)
+                        }
                         onDismiss()
                     }
                 )

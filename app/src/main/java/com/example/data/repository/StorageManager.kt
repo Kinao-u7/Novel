@@ -7,6 +7,8 @@ import com.example.data.epub.EpubParser
 import com.example.data.epub.ParsedEpub
 import com.example.data.model.Chapter
 import com.example.data.model.ChapterContent
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -366,32 +368,145 @@ class StorageManager(private val context: Context) {
         return EpubParser.parseEpub(context, inputStream, fileName)
     }
 
-    fun deleteNovelChapters(novelId: String) {
-        val dir = getChaptersDir(novelId)
-        if (dir.exists()) {
-            dir.deleteRecursively()
-        }
-        val metaFile = getNovelChaptersFile(novelId)
-        if (metaFile.exists()) {
-            metaFile.delete()
+    fun clearNovelMemoryCache(novelId: String) {
+        synchronized(localChapterCache) {
+            localChapterCache.entries.removeAll { 
+                it.value.novelId == novelId || it.key.startsWith(novelId) 
+            }
         }
     }
 
-    fun deleteAllDownloadedContent(): Int {
-        val chaptersDir = File(context.filesDir, "chapters")
-        var count = 0
-        if (chaptersDir.exists()) {
-            count = chaptersDir.listFiles()?.size ?: 0
-            chaptersDir.deleteRecursively()
-            chaptersDir.mkdirs()
+    suspend fun deleteNovelChapters(
+        novelId: String,
+        isEpub: Boolean = false,
+        customUriStr: String? = null
+    ) = withContext(Dispatchers.IO) {
+        // 1.1 Skip EPUB novels in every delete path
+        if (isEpub || novelId.startsWith("epub_")) {
+            return@withContext
         }
-        // Also remove novel_chapters metadata files from filesDir
-        context.filesDir.listFiles()?.forEach { file ->
-            if (file.name.startsWith("novel_chapters_") && file.name.endsWith(".json")) {
-                file.delete()
+
+        // 1.2 Delete only chapter content files, keep chapters_meta.json, chapters.json, and novel_chapters_*.json
+        val dir = getChaptersDir(novelId)
+        if (dir.exists()) {
+            dir.listFiles()?.forEach { file ->
+                val name = file.name
+                if (name != "chapters_meta.json" && name != "chapters.json" && !name.startsWith("novel_chapters_")) {
+                    file.delete()
+                }
             }
         }
-        return count
+
+        val legacyDir = File(context.filesDir, "chapters/$novelId")
+        if (legacyDir.exists() && legacyDir.canonicalPath != dir.canonicalPath) {
+            legacyDir.listFiles()?.forEach { file ->
+                val name = file.name
+                if (name != "chapters_meta.json" && name != "chapters.json" && !name.startsWith("novel_chapters_")) {
+                    file.delete()
+                }
+            }
+        }
+
+        // 1.3 & Point 4: Custom SAF storage delete
+        // Look for both the raw and sanitized novel folder names. Delete content files, not chapters_meta.json
+        if (!customUriStr.isNullOrBlank()) {
+            try {
+                val rootTreeUri = Uri.parse(customUriStr)
+                val rootDoc = DocumentFile.fromTreeUri(context, rootTreeUri)
+                val chaptersDoc = rootDoc?.findFile("chapters")
+                if (chaptersDoc != null && chaptersDoc.isDirectory) {
+                    val candidateNames = listOf(getSafeNovelId(novelId), novelId).distinct()
+                    for (folderName in candidateNames) {
+                        val novelDoc = chaptersDoc.findFile(folderName)
+                        if (novelDoc != null && novelDoc.isDirectory) {
+                            novelDoc.listFiles().forEach { docFile ->
+                                val name = docFile.name ?: ""
+                                if (name.endsWith(".json") && name != "chapters_meta.json" && name != "chapters.json" && !name.startsWith("novel_chapters_")) {
+                                    docFile.delete()
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        // Point 4: Clear that novel's chapter content from StorageManager's in-memory cache
+        clearNovelMemoryCache(novelId)
+    }
+
+    suspend fun deleteAllDownloadedContent(
+        customUriStr: String? = null,
+        skipNovelIds: Set<String> = emptySet()
+    ): Int = withContext(Dispatchers.IO) {
+        var count = 0
+        // 1. Internal storage
+        val chaptersParent = File(context.filesDir, "chapters")
+        if (chaptersParent.exists()) {
+            chaptersParent.listFiles()?.forEach { novelDir ->
+                if (novelDir.isDirectory) {
+                    val dirName = novelDir.name
+                    // 1.1 Skip novels with isEpub (sourceId "local_epub" or epub_ prefix or in skipNovelIds)
+                    if (dirName.startsWith("epub_") || skipNovelIds.contains(dirName)) {
+                        return@forEach
+                    }
+
+                    // 1.2 Delete only chapter content files, keep chapters_meta.json & chapters.json
+                    var deletedInDir = 0
+                    novelDir.listFiles()?.forEach { file ->
+                        val name = file.name
+                        if (name != "chapters_meta.json" && name != "chapters.json" && !name.startsWith("novel_chapters_")) {
+                            if (file.delete()) {
+                                deletedInDir++
+                            }
+                        }
+                    }
+                    if (deletedInDir > 0) {
+                        count++
+                    }
+                }
+            }
+        }
+
+        // 1.3 & Point 4: Custom SAF delete
+        // SAF deletes must skip EPUB folders in delete-all
+        if (!customUriStr.isNullOrBlank()) {
+            try {
+                val rootTreeUri = Uri.parse(customUriStr)
+                val rootDoc = DocumentFile.fromTreeUri(context, rootTreeUri)
+                val chaptersDoc = rootDoc?.findFile("chapters")
+                if (chaptersDoc != null && chaptersDoc.isDirectory) {
+                    chaptersDoc.listFiles().forEach { novelFolder ->
+                        if (novelFolder.isDirectory) {
+                            val folderName = novelFolder.name ?: ""
+                            if (folderName.startsWith("epub_") || skipNovelIds.contains(folderName)) {
+                                return@forEach
+                            }
+                            novelFolder.listFiles().forEach { docFile ->
+                                val name = docFile.name ?: ""
+                                if (name.endsWith(".json") && name != "chapters_meta.json" && name != "chapters.json" && !name.startsWith("novel_chapters_")) {
+                                    docFile.delete()
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        // Point 4: Clear non-EPUB chapter content from StorageManager's in-memory cache
+        synchronized(localChapterCache) {
+            localChapterCache.entries.removeAll {
+                val nid = it.value.novelId
+                !nid.startsWith("epub_") && !skipNovelIds.contains(nid)
+            }
+        }
+
+        count
     }
 
     fun getStorageUsageBytes(): Long {
