@@ -1,5 +1,8 @@
 package com.example.data.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 enum class AppThemeMode(val displayName: String) {
     SYSTEM("System Default"),
     LIGHT("Light"),
@@ -29,12 +32,14 @@ val PRESET_ACCENT_COLORS = listOf(
     AccentPreset("Slate", "#64748B")
 )
 
+@Serializable
 data class ThemeSettings(
     val themeMode: AppThemeMode = AppThemeMode.DARK,
     val accentColorHex: String = "#DEB887",
     val useDynamicColor: Boolean = false
 )
 
+@Serializable
 enum class ReaderTheme(val displayName: String) {
     LIGHT("Light"),
     WARM("Warm Paper"),
@@ -43,23 +48,27 @@ enum class ReaderTheme(val displayName: String) {
     AMOLED("AMOLED")
 }
 
+@Serializable
 enum class ReaderFontWeight(val displayName: String, val weight: Int) {
     NORMAL("Normal", 400),
     MEDIUM("Medium", 500),
     BOLD("Bold", 700)
 }
 
+@Serializable
 enum class ReaderTextAlign(val displayName: String) {
     LEFT("Left"),
     JUSTIFIED("Justified"),
     RIGHT("Right")
 }
 
+@Serializable
 enum class ReadingMode(val displayName: String) {
     CONTINUOUS("Scroll"),
     PAGINATED("Paginated")
 }
 
+@Serializable
 enum class FontType(val displayName: String, val fontFamilyName: String) {
     SANS("Sans-Serif", "sans-serif"),
     SERIF("Bookish Serif", "serif"),
@@ -67,12 +76,14 @@ enum class FontType(val displayName: String, val fontFamilyName: String) {
     ROUNDED("Rounded", "sans-serif-rounded")
 }
 
+@Serializable
 enum class MarginType(val displayName: String, val horizontalPaddingDp: Int) {
     COMPACT("Compact", 12),
     NORMAL("Normal", 20),
     WIDE("Wide", 32)
 }
 
+@Serializable
 enum class ToolbarPosition(val displayName: String) {
     TOP("Top"),
     BOTTOM("Bottom")
@@ -85,6 +96,7 @@ data class TermReplacementRule(
     val isEnabled: Boolean = true
 )
 
+@Serializable
 data class ReaderSettings(
     val theme: ReaderTheme = ReaderTheme.SEPIA,
     val fontSizeSp: Int = 18,
@@ -97,12 +109,10 @@ data class ReaderSettings(
     val verticalMarginDp: Int = 20,
     val contentWidthPercent: Int = 100,
     val paragraphIndentation: Boolean = false,
-    val marginType: MarginType = MarginType.NORMAL,
     val fontType: FontType = FontType.SERIF,
     val readingMode: ReadingMode = ReadingMode.CONTINUOUS,
     val autoScrollSpeed: Int = 0, // 0 = off, 1-5 = speed
     val keepScreenOn: Boolean = true,
-    val isJustified: Boolean = true,
     val toolbarPosition: ToolbarPosition = ToolbarPosition.BOTTOM,
     val showStatusBar: Boolean = true,
     val enabledToolbarActions: List<String> = listOf("prev_chapter", "next_chapter", "toc", "tts", "bookmark", "display"),
@@ -111,8 +121,83 @@ data class ReaderSettings(
     val ttsPitch: Float = 1.0f,
     val ttsVoice: String? = null,
     val saveReadingPosition: Boolean = true
-)
+) {
+    val isJustified: Boolean
+        get() = textAlign == ReaderTextAlign.JUSTIFIED
 
+    val marginType: MarginType
+        get() = when {
+            horizontalMarginDp <= 14 -> MarginType.COMPACT
+            horizontalMarginDp >= 28 -> MarginType.WIDE
+            else -> MarginType.NORMAL
+        }
+
+    fun copy(
+        theme: ReaderTheme = this.theme,
+        fontSizeSp: Int = this.fontSizeSp,
+        fontWeight: ReaderFontWeight = this.fontWeight,
+        lineSpacingMultiplier: Float = this.lineSpacingMultiplier,
+        paragraphSpacingDp: Int = this.paragraphSpacingDp,
+        letterSpacingSp: Float = this.letterSpacingSp,
+        textAlign: ReaderTextAlign = this.textAlign,
+        horizontalMarginDp: Int = this.horizontalMarginDp,
+        verticalMarginDp: Int = this.verticalMarginDp,
+        contentWidthPercent: Int = this.contentWidthPercent,
+        paragraphIndentation: Boolean = this.paragraphIndentation,
+        fontType: FontType = this.fontType,
+        readingMode: ReadingMode = this.readingMode,
+        autoScrollSpeed: Int = this.autoScrollSpeed,
+        keepScreenOn: Boolean = this.keepScreenOn,
+        toolbarPosition: ToolbarPosition = this.toolbarPosition,
+        showStatusBar: Boolean = this.showStatusBar,
+        enabledToolbarActions: List<String> = this.enabledToolbarActions,
+        globalTermReplacementsEnabled: Boolean = this.globalTermReplacementsEnabled,
+        ttsSpeechRate: Float = this.ttsSpeechRate,
+        ttsPitch: Float = this.ttsPitch,
+        ttsVoice: String? = this.ttsVoice,
+        saveReadingPosition: Boolean = this.saveReadingPosition,
+        isJustified: Boolean? = null,
+        marginType: MarginType? = null
+    ): ReaderSettings {
+        val resolvedTextAlign = if (isJustified != null) {
+            if (isJustified) ReaderTextAlign.JUSTIFIED else ReaderTextAlign.LEFT
+        } else {
+            textAlign
+        }
+        val resolvedMarginDp = if (marginType != null) {
+            marginType.horizontalPaddingDp
+        } else {
+            horizontalMarginDp
+        }
+        return ReaderSettings(
+            theme = theme,
+            fontSizeSp = fontSizeSp,
+            fontWeight = fontWeight,
+            lineSpacingMultiplier = lineSpacingMultiplier,
+            paragraphSpacingDp = paragraphSpacingDp,
+            letterSpacingSp = letterSpacingSp,
+            textAlign = resolvedTextAlign,
+            horizontalMarginDp = resolvedMarginDp,
+            verticalMarginDp = verticalMarginDp,
+            contentWidthPercent = contentWidthPercent,
+            paragraphIndentation = paragraphIndentation,
+            fontType = fontType,
+            readingMode = readingMode,
+            autoScrollSpeed = autoScrollSpeed,
+            keepScreenOn = keepScreenOn,
+            toolbarPosition = toolbarPosition,
+            showStatusBar = showStatusBar,
+            enabledToolbarActions = enabledToolbarActions,
+            globalTermReplacementsEnabled = globalTermReplacementsEnabled,
+            ttsSpeechRate = ttsSpeechRate,
+            ttsPitch = ttsPitch,
+            ttsVoice = ttsVoice,
+            saveReadingPosition = saveReadingPosition
+        )
+    }
+}
+
+@Serializable
 data class DownloadSettings(
     val wifiOnly: Boolean = true,
     val allowMobileData: Boolean = false,
@@ -137,9 +222,19 @@ data class BackupCategories(
     val appSettings: Boolean = true
 )
 
+@Serializable
 data class NotificationSettings(
     val notifyOnDownload: Boolean = true,
     val notifyOnNovelUpdate: Boolean = true
+)
+
+@Serializable
+data class AppSettings(
+    val reader: ReaderSettings = ReaderSettings(),
+    val theme: ThemeSettings = ThemeSettings(),
+    val downloads: DownloadSettings = DownloadSettings(),
+    val notifications: NotificationSettings = NotificationSettings(),
+    val isLibraryGridView: Boolean = true
 )
 
 data class AppNotificationItem(

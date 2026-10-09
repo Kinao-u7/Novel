@@ -9,26 +9,25 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 
-class PreferencesManager(private val context: Context) {
+class PreferencesManager(
+    private val context: Context,
+    private val settingsRepository: SettingsRepository = SettingsRepository.getInstance(context)
+) {
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences("novel_reader_prefs", Context.MODE_PRIVATE)
 
-    // Reader Settings
-    private val _readerSettings = MutableStateFlow(loadReaderSettings())
-    val readerSettings: StateFlow<ReaderSettings> = _readerSettings.asStateFlow()
+    // Reader Settings - routed through SettingsRepository (Stage 1a adapter)
+    val readerSettings: StateFlow<ReaderSettings> = settingsRepository.readerSettings
 
-    // App Theme Settings
-    private val _themeSettings = MutableStateFlow(loadThemeSettings())
-    val themeSettings: StateFlow<ThemeSettings> = _themeSettings.asStateFlow()
+    // App Theme Settings - routed through SettingsRepository (Stage 1a adapter)
+    val themeSettings: StateFlow<ThemeSettings> = settingsRepository.themeSettings
 
-    // Download Settings
-    private val _downloadSettings = MutableStateFlow(loadDownloadSettings())
-    val downloadSettings: StateFlow<DownloadSettings> = _downloadSettings.asStateFlow()
+    // Download Settings - routed through SettingsRepository (Stage 1a adapter)
+    val downloadSettings: StateFlow<DownloadSettings> = settingsRepository.downloadSettings
 
-    // Notification Settings
-    private val _notificationSettings = MutableStateFlow(loadNotificationSettings())
-    val notificationSettings: StateFlow<NotificationSettings> = _notificationSettings.asStateFlow()
+    // Notification Settings - routed through SettingsRepository (Stage 1a adapter)
+    val notificationSettings: StateFlow<NotificationSettings> = settingsRepository.notificationSettings
 
     // Notifications history
     private val _notifications = MutableStateFlow<List<AppNotificationItem>>(loadNotifications())
@@ -59,10 +58,11 @@ class PreferencesManager(private val context: Context) {
     // --- LIBRARY & GENERAL PREFERENCES ---
 
     fun isLibraryGridView(): Boolean {
-        return prefs.getBoolean("library_is_grid_view", true)
+        return settingsRepository.isLibraryGridView.value
     }
 
     fun setLibraryGridView(isGrid: Boolean) {
+        settingsRepository.setLibraryGridViewSync(isGrid)
         prefs.edit().putBoolean("library_is_grid_view", isGrid).apply()
     }
 
@@ -123,94 +123,7 @@ class PreferencesManager(private val context: Context) {
     // --- READER SETTINGS ---
 
     fun updateReaderSettings(settings: ReaderSettings) {
-        _readerSettings.value = settings
-        prefs.edit().apply {
-            putString("reader_theme", settings.theme.name)
-            putInt("reader_font_size", settings.fontSizeSp)
-            putString("reader_font_weight", settings.fontWeight.name)
-            putFloat("reader_line_spacing", settings.lineSpacingMultiplier)
-            putInt("reader_para_spacing", settings.paragraphSpacingDp)
-            putFloat("reader_letter_spacing", settings.letterSpacingSp)
-            putString("reader_text_align", settings.textAlign.name)
-            putInt("reader_horizontal_margin", settings.horizontalMarginDp)
-            putInt("reader_vertical_margin", settings.verticalMarginDp)
-            putInt("reader_content_width_pct", settings.contentWidthPercent)
-            putBoolean("reader_para_indent", settings.paragraphIndentation)
-            putString("reader_margin", settings.marginType.name)
-            putString("reader_font", settings.fontType.name)
-            putString("reader_mode", settings.readingMode.name)
-            putInt("reader_auto_scroll_speed", settings.autoScrollSpeed)
-            putBoolean("reader_justified", settings.isJustified)
-            putString("reader_toolbar_pos", settings.toolbarPosition.name)
-            putBoolean("reader_show_status_bar", settings.showStatusBar)
-            putString("reader_toolbar_actions", settings.enabledToolbarActions.joinToString(","))
-            putBoolean("reader_global_replacements", settings.globalTermReplacementsEnabled)
-            putFloat("reader_tts_speed", settings.ttsSpeechRate)
-            putFloat("reader_tts_pitch", settings.ttsPitch)
-            putString("reader_tts_voice", settings.ttsVoice)
-            putBoolean("reader_save_pos", settings.saveReadingPosition)
-            apply()
-        }
-    }
-
-    private fun loadReaderSettings(): ReaderSettings {
-        val themeName = prefs.getString("reader_theme", ReaderTheme.SEPIA.name) ?: ReaderTheme.SEPIA.name
-        val theme = runCatching { ReaderTheme.valueOf(themeName) }.getOrDefault(ReaderTheme.SEPIA)
-
-        val fontName = prefs.getString("reader_font", FontType.SERIF.name) ?: FontType.SERIF.name
-        val font = runCatching { FontType.valueOf(fontName) }.getOrDefault(FontType.SERIF)
-
-        val weightName = prefs.getString("reader_font_weight", ReaderFontWeight.NORMAL.name) ?: ReaderFontWeight.NORMAL.name
-        val weight = runCatching { ReaderFontWeight.valueOf(weightName) }.getOrDefault(ReaderFontWeight.NORMAL)
-
-        val alignName = prefs.getString("reader_text_align", ReaderTextAlign.JUSTIFIED.name) ?: ReaderTextAlign.JUSTIFIED.name
-        val textAlign = runCatching { ReaderTextAlign.valueOf(alignName) }.getOrDefault(ReaderTextAlign.JUSTIFIED)
-
-        val marginName = prefs.getString("reader_margin", MarginType.NORMAL.name) ?: MarginType.NORMAL.name
-        val margin = runCatching { MarginType.valueOf(marginName) }.getOrDefault(MarginType.NORMAL)
-
-        val modeName = prefs.getString("reader_mode", ReadingMode.CONTINUOUS.name) ?: ReadingMode.CONTINUOUS.name
-        val mode = runCatching { ReadingMode.valueOf(modeName) }.getOrDefault(ReadingMode.CONTINUOUS)
-
-        val toolbarPosName = prefs.getString("reader_toolbar_pos", ToolbarPosition.BOTTOM.name) ?: ToolbarPosition.BOTTOM.name
-        val toolbarPos = runCatching { ToolbarPosition.valueOf(toolbarPosName) }.getOrDefault(ToolbarPosition.BOTTOM)
-
-        val showStatusBar = prefs.getBoolean("reader_show_status_bar", true)
-
-        val defaultActions = listOf("prev_chapter", "next_chapter", "toc", "tts", "bookmark", "display")
-        val savedActionsStr = prefs.getString("reader_toolbar_actions", null)
-        val actions = if (!savedActionsStr.isNullOrBlank()) {
-            savedActionsStr.split(",").filter { it.isNotBlank() }
-        } else {
-            defaultActions
-        }
-
-        return ReaderSettings(
-            theme = theme,
-            fontSizeSp = prefs.getInt("reader_font_size", 18),
-            fontWeight = weight,
-            lineSpacingMultiplier = prefs.getFloat("reader_line_spacing", 1.6f),
-            paragraphSpacingDp = prefs.getInt("reader_para_spacing", 12),
-            letterSpacingSp = prefs.getFloat("reader_letter_spacing", 0f),
-            textAlign = textAlign,
-            horizontalMarginDp = prefs.getInt("reader_horizontal_margin", 20),
-            verticalMarginDp = prefs.getInt("reader_vertical_margin", 20),
-            contentWidthPercent = prefs.getInt("reader_content_width_pct", 100),
-            paragraphIndentation = prefs.getBoolean("reader_para_indent", false),
-            marginType = margin,
-            fontType = font,
-            readingMode = mode,
-            autoScrollSpeed = prefs.getInt("reader_auto_scroll_speed", 0),
-            isJustified = prefs.getBoolean("reader_justified", true),
-            toolbarPosition = toolbarPos,
-            showStatusBar = showStatusBar,
-            enabledToolbarActions = actions,
-            globalTermReplacementsEnabled = prefs.getBoolean("reader_global_replacements", true),
-            ttsSpeechRate = prefs.getFloat("reader_tts_speed", 1.0f),
-            ttsPitch = prefs.getFloat("reader_tts_pitch", 1.0f),
-            ttsVoice = prefs.getString("reader_tts_voice", null),
-            saveReadingPosition = prefs.getBoolean("reader_save_pos", true)
-        )
+        settingsRepository.updateReaderSettingsSync(settings)
     }
 
     // --- CHAPTER READING POSITION ---
@@ -298,25 +211,7 @@ class PreferencesManager(private val context: Context) {
     // --- THEME SETTINGS ---
 
     fun updateThemeSettings(settings: ThemeSettings) {
-        _themeSettings.value = settings
-        prefs.edit().apply {
-            putString("app_theme_mode", settings.themeMode.name)
-            putString("app_accent_hex", settings.accentColorHex)
-            putBoolean("app_use_dynamic_color", settings.useDynamicColor)
-            apply()
-        }
-    }
-
-    private fun loadThemeSettings(): ThemeSettings {
-        val modeName = prefs.getString("app_theme_mode", AppThemeMode.DARK.name) ?: AppThemeMode.DARK.name
-        val mode = runCatching { AppThemeMode.valueOf(modeName) }.getOrDefault(AppThemeMode.DARK)
-        val accentHex = prefs.getString("app_accent_hex", "#6366F1") ?: "#6366F1"
-        val useDynamic = prefs.getBoolean("app_use_dynamic_color", false)
-        return ThemeSettings(
-            themeMode = mode,
-            accentColorHex = accentHex,
-            useDynamicColor = useDynamic
-        )
+        settingsRepository.updateThemeSettingsSync(settings)
     }
 
     // --- READING STATS ---
@@ -359,53 +254,13 @@ class PreferencesManager(private val context: Context) {
     // --- DOWNLOAD SETTINGS ---
 
     fun updateDownloadSettings(settings: DownloadSettings) {
-        _downloadSettings.value = settings
-        prefs.edit().apply {
-            putBoolean("dl_wifi_only", settings.wifiOnly)
-            putBoolean("dl_allow_mobile", settings.allowMobileData)
-            putInt("dl_simultaneous", settings.simultaneousDownloads)
-            putBoolean("dl_auto_next", settings.autoDownloadNext)
-            putString("dl_custom_location_uri", settings.customDownloadLocationUri)
-            putString("dl_custom_location_display", settings.customDownloadLocationDisplayName)
-            putBoolean("dl_throttling_enabled", settings.throttlingEnabled)
-            putInt("dl_throttle_batch_size", settings.throttleBatchSize)
-            putFloat("dl_throttle_delay_sec", settings.throttleDelaySeconds)
-            putBoolean("dl_throttle_random_jitter", settings.throttleRandomJitter)
-            apply()
-        }
-    }
-
-    private fun loadDownloadSettings(): DownloadSettings {
-        return DownloadSettings(
-            wifiOnly = prefs.getBoolean("dl_wifi_only", true),
-            allowMobileData = prefs.getBoolean("dl_allow_mobile", false),
-            simultaneousDownloads = prefs.getInt("dl_simultaneous", 3),
-            autoDownloadNext = prefs.getBoolean("dl_auto_next", false),
-            customDownloadLocationUri = prefs.getString("dl_custom_location_uri", null),
-            customDownloadLocationDisplayName = prefs.getString("dl_custom_location_display", null),
-            throttlingEnabled = prefs.getBoolean("dl_throttling_enabled", false),
-            throttleBatchSize = prefs.getInt("dl_throttle_batch_size", 5),
-            throttleDelaySeconds = prefs.getFloat("dl_throttle_delay_sec", 2.0f),
-            throttleRandomJitter = prefs.getBoolean("dl_throttle_random_jitter", true)
-        )
+        settingsRepository.updateDownloadSettingsSync(settings)
     }
 
     // --- NOTIFICATIONS ---
 
     fun updateNotificationSettings(settings: NotificationSettings) {
-        _notificationSettings.value = settings
-        prefs.edit().apply {
-            putBoolean("notif_download", settings.notifyOnDownload)
-            putBoolean("notif_update", settings.notifyOnNovelUpdate)
-            apply()
-        }
-    }
-
-    private fun loadNotificationSettings(): NotificationSettings {
-        return NotificationSettings(
-            notifyOnDownload = prefs.getBoolean("notif_download", true),
-            notifyOnNovelUpdate = prefs.getBoolean("notif_update", true)
-        )
+        settingsRepository.updateNotificationSettingsSync(settings)
     }
 
     private fun loadNotifications(): List<AppNotificationItem> {
@@ -466,17 +321,7 @@ class PreferencesManager(private val context: Context) {
     }
 
     fun resetAppPreferences() {
-        _readerSettings.value = ReaderSettings()
-        updateReaderSettings(ReaderSettings())
-
-        _themeSettings.value = ThemeSettings()
-        updateThemeSettings(ThemeSettings())
-
-        _downloadSettings.value = DownloadSettings()
-        updateDownloadSettings(DownloadSettings())
-
-        _notificationSettings.value = NotificationSettings()
-        updateNotificationSettings(NotificationSettings())
+        settingsRepository.resetAllSettingsSync()
     }
 
     // --- CUSTOM SOURCES ---

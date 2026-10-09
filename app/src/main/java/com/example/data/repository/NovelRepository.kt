@@ -24,8 +24,9 @@ import kotlinx.coroutines.withContext
  */
 class NovelRepository(private val context: Context) {
 
+    val settingsRepository = SettingsRepository.getInstance(context)
     internal val storageManager = StorageManager(context)
-    internal val preferencesManager = PreferencesManager(context)
+    internal val preferencesManager = PreferencesManager(context, settingsRepository)
     internal val libraryManager = LibraryManager(preferencesManager)
     internal val downloadManager = DownloadManager(storageManager, preferencesManager, libraryManager)
     internal val backupManager = BackupManager(libraryManager, preferencesManager)
@@ -35,11 +36,11 @@ class NovelRepository(private val context: Context) {
     val downloadedChapters: StateFlow<Map<String, Set<String>>> = downloadManager.downloadedChapters
     val readChapters: StateFlow<Map<String, Set<String>>> = libraryManager.readChapters
     val bookmarks: StateFlow<List<Bookmark>> = libraryManager.bookmarks
-    val readerSettings: StateFlow<ReaderSettings> = preferencesManager.readerSettings
+    val readerSettings: StateFlow<ReaderSettings> = settingsRepository.readerSettings
     val termReplacements: StateFlow<List<TermReplacementRule>> = preferencesManager.termReplacements
-    val themeSettings: StateFlow<ThemeSettings> = preferencesManager.themeSettings
-    val downloadSettings: StateFlow<DownloadSettings> = preferencesManager.downloadSettings
-    val notificationSettings: StateFlow<NotificationSettings> = preferencesManager.notificationSettings
+    val themeSettings: StateFlow<ThemeSettings> = settingsRepository.themeSettings
+    val downloadSettings: StateFlow<DownloadSettings> = settingsRepository.downloadSettings
+    val notificationSettings: StateFlow<NotificationSettings> = settingsRepository.notificationSettings
     val notifications: StateFlow<List<AppNotificationItem>> = preferencesManager.notifications
     val readingStats: StateFlow<ReadingStats> = preferencesManager.readingStats
     val customSources: StateFlow<List<CustomNovelSource>> = preferencesManager.customSources
@@ -81,9 +82,12 @@ class NovelRepository(private val context: Context) {
 
     // --- LIBRARY METHODS ---
 
-    fun isLibraryGridView(): Boolean = libraryManager.isLibraryGridView()
+    fun isLibraryGridView(): Boolean = settingsRepository.isLibraryGridView.value
 
-    fun setLibraryGridView(isGrid: Boolean) = libraryManager.setLibraryGridView(isGrid)
+    fun setLibraryGridView(isGrid: Boolean) {
+        settingsRepository.setLibraryGridViewSync(isGrid)
+        libraryManager.setLibraryGridView(isGrid)
+    }
 
     fun addToLibrary(novel: Novel) = libraryManager.addToLibrary(novel)
 
@@ -354,7 +358,7 @@ class NovelRepository(private val context: Context) {
 
     // --- READER SETTINGS ---
 
-    fun updateReaderSettings(settings: ReaderSettings) = preferencesManager.updateReaderSettings(settings)
+    fun updateReaderSettings(settings: ReaderSettings) = settingsRepository.updateReaderSettingsSync(settings)
 
     // --- CHAPTER READING POSITION PERSISTENCE ---
 
@@ -376,7 +380,7 @@ class NovelRepository(private val context: Context) {
 
     // --- APP THEME & ACCENT SETTINGS ---
 
-    fun updateThemeSettings(settings: ThemeSettings) = preferencesManager.updateThemeSettings(settings)
+    fun updateThemeSettings(settings: ThemeSettings) = settingsRepository.updateThemeSettingsSync(settings)
 
     // --- STATS ---
 
@@ -384,11 +388,11 @@ class NovelRepository(private val context: Context) {
 
     // --- DOWNLOAD SETTINGS ---
 
-    fun updateDownloadSettings(settings: DownloadSettings) = preferencesManager.updateDownloadSettings(settings)
+    fun updateDownloadSettings(settings: DownloadSettings) = settingsRepository.updateDownloadSettingsSync(settings)
 
     // --- NOTIFICATIONS ---
 
-    fun updateNotificationSettings(settings: NotificationSettings) = preferencesManager.updateNotificationSettings(settings)
+    fun updateNotificationSettings(settings: NotificationSettings) = settingsRepository.updateNotificationSettingsSync(settings)
 
     fun addNotification(title: String, message: String, type: String = "info") = preferencesManager.addNotification(title, message, type)
 
@@ -406,7 +410,7 @@ class NovelRepository(private val context: Context) {
 
     suspend fun deleteNovelDownloads(novelId: String) = downloadManager.deleteNovelDownloads(novelId)
 
-    fun resetAppPreferences() = preferencesManager.resetAppPreferences()
+    fun resetAppPreferences() = settingsRepository.resetAllSettingsSync()
 
     // --- BACKUP & RESTORE ---
 
