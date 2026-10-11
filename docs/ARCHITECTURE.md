@@ -1,148 +1,152 @@
-# Architecture Blueprint & Execution Plan
+# Architecture Blueprint (authoritative)
 
-This document establishes the target architecture for the Novel Reader application. It governs the ongoing modernization and rebuild across all stages.
+This file is the source of truth for the rebuild of the Novel Reader app. Read it, `docs/ARCHITECTURE_RULES.md` and `docs/CARRYOVER.md` before every stage. If code and this file disagree, follow this file and tell the user.
 
----
+## 1. Context
 
-## 1. Context & Objectives
+- Nobody uses the app yet: no data migration, no backward compatibility. A fresh install may wipe old data.
+- Goal: a solid foundation (Room, whole-object settings, type-safe navigation with ViewModels, WorkManager downloads, two-tier chapter storage). Features stay the same.
+- Keep as-is for now: scrapers and parsers (`WtrLabExtractor`, `WebChapterScraper`, `WebScrapeScripts`, `EpubParser`), the theme, `CommonUi`, and the screen layouts. Fixes for those are listed in `docs/CARRYOVER.md` (Stage 7).
+- Environment rule: do not install JDKs or SDKs and do not run Gradle in the AI sandbox. Compilation is verified by GitHub Actions. Verify by reading the code.
 
-- **Clean-slate architecture**: No historical migration or legacy schema backward compatibility is required. A fresh install wipes existing prototype data.
-- **Goal**: Provide a rock-solid, crash-resilient foundation:
-  - Strongly typed, structured persistence via Room and DataStore/JSON.
-  - Predictable state management with unidirectional data flow (MVI/MVVM with StateFlow) and Lifecycle-aware ViewModels.
-  - Safe, cached, tiered storage for chapters (cache vs downloaded, SAF awareness, tamper-safe IDs).
-  - Background-safe download engine utilizing WorkManager and Foreground Services.
-  - Type-safe, ID-driven Navigation with full process-recreation survival.
-- **Preserved modules**:
-  - Scrapers and parsers (`WtrLabExtractor`, `WebChapterScraper`, `WebScrapeScripts`, `EpubParser`).
-  - Theme, design tokens, `CommonUi` components, and established screen layouts.
+## 2. Package structure
 
----
+```
+com.example/
+  NovelApplication.kt          // creates AppContainer (no disk or DB work in onCreate)
+  MainActivity.kt
+  di/        AppContainer.kt, ViewModelFactory.kt          // manual DI
+  data/
+    local/db/        NovelDatabase (lazy holder), entity/, dao/, converters
+    local/preferences/  SettingsRepository, SettingsModels   // JSON file, not DataStore
+    local/storage/   StorageResolver, ChapterStorage, CacheReconciler
+    remote/          source/, webscrape/                      // kept as-is
+    epub/            EpubParser                               // kept as-is
+    backup/          BackupManager
+    repository/      NovelRepository, ChapterRepository, ReadingStatsRepository, DownloadRepository
+  download/          DownloadQueueWorker, DownloadEngine
+  ui/  navigation/, components/, theme/, screens/<screen>/ (Screen + ViewModel)
+```
 
-## 2. Rebuilt Components & Strategy
+No separate domain-model layer. Room entities plus UI state classes.
 
-### 2.1 Navigation & State Handling
-- Type-safe navigation (Jetpack Navigation 2.8+ with `kotlinx.serialization` or URL-safe encoded chapter/source IDs).
-- Screens receive entity IDs only; data loads from repositories via ViewModels with `SavedStateHandle`.
-- Back stack managed predictably with standard navigation actions; no local state held across screens in `remember`.
+## 3. Room data model
 
-### 2.2 Persistence & Database (Room)
-- Room Database with `exportSchema = true` and configured `room.schemaLocation`.
-- Core entities:
-  - `novels`: id, title, author, cover_url, description, genres, status, source_id, source_name, in_library, last_read_chapter_id, last_read_chapter_title, last_read_chapter_index, total_chapters, downloaded_count, rating, last_read_timestamp, is_epub, raw_id, locale, slug, source_url.
-  - `chapters`: composite primary key `(novel_id, id)`. Columns: novel_id, id, title, chapter_index, release_date, is_downloaded, is_read, word_count, storage_location (`INTERNAL` or SAF root ID), last_read_paragraph, last_read_offset, updated_at.
-  - `bookmarks`: id, novel_id, chapter_id, chapter_title, paragraph_index, character_offset, excerpt, note, timestamp.
-  - `download_queue`: composite primary key `(novel_id, chapter_id)`, priority, status, enqueued_at.
-  - `reading_sessions`: id, novel_id, novel_title_snapshot, start_time, duration_seconds, words_read. (No foreign key cascade from novel to preserve reading history).
-  - `custom_sources`: id, name, url, language, description, created_at.
-  - `requested_sources`: id, url, requested_at.
-- Cascading updates: Never use `REPLACE` on tables with cascading foreign keys. Chapter refresh executes insert-ignore followed by updates of metadata columns only, leaving read status, scroll positions, storage locations, and bookmarks intact.
+Never use `OnConflictStrategy.REPLACE` on tables with cascading foreign keys. Use insert-ignore plus update.
 
-### 2.3 Chapter Storage & Caching
-- **Tiered chapter storage**:
-  - `cache/`: Transient chapter contents downloaded during reading. Automatically trimmed; never counted as downloaded.
-  - `downloads/`: Explicitly downloaded chapters. Counted in UI badges.
-  - `epubs/` & `original_epubs/`: Imported EPUB chapters and raw archives. Protected from all deletion routines.
-  - `SAF`: User-selected external storage tree.
-- Stable storage addressing: File names generated via SHA-256 stable hash of chapter id (`ch_{hash}.json`), avoiding fragile index-based naming.
-- `CacheReconciler`: Safely cleans orphan temp files in `cache/` and `staging/` older than 10 minutes. Never touches `downloads/`, `epubs/`, or SAF roots. Runs lazily on cache misses and after restores.
+### novels
+`id` TEXT PK · `title` · `author` · `description` · `cover_url` NULL · `source_id` · `source_name` · `source_url` NULL (normalized: trimmed, lowercase host, no trailing slash) · `slug` NULL · `locale` NULL · `raw_id` NULL · `status` · `genres_json` · `in_library` BOOL · `is_epub` BOOL · `total_chapters` INT · `rating` REAL **NULL** (null = unrated, never a fake default) · `last_read_chapter_id` NULL · `last_read_timestamp` INT (0 until the user really reads) · `created_at` INT.
+Indexes: `(in_library)`, `(source_id, raw_id)`, `(source_url)`.
+No stored downloaded counter: downloaded counts are derived from `chapters.storage_tier`.
 
-### 2.4 Settings Architecture
-- Managed by `SettingsRepository` with `kotlinx.serialization` JSON:
-  - Single settings object serialization with `Json { ignoreUnknownKeys = true; coerceInputValues = true; encodeDefaults = true }`.
-  - Adding a field with a default requires no migration or schema boilerplate.
-  - Distinct models: `ReaderSettings`, `ThemeSettings`, `DownloadSettings`, `NotificationSettings`.
-  - Unified concepts: No duplicate fields (e.g. `marginType` vs `horizontalMarginDp`, `isJustified` vs `textAlign`).
-  - Preserved defaults: Sepia reader theme, Amber Gold accent `#DEB887`, justified text, normal margins.
+### chapters
+Composite PK `(novel_id, id)`. FK `novel_id → novels(id) ON DELETE CASCADE`.
+`title` · `chapter_index` INT (1-based) · `release_date` TEXT · `word_count` INT · `is_read` BOOL · `read_paragraph_index` INT · `read_char_offset` INT · `storage_tier` TEXT (`NONE`, `CACHE`, `DOWNLOADED`, `EPUB`) · `storage_location` TEXT (`INTERNAL` or a SAF root token) · `file_hash` TEXT (SHA-256 of the chapter id, used as the file name) · `last_accessed_at` INT (LRU).
+Indexes: `(novel_id, chapter_index)`, `(storage_tier, last_accessed_at)`.
+Chapter refresh = `INSERT OR IGNORE` new rows, then `UPDATE` only `title`, `chapter_index`, `word_count`, `release_date`. Read state, position, tier, location, hash and bookmarks are never overwritten.
 
----
+### bookmarks
+`id` TEXT PK (UUID) · `novel_id` (FK cascade, indexed) · `chapter_id` · `chapter_title` · `paragraph_index` · `char_offset` · `excerpt` · `note` · `created_at`.
 
-## 3. Implementation Stages
+### download_queue
+Composite PK `(novel_id, chapter_id)`, FK `novel_id` cascade. `status` (`QUEUED`, `DOWNLOADING`, `PAUSED`, `FAILED`, `COMPLETED`) · `queued_at` · `retry_count` · `error_message` NULL. Index `(status, queued_at)`.
 
-1. **Stage 1a — Settings Architecture**:
-   - `kotlinx.serialization` plugin and dependencies.
-   - `SettingsRepository` backed by atomic file-based JSON persistence with Flow.
-   - Field-by-field model consolidation and temporary adapter layer for `PreferencesManager`.
-2. **Stage 1b — Navigation & Screen Scaffolding**:
-   - Type-safe navigation routes with ID arguments.
-   - ViewModel foundations with `SavedStateHandle`.
-3. **Stage 2a — Room Database Foundation**:
-   - Room entities, DAOs, Database, schema export, and in-memory test harness.
-4. **Stage 4 — Chapter Storage Engine**:
-   - Tiered filesystem manager, stable chapter hashing, SAF resolver, `CacheReconciler`.
-5. **Stage 2b — Repository Layer**:
-   - `NovelRepository`, `ChapterRepository`, `SourceRepository`, startup purge of unread `in_library = 0` browse records.
-6. **Stage 3 — Reader & Reading Stats**:
-   - `ReaderViewModel`, `ChapterStorage` integration, complete end-to-end wiring of all `ReaderSettings` attributes with visible reader effects.
-   - Reading stats session recorder with 3-minute idle timeout, TOC/jump exclusion, and maximum WPM threshold.
-7. **Stage 5 — Download Engine & Background Work**:
-   - WorkManager / Foreground Service with `dataSync` type, throttling WebView pool (max 2 parallel).
-8. **Stage 6 — Backup & Restore Engine**:
-   - Zip archive import/export with zip-slip verification, persistable SAF validation, post-restore reconciliation.
-9. **Stage 7 — Screen & UI Refinements (7a through 7h)**:
-   - 7a Library, 7b Detail & Options, 7c Browse, 7d WebBrowser, 7e Downloads, 7f Settings/History/Stats/Profile, 7g Theme & Design System, 7h EPUB Parser & Scraper scripts.
+### reading_sessions
+**No foreign key** (history and streaks survive novel deletion). `id` INT autoincrement · `novel_id` · `novel_title` (snapshot) · `chapter_id` · `start_time` INT · `duration_ms` INT (foreground active time only) · `words_read` INT · `date_key` TEXT `YYYY-MM-DD`. Index `(date_key)`.
 
----
+### term_replacements
+`id` TEXT PK · `novel_id` NULL (null = global) · `pattern` · `replacement` · `is_regex` · `match_case` · `is_enabled`.
 
-## 4. Approved Amendments
+### notifications
+`id` TEXT PK · `title` · `message` · `type` (`info`, `download`, `update`) · `timestamp` · `is_read`.
 
-- **a. Zero-Downtime Builds & Temporary Adapters**: The app must compile and run cleanly at the conclusion of every stage. When a stage replaces a manager, remaining legacy code routes through new repositories via thin temporary adapters, documented and removed in the subsequent stage that replaces the consumer.
-- **b. Browse Novels Persistence**: When opened from Browse, a novel is persisted with `in_library = 0`. On app launch, unbookmarked, unread, undownloaded novels with `in_library = 0` are purged.
-- **c. Foreground Service & Permissions**: Move `POST_NOTIFICATIONS` permission request and `dataSync` foreground service manifest entry into Stage 5.
-- **d. Reader Settings End-to-End Wiring**: In Stage 3, every single `ReaderSettings` field must have an observable visual effect in `ReaderScreen` and be fully editable in both the reader sheet and global Settings.
-- **e. Reading Stats Safeguards**: 3-minute idle session timeout, discard word counts on non-reading position jumps (slider seek, TOC jump), and clamp WPM to a realistic maximum (1000 WPM).
-- **f. Serialization & Room Configuration**: `Json { ignoreUnknownKeys = true; coerceInputValues = true; encodeDefaults = true }` for settings. Room configured with `exportSchema = true` and `room.schemaLocation`.
-- **g. Backup & Security Rules**: Drop `customDownloadLocationUri` on restore if permission is revoked. Strict path validation against directory traversal (zip-slip).
-- **h. Main-Thread Hygiene**: `Application.onCreate` performs zero disk or database I/O. Room is initialized lazily; UI renders immediately and collects Flows.
-- **i. Carry-over Polish**: Incorporate 7g (theme and design system) and 7h (EPUB streaming and scraper fixes) into Stage 7. Report resolved issue IDs from `Docs/CARRYOVER.md` at the end of each stage.
-- **j. Testing Configuration**: Enable `testOptions.unitTests.isIncludeAndroidResources = true` for Robolectric.
+### custom_sources
+`id` TEXT PK · `name` · `url` · `language` · `description` · `is_enabled`.
 
----
+### requested_sources
+`id` TEXT PK · `site_name` · `url` · `requested_at`.
 
-## 5. Architectural Rules & Invariants
+### Room configuration
+`exportSchema = true` with `room.schemaLocation`. `fallbackToDestructiveMigration()` is development only: remove it and add real migrations before any release. The database is built lazily; nothing opens it in `Application.onCreate`.
 
-*(Adopted verbatim from `Docs/ARCHITECTURE_RULES.md`)*
+Browse novels: a novel opened from Browse is persisted with `in_library = 0`. On startup, in the background, purge `in_library = 0` rows that have no read state, bookmarks or downloads.
 
-### Data safety
-1. **Deleting never touches protected data.** Delete-downloads, clear-cache and delete-all must never remove EPUB content, original `.epub` files, covers or the chapter list of any novel.
-2. **Reading is not downloading.** Reading a chapter writes only to the cache tier. It never marks the chapter as downloaded, and download counts always come from the database, not from a separate counter.
-3. **No `REPLACE` on tables with cascading foreign keys.** Chapter refresh uses insert-ignore plus an update of metadata columns only, so read state, positions, storage tier and bookmarks survive.
-4. **Removing a novel asks first.** Show a confirm dialog with an option to also delete files. Reading stats and history survive removal.
-5. **Writes are safe.** Write to a temp file and rename, run multi-table changes in a transaction, and never overwrite good data after a failed load.
+## 4. File layout (under `filesDir`)
 
-### No fake data
-6. **No placeholder or demo data anywhere.** No default stats, streaks, ratings, "welcome" notifications or seeded novels. Unknown values are null and the UI hides them.
-7. **New novels are not "read".** `last_read_timestamp` is set only when the user actually reads.
+```
+covers/{novelId}.jpg            permanent
+epubs/{novelId}/{sha256}.json   permanent EPUB chapter text, never deleted by cache or download cleanup
+original_epubs/{novelId}.epub   original files (needed for backup restore)
+downloads/{novelId}/{sha256}.json   permanent downloads when storage_location = INTERNAL
+cache/chapters/{novelId}/{sha256}.json   transient reader cache (LRU, size cap)
+staging/                        temporary restore extraction
+```
 
-### Wiring
-8. **Every feature or setting is wired end to end:** a model field with a default, persistence, the UI that edits it, the code that consumes it (it must visibly work), backup and restore, and a test or manual check. If any step is missing, say so instead of shipping it.
-9. **One field per concept.** No duplicate fields for the same setting (for example margin type and margin dp).
-10. **Persistence of settings is by whole object.** Adding a field with a default must not need other code changes.
+- Chapter file names are SHA-256 hashes of the chapter id (ids can be URLs).
+- A custom SAF folder is a real location, not a mirror: downloads go to `NovelReader/downloads/{novelId}/{sha256}.json` under the SAF tree, and `chapters.storage_location` records where each file lives. Changing the folder never orphans old files. If permission is revoked, new writes fall back to `INTERNAL`. Cache the SAF directory handle, never call `findFile` per chapter.
 
-### Threading and performance
-11. **No file, SAF, JSON, database or network work on the main thread,** and none inside composition. `Application.onCreate` does no disk or database work.
-12. **Long-running work never lives in a composable scope.** Downloads, scraping and deletes run in the app scope, WorkManager or a ViewModel.
-13. **Never swallow exceptions.** Handle them or surface them in UI state. Always rethrow `CancellationException`.
-14. **Reading position is a paragraph plus a character offset,** saved debounced and off the main thread, only when it changes. Never store a page index.
-15. **Compose hygiene:** stable keys in lists, do not read fast-changing state (clock, battery, scroll) at a screen root, and sliders commit on release, not on every tick.
+## 5. Settings (already implemented in Stage 1a)
 
-### State and navigation
-16. **Routes carry IDs only.** Screens load data from the database through a ViewModel. Never pass `Novel` objects around or hold copies in `remember`.
-17. **UI state survives rotation and process recreation** (ViewModel plus `SavedStateHandle`, or `rememberSaveable` for local text fields).
-18. **One resume target function** decides which chapter "Continue" opens. Never build a chapter ID by guessing.
+`SettingsRepository` stores each settings group as one serialized JSON object (`ignoreUnknownKeys`, `coerceInputValues`, `encodeDefaults`), written atomically, with a `.corrupted` backup. Source of truth for fields is `SettingsModels.kt`. Decisions: one field per concept (`textAlign` replaces `isJustified`, `horizontalMarginDp` replaces `marginType`, `wifiOnly` replaces `allowMobileData`); defaults are Sepia reader theme, accent `#DEB887`, serif font, `wifiOnly = true`, concurrency 2, throttle delay 2.0s with jitter, `cacheSizeCapMb = 250`, default toolbar of at most 5 actions. `AppSettings` holds `libraryViewMode`, `librarySort`, `lastSeenChangelogVersion`, `setupStoragePromptShown`. Reset preserves `customDownloadLocationUri` and its display name.
 
-### UI consistency
-19. **No hardcoded colors, shapes, URLs or user agents.** Use theme colors and `MaterialTheme.shapes`. Buttons go through the shared button components, which take their shape from the theme. Repeated values live in one constant.
-20. **Reuse before adding.** No copy-pasted composables or functions. Delete dead code, unused parameters and unused imports in every file you touch.
-21. **Destructive actions confirm** (or offer undo) and report the result.
-22. **Accessibility basics:** touch targets of at least 48dp, content descriptions only when meaningful, text of at least 12sp.
+## 6. Layers
 
-### Security
-23. **WebView loads only http and https.** Handle render-process crashes and load errors.
-24. **FileProvider paths are narrow** (a cache subfolder only).
-25. **Validate archive entries** (zip-slip) before extracting. Never restore a folder permission that is no longer granted.
+UI → ViewModels → Repositories/engines → Room, `StorageResolver`/`ChapterStorage`, `SettingsRepository`, sources/parsers. ViewModels and repositories hold no `Context` or UI classes. All I/O runs on `Dispatchers.IO`.
 
-### Done means
-- `./gradlew assembleDebug` passes, the app launches and `./gradlew test` is green.
-- The summary lists the files changed, what was NOT changed, any temporary adapters added, and anything noticed but left alone.
-- A manual test checklist is provided for the user.
+## 7. Navigation
+
+Navigation Compose 2.8+ with `@Serializable` routes carrying IDs only: `Library`, `Browse`, `Downloads`, `Stats`, `NovelDetail(novelId)`, `Reader(novelId, chapterIndex)` (index, because chapter ids are URLs), `Settings(subPage)`, `WebBrowser(initialUrl)`. Each screen has a ViewModel using `SavedStateHandle`. Never pass `Novel` objects between screens.
+
+## 8. Storage tiers, cache and downloads
+
+- `chapters.storage_tier` is the single source of truth. Reading an uncached chapter writes to `cache/` with tier `CACHE` and updates `last_accessed_at`. **Reading never marks a chapter downloaded.**
+- Explicit downloads are written to the download location with tier `DOWNLOADED`. If the chapter is already cached, promote it by moving the file (no network).
+- LRU eviction: when the cache exceeds `cacheSizeCapMb`, evict `CACHE` rows ordered by `last_accessed_at`, then set their tier to `NONE`. `EPUB` rows are never selected by eviction or delete queries.
+- `CacheReconciler`: deletes unregistered files only inside `cache/` and `staging/`, and only if older than 10 minutes. Never touches `downloads/`, `epubs/`, `original_epubs/` or SAF. Missing SAF files are handled lazily on read miss (reset tier to `NONE`). Runs after a restore.
+- Downloads: one WorkManager `CoroutineWorker` (foreground, `dataSync`) drains `download_queue` ordered by `queued_at`. `NetworkType.UNMETERED` when `wifiOnly`. Concurrency from settings (default 2) with a WebView pool of the same size. Throttle with delay and jitter. Handle timeouts, HTTP 429 and network errors, with retry.
+
+## 9. Backup format
+
+A zip: `manifest.json` (schema version, app version, timestamp, counts), `data.json` (Room dump), `settings.json`, `covers/`, `original_epubs/`.
+Restore: preview from the manifest, then user chooses **Replace all** or **Merge** (newer read state wins). Extract files to `staging/`, import in one `database.withTransaction`, move files only after the commit succeeds. Reset `CACHE` and `DOWNLOADED` tiers to `NONE` (content is not in the backup), re-parse EPUBs from `original_epubs/`, drop `customDownloadLocationUri` if its permission is no longer granted, validate zip entry paths (zip-slip).
+
+## 10. Reading stats
+
+Sessions count foreground reading only, pause when the app is backgrounded or after 3 minutes idle, ignore position jumps (TOC, slider seek) when counting words, and clamp words per minute to 1000. Words come from paragraph and character progress deltas, not from chapter load.
+
+## 11. Libraries
+
+Room (runtime, ktx, compiler via KSP), Navigation Compose, lifecycle ViewModel Compose, kotlinx.serialization JSON, WorkManager, and for tests JUnit, Robolectric, AndroidX test core and coroutines-test. Set `testOptions.unitTests.isIncludeAndroidResources = true`. Never add JDK or SDK paths to `gradle.properties` or `local.properties`.
+
+## 12. Stages
+
+Every stage ends with: the app compiling and launching, tests passing, and a summary (files changed, what was NOT changed, temporary adapters and the stage that deletes each, manual test checklist). Stop after each stage.
+
+1. **1a Settings** (done): `SettingsRepository`, serializable settings models.
+2. **1b Room database.** Split in two:
+   - **1b-1:** entities, DAOs, database, converters, Robolectric tests. Not wired into the app.
+   - **1b-2:** `NovelRepository` uses Room (library, chapter metadata, read state, bookmarks, term replacements, custom sources, notifications). Delete `LibraryManager`. Thin temporary adapters for old code that still needs it.
+3. **2a** `AppContainer`, `NovelApplication` and the type-safe `NavHost`.
+4. **4** Storage engine: `StorageResolver`, `ChapterStorage`, `CacheReconciler`, LRU tests. Delete `StorageManager`.
+5. **2b** ViewModels: Library, Detail, Downloads, Settings (and the remove-from-library confirm with a delete-files option).
+6. **3** Reader and real stats: `ReaderViewModel`, every `ReaderSettings` field visibly wired, the Reader checklist from `docs/CARRYOVER.md`.
+7. **5** Download engine (WorkManager, notification permission, foreground service type, WebView pool). Delete `DownloadManager`.
+8. **6** Backup and restore (format above).
+9. **7a to 7h** Per-screen carry-over fixes from `docs/CARRYOVER.md`: Library, Detail and options, Browse, WebBrowser, Downloads, Settings/History/Stats/Profile/What's New, Theme and design system, EPUB parser and scraper scripts. Also delete `ConfirmNovelScreen.kt` and the first-run dummy seeding.
+
+## 13. Amendments (all approved)
+
+- **a.** The app compiles and runs after every stage; replaced managers are bridged by documented temporary adapters, deleted in the stage that replaces their last consumer.
+- **b.** Browse novels persist with `in_library = 0` and are purged on startup when unused (section 3).
+- **c.** `POST_NOTIFICATIONS` request and the `dataSync` foreground service manifest entries belong to Stage 5.
+- **d.** In Stage 3 every `ReaderSettings` field must visibly work in the Reader and be editable in the reader sheet and in Settings.
+- **e.** Stats safeguards (section 10).
+- **f.** Json options as in section 5. Room `exportSchema = true`.
+- **g.** Backup and security rules (section 9).
+- **h.** `Application.onCreate` does no disk or database work; the UI renders immediately and collects Flows.
+- **i.** Stage 7 follows `docs/CARRYOVER.md`.
+- **j.** Robolectric test configuration (section 11).
+
+## 14. Rules
+
+All rules in `docs/ARCHITECTURE_RULES.md` apply to every stage.

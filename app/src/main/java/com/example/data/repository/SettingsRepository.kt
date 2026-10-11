@@ -16,7 +16,9 @@ import com.example.data.model.ToolbarPosition
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -38,16 +40,19 @@ import java.io.File
  * - Whole-object persistence with kotlinx.serialization JSON (Rule 10, Amendment f)
  * - Safe file writes using temporary file and atomic rename (Rule 5)
  * - Coroutine-safe off-main-thread I/O on Dispatchers.IO (Rule 11)
+ * - Debounced disk writes to prevent I/O thrashing during frequent updates
  * - CancellationException rethrown without suppression (Rule 13)
  * - Single source of truth for unified settings concepts (Rule 9)
  */
 class SettingsRepository private constructor(
-    private val context: Context,
+    context: Context,
     private val ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO
 ) {
 
+    private val appContext: Context = context.applicationContext ?: context
     private val repoScope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private val writeMutex = Mutex()
+    private var writeJob: Job? = null
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -57,13 +62,13 @@ class SettingsRepository private constructor(
     }
 
     private val settingsFile: File
-        get() = File(context.filesDir, SETTINGS_FILE_NAME)
+        get() = File(appContext.filesDir, SETTINGS_FILE_NAME)
 
     private val tempSettingsFile: File
-        get() = File(context.filesDir, "$SETTINGS_FILE_NAME.tmp")
+        get() = File(appContext.filesDir, "$SETTINGS_FILE_NAME.tmp")
 
     private val corruptedSettingsFile: File
-        get() = File(context.filesDir, "$SETTINGS_FILE_NAME.corrupted")
+        get() = File(appContext.filesDir, "$SETTINGS_FILE_NAME.corrupted")
 
     // In-memory single source of truth
     private val _settings = MutableStateFlow(loadInitialSettings())
@@ -97,10 +102,25 @@ class SettingsRepository private constructor(
 
     // --- MUTATION METHODS ---
 
+    private fun scheduleDebouncedWrite(delayMs: Long = 300L) {
+        writeJob?.cancel()
+        writeJob = repoScope.launch {
+            if (delayMs > 0) {
+                delay(delayMs)
+            }
+            persistSettings(_settings.value)
+        }
+    }
+
+    suspend fun flush() = withContext(ioDispatcher) {
+        writeJob?.cancel()
+        persistSettings(_settings.value)
+    }
+
     suspend fun updateReaderSettings(transform: (ReaderSettings) -> ReaderSettings) {
         val updated = _settings.value.copy(reader = transform(_settings.value.reader))
         _settings.value = updated
-        persistSettings(updated)
+        scheduleDebouncedWrite()
     }
 
     suspend fun updateReaderSettings(newSettings: ReaderSettings) {
@@ -110,13 +130,13 @@ class SettingsRepository private constructor(
     fun updateReaderSettingsSync(newSettings: ReaderSettings) {
         val updated = _settings.value.copy(reader = newSettings)
         _settings.value = updated
-        repoScope.launch { persistSettings(updated) }
+        scheduleDebouncedWrite()
     }
 
     suspend fun updateThemeSettings(transform: (ThemeSettings) -> ThemeSettings) {
         val updated = _settings.value.copy(theme = transform(_settings.value.theme))
         _settings.value = updated
-        persistSettings(updated)
+        scheduleDebouncedWrite()
     }
 
     suspend fun updateThemeSettings(newSettings: ThemeSettings) {
@@ -126,13 +146,13 @@ class SettingsRepository private constructor(
     fun updateThemeSettingsSync(newSettings: ThemeSettings) {
         val updated = _settings.value.copy(theme = newSettings)
         _settings.value = updated
-        repoScope.launch { persistSettings(updated) }
+        scheduleDebouncedWrite()
     }
 
     suspend fun updateDownloadSettings(transform: (DownloadSettings) -> DownloadSettings) {
         val updated = _settings.value.copy(downloads = transform(_settings.value.downloads))
         _settings.value = updated
-        persistSettings(updated)
+        scheduleDebouncedWrite()
     }
 
     suspend fun updateDownloadSettings(newSettings: DownloadSettings) {
@@ -142,13 +162,13 @@ class SettingsRepository private constructor(
     fun updateDownloadSettingsSync(newSettings: DownloadSettings) {
         val updated = _settings.value.copy(downloads = newSettings)
         _settings.value = updated
-        repoScope.launch { persistSettings(updated) }
+        scheduleDebouncedWrite()
     }
 
     suspend fun updateNotificationSettings(transform: (NotificationSettings) -> NotificationSettings) {
         val updated = _settings.value.copy(notifications = transform(_settings.value.notifications))
         _settings.value = updated
-        persistSettings(updated)
+        scheduleDebouncedWrite()
     }
 
     suspend fun updateNotificationSettings(newSettings: NotificationSettings) {
@@ -158,31 +178,43 @@ class SettingsRepository private constructor(
     fun updateNotificationSettingsSync(newSettings: NotificationSettings) {
         val updated = _settings.value.copy(notifications = newSettings)
         _settings.value = updated
-        repoScope.launch { persistSettings(updated) }
+        scheduleDebouncedWrite()
     }
 
     suspend fun setLibraryGridView(isGrid: Boolean) {
         val updated = _settings.value.copy(isLibraryGridView = isGrid)
         _settings.value = updated
-        persistSettings(updated)
+        scheduleDebouncedWrite()
     }
 
     fun setLibraryGridViewSync(isGrid: Boolean) {
         val updated = _settings.value.copy(isLibraryGridView = isGrid)
         _settings.value = updated
-        repoScope.launch { persistSettings(updated) }
+        scheduleDebouncedWrite()
     }
 
     suspend fun resetAllSettings() {
-        val defaultSettings = AppSettings()
+        val currentDownloads = _settings.value.downloads
+        val defaultSettings = AppSettings(
+            downloads = DownloadSettings(
+                customDownloadLocationUri = currentDownloads.customDownloadLocationUri,
+                customDownloadLocationDisplayName = currentDownloads.customDownloadLocationDisplayName
+            )
+        )
         _settings.value = defaultSettings
-        persistSettings(defaultSettings)
+        scheduleDebouncedWrite(0L)
     }
 
     fun resetAllSettingsSync() {
-        val defaultSettings = AppSettings()
+        val currentDownloads = _settings.value.downloads
+        val defaultSettings = AppSettings(
+            downloads = DownloadSettings(
+                customDownloadLocationUri = currentDownloads.customDownloadLocationUri,
+                customDownloadLocationDisplayName = currentDownloads.customDownloadLocationDisplayName
+            )
+        )
         _settings.value = defaultSettings
-        repoScope.launch { persistSettings(defaultSettings) }
+        scheduleDebouncedWrite(0L)
     }
 
     // --- PERSISTENCE & SAFE WRITES ---
@@ -229,7 +261,7 @@ class SettingsRepository private constructor(
     }
 
     private fun migrateFromLegacyPrefs(): AppSettings {
-        val prefs = context.getSharedPreferences("novel_reader_prefs", Context.MODE_PRIVATE)
+        val prefs = appContext.getSharedPreferences("novel_reader_prefs", Context.MODE_PRIVATE)
         if (!prefs.contains("reader_theme") && !prefs.contains("app_theme_mode") && !prefs.contains("dl_wifi_only")) {
             return AppSettings()
         }
@@ -339,7 +371,7 @@ class SettingsRepository private constructor(
 
         fun getInstance(context: Context): SettingsRepository {
             return instance ?: synchronized(this) {
-                instance ?: SettingsRepository(context.applicationContext).also { instance = it }
+                instance ?: SettingsRepository(context.applicationContext ?: context).also { instance = it }
             }
         }
 

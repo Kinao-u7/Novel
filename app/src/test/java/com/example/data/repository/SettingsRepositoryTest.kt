@@ -142,4 +142,25 @@ class SettingsRepositoryTest {
         assertEquals(ReaderTextAlign.JUSTIFIED, decoded.reader.textAlign)
         assertEquals(3, decoded.downloads.simultaneousDownloads)
     }
+
+    @Test
+    fun resetPreserves_customDownloadLocationUri() {
+        val original = AppSettings(
+            downloads = com.example.data.model.DownloadSettings(
+                customDownloadLocationUri = "content://com.android.externalstorage.documents/tree/primary%3ANovels",
+                customDownloadLocationDisplayName = "Novels"
+            )
+        )
+        val resetSettings = AppSettings(
+            downloads = com.example.data.model.DownloadSettings(
+                customDownloadLocationUri = original.downloads.customDownloadLocationUri,
+                customDownloadLocationDisplayName = original.downloads.customDownloadLocationDisplayName
+            )
+        )
+        assertEquals("content://com.android.externalstorage.documents/tree/primary%3ANovels", resetSettings.downloads.customDownloadLocationUri)
+        assertEquals("Novels", resetSettings.downloads.customDownloadLocationDisplayName)
+        // Default values for other settings should be restored
+        assertEquals(ReaderTheme.SEPIA, resetSettings.reader.theme)
+        assertEquals(AppThemeMode.DARK, resetSettings.theme.themeMode)
+    }
 }
