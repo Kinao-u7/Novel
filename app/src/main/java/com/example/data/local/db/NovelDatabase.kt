@@ -63,7 +63,7 @@ abstract class NovelDatabase : RoomDatabase() {
                 DATABASE_NAME
             )
                 // Development only: remove fallbackToDestructiveMigration() and provide explicit Migration objects before production release.
-                .fallbackToDestructiveMigration()
+                .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
         }
 
