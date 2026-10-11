@@ -116,7 +116,7 @@ Sessions count foreground reading only, pause when the app is backgrounded or af
 
 ## 11. Libraries
 
-Room (runtime, ktx, compiler via KSP), Navigation Compose, lifecycle ViewModel Compose, kotlinx.serialization JSON, WorkManager, and for tests JUnit, Robolectric, AndroidX test core and coroutines-test. Set `testOptions.unitTests.isIncludeAndroidResources = true`. Never add JDK or SDK paths to `gradle.properties` or `local.properties`.
+Room (runtime, ktx, compiler via KSP), Navigation Compose, lifecycle ViewModel Compose, kotlinx.serialization JSON, WorkManager, and for tests JUnit, Robolectric, AndroidX test core and coroutines-test. Set `testOptions.unitTests.isIncludeAndroidResources = true`. Never add JDK or SDK paths to `gradle.properties` or `local.properties`. CI uses Java 21. Robolectric is pinned to sdk=34 via app/src/test/resources/robolectric.properties. Do not change either.
 
 ## 12. Stages
 
