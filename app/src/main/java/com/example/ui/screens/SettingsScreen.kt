@@ -2338,7 +2338,7 @@ private fun ReadingHistoryPage(
                             }
 
                             IconButton(
-                                onClick = { repository.clearNovelReadingHistory(novel.id) },
+                                onClick = { repository.clearNovelReadingHistoryAsync(novel.id) },
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Icon(

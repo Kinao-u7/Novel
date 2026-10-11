@@ -1186,25 +1186,27 @@ fun WebBrowserScreen(
                             val data = scrapedNovelData ?: return@Button
                             val resolvedCover = resolveAbsoluteUrl(data.sourceUrl, data.coverUrl)
                             if (repository != null) {
-                                val savedNovel = repository.saveWebScrapedNovel(
+                                repository.saveWebScrapedNovelAsync(
                                     scrapedData = data,
                                     customTitle = data.title,
                                     customAuthor = data.author,
                                     customSynopsis = data.description,
                                     customTags = data.genres,
-                                    customCoverUrl = resolvedCover
-                                )
-                                showAddNovelSheet = false
-                                scope.launch {
-                                    val result = snackbarHostState.showSnackbar(
-                                        message = "Added \"${savedNovel.title}\" to Library",
-                                        actionLabel = "Open",
-                                        duration = SnackbarDuration.Short
-                                    )
-                                    if (result == SnackbarResult.ActionPerformed) {
-                                        onNovelSaved?.invoke(savedNovel)
+                                    customCoverUrl = resolvedCover,
+                                    onResult = { savedNovel ->
+                                        showAddNovelSheet = false
+                                        scope.launch {
+                                            val result = snackbarHostState.showSnackbar(
+                                                message = "Added \"${savedNovel.title}\" to Library",
+                                                actionLabel = "Open",
+                                                duration = SnackbarDuration.Short
+                                            )
+                                            if (result == SnackbarResult.ActionPerformed) {
+                                                onNovelSaved?.invoke(savedNovel)
+                                            }
+                                        }
                                     }
-                                }
+                                )
                             } else if (onScrapedNovel != null) {
                                 showAddNovelSheet = false
                                 onScrapedNovel.invoke(data.copy(coverUrl = resolvedCover))

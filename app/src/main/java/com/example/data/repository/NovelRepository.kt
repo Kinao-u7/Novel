@@ -640,6 +640,35 @@ class NovelRepository(context: Context) {
         novelEntity.toModel()
     }
 
+    // TEMPORARY: remove in Stage 2b
+    fun saveWebScrapedNovelAsync(
+        scrapedData: ScrapedNovelData,
+        customTitle: String,
+        customAuthor: String,
+        customSynopsis: String,
+        customTags: List<String>,
+        customCoverUrl: String?,
+        onResult: (Novel) -> Unit
+    ) {
+        repoScope.launch(Dispatchers.IO) {
+            try {
+                val novel = saveWebScrapedNovel(
+                    scrapedData = scrapedData,
+                    customTitle = customTitle,
+                    customAuthor = customAuthor,
+                    customSynopsis = customSynopsis,
+                    customTags = customTags,
+                    customCoverUrl = customCoverUrl
+                )
+                withContext(Dispatchers.Main) {
+                    onResult(novel)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     // --- BOOKMARKS ---
 
     suspend fun addBookmark(bookmark: Bookmark) = withContext(Dispatchers.IO) {

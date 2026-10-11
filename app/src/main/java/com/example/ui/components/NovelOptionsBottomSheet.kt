@@ -120,9 +120,9 @@ fun NovelOptionsBottomSheet(
                 textColor = if (isInLibrary) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                 onClick = {
                     if (isInLibrary) {
-                        repository.removeFromLibrary(novel.id)
+                        repository.removeFromLibraryAsync(novel.id)
                     } else {
-                        repository.addToLibrary(novel.copy(inLibrary = true))
+                        repository.addToLibraryAsync(novel.copy(inLibrary = true))
                     }
                     onDismiss()
                 }
@@ -171,7 +171,7 @@ fun NovelOptionsBottomSheet(
                     title = "Clear from reading history",
                     iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
                     onClick = {
-                        repository.clearNovelReadingHistory(novel.id)
+                        repository.clearNovelReadingHistoryAsync(novel.id)
                         onDismiss()
                     }
                 )
@@ -187,7 +187,7 @@ fun NovelOptionsBottomSheet(
                 onDismiss()
             },
             onSave = { updatedTitle, updatedAuthor, updatedDesc, updatedCover ->
-                repository.updateNovelDetails(
+                repository.updateNovelDetailsAsync(
                     novelId = novel.id,
                     newTitle = updatedTitle,
                     newAuthor = updatedAuthor,

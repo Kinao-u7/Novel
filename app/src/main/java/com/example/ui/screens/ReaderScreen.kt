@@ -1262,7 +1262,7 @@ fun ReaderScreen(
                                         onAddBookmark = {
                                             if (chapterContent != null) {
                                                 val excerpt = displayParagraphs.firstOrNull()?.take(100) ?: "Chapter bookmark"
-                                                repository.addBookmark(
+                                                repository.addBookmarkAsync(
                                                     Bookmark(
                                                         id = "bm_${System.currentTimeMillis()}",
                                                         novelId = novel.id,
@@ -2083,7 +2083,7 @@ fun ReaderScreen(
                                         onAddBookmark = {
                                             if (chapterContent != null) {
                                                 val excerpt = displayParagraphs.firstOrNull()?.take(100) ?: "Chapter bookmark"
-                                                repository.addBookmark(
+                                                repository.addBookmarkAsync(
                                                     Bookmark(
                                                         id = "bm_${System.currentTimeMillis()}",
                                                         novelId = novel.id,
@@ -2289,7 +2289,7 @@ fun ReaderScreen(
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                         }
-                                        IconButton(onClick = { repository.removeBookmark(bm.id) }) {
+                                        IconButton(onClick = { repository.removeBookmarkAsync(bm.id) }) {
                                             Icon(Icons.Default.Close, contentDescription = "Delete", tint = readerColors.text.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
                                         }
                                     }

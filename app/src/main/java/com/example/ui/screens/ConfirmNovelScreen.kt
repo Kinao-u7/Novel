@@ -145,15 +145,17 @@ fun ConfirmNovelScreen(
                                 .map { it.trim() }
                                 .filter { it.isNotBlank() }
 
-                            val savedNovel = repository.saveWebScrapedNovel(
+                            repository.saveWebScrapedNovelAsync(
                                 scrapedData = scrapedData,
                                 customTitle = title,
                                 customAuthor = author,
                                 customSynopsis = synopsis,
                                 customTags = parsedTags,
-                                customCoverUrl = coverUrl.takeIf { it.isNotBlank() }
+                                customCoverUrl = coverUrl.takeIf { it.isNotBlank() },
+                                onResult = { savedNovel ->
+                                    onNovelSaved(savedNovel)
+                                }
                             )
-                            onNovelSaved(savedNovel)
                         },
                         modifier = Modifier
                             .fillMaxWidth()
