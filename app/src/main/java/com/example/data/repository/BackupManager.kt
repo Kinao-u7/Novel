@@ -7,8 +7,9 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
+// TEMPORARY: Stage 6 replaces this file with the new archive-based backup engine
 class BackupManager(
-    private val libraryManager: LibraryManager,
+    private val repository: NovelRepository,
     private val preferencesManager: PreferencesManager
 ) {
 
@@ -20,7 +21,7 @@ class BackupManager(
 
         if (categories.library) {
             val libArr = JSONArray()
-            for (novel in libraryManager.libraryNovels.value) {
+            for (novel in repository.libraryNovels.value) {
                 val obj = JSONObject().apply {
                     put("id", novel.id)
                     put("title", novel.title)
@@ -51,7 +52,7 @@ class BackupManager(
 
         if (categories.history) {
             val histArr = JSONArray()
-            for (novel in libraryManager.libraryNovels.value.filter { it.lastReadTimestamp > 0L }) {
+            for (novel in repository.libraryNovels.value.filter { it.lastReadTimestamp > 0L }) {
                 val hObj = JSONObject().apply {
                     put("novelId", novel.id)
                     put("lastReadChapterId", novel.lastReadChapterId)
@@ -67,7 +68,7 @@ class BackupManager(
 
         if (categories.readStatus) {
             val readObj = JSONObject()
-            for ((novelId, chapterSet) in libraryManager.readChapters.value) {
+            for ((novelId, chapterSet) in repository.readChapters.value) {
                 readObj.put(novelId, JSONArray(chapterSet.toList()))
             }
             root.put("readStatus", readObj)
@@ -75,7 +76,7 @@ class BackupManager(
 
         if (categories.categories) {
             val bmArr = JSONArray()
-            for (b in libraryManager.bookmarks.value) {
+            for (b in repository.bookmarks.value) {
                 bmArr.put(JSONObject().apply {
                     put("id", b.id)
                     put("novelId", b.novelId)
@@ -211,77 +212,61 @@ class BackupManager(
                         )
                     )
                 }
-                // Merge with existing library
-                val current = libraryManager.libraryNovels.value.toMutableList()
-                for (item in restoredList) {
-                    val idx = current.indexOfFirst { it.id == item.id }
-                    if (idx >= 0) {
-                        current[idx] = item
-                    } else {
-                        current.add(item)
-                    }
+                for (novel in restoredList) {
+                    repository.addToLibrary(novel)
                 }
-                libraryManager.setLibraryNovels(current)
             }
 
             if (root.has("history")) {
                 val histArr = root.getJSONArray("history")
-                val current = libraryManager.libraryNovels.value.toMutableList()
                 for (i in 0 until histArr.length()) {
                     val hObj = histArr.getJSONObject(i)
                     val nId = hObj.getString("novelId")
-                    val idx = current.indexOfFirst { it.id == nId }
-                    if (idx >= 0) {
-                        current[idx] = current[idx].copy(
-                            lastReadChapterId = if (hObj.has("lastReadChapterId") && !hObj.isNull("lastReadChapterId"))
-                                hObj.getString("lastReadChapterId").takeIf { it.isNotBlank() && it != "null" } else null,
-                            lastReadChapterTitle = if (hObj.has("lastReadChapterTitle") && !hObj.isNull("lastReadChapterTitle"))
-                                hObj.getString("lastReadChapterTitle").takeIf { it.isNotBlank() && it != "null" } else null,
-                            lastReadChapterIndex = hObj.optInt("lastReadChapterIndex", 0),
-                            lastReadScrollPosition = hObj.optInt("lastReadScrollPosition", 0),
-                            lastReadTimestamp = hObj.optLong("lastReadTimestamp", 0L)
+                    val chId = if (hObj.has("lastReadChapterId") && !hObj.isNull("lastReadChapterId"))
+                        hObj.getString("lastReadChapterId").takeIf { it.isNotBlank() && it != "null" } else null
+                    val timestamp = hObj.optLong("lastReadTimestamp", 0L)
+                    if (chId != null && timestamp > 0L) {
+                        repository.updateReadingProgress(
+                            novelId = nId,
+                            chapterId = chId,
+                            chapterTitle = hObj.optString("lastReadChapterTitle", ""),
+                            chapterIndex = hObj.optInt("lastReadChapterIndex", 0),
+                            scrollPosition = hObj.optInt("lastReadScrollPosition", 0)
                         )
                     }
                 }
-                libraryManager.setLibraryNovels(current)
             }
 
             if (root.has("readStatus")) {
                 val readObj = root.getJSONObject("readStatus")
-                val currentMap = libraryManager.readChapters.value.toMutableMap()
                 val keys = readObj.keys()
                 while (keys.hasNext()) {
-                    val k = keys.next()
-                    val arr = readObj.getJSONArray(k)
-                    val set = (0 until arr.length()).map { arr.getString(it) }.toSet()
-                    val existing = currentMap[k] ?: emptySet()
-                    currentMap[k] = existing + set
+                    val nId = keys.next()
+                    val arr = readObj.getJSONArray(nId)
+                    for (i in 0 until arr.length()) {
+                        val chId = arr.getString(i)
+                        repository.markChapterAsRead(nId, chId)
+                    }
                 }
-                libraryManager.setReadChapters(currentMap)
             }
 
             if (root.has("bookmarks")) {
                 val bmArr = root.getJSONArray("bookmarks")
-                val currentBookmarks = libraryManager.bookmarks.value.toMutableList()
                 for (i in 0 until bmArr.length()) {
                     val o = bmArr.getJSONObject(i)
-                    val bmId = o.getString("id")
-                    if (currentBookmarks.none { it.id == bmId }) {
-                        currentBookmarks.add(
-                            Bookmark(
-                                id = bmId,
-                                novelId = o.getString("novelId"),
-                                chapterId = o.getString("chapterId"),
-                                chapterTitle = o.getString("chapterTitle"),
-                                paragraphIndex = o.getInt("paragraphIndex"),
-                                excerpt = o.getString("excerpt"),
-                                note = o.optString("note", ""),
-                                timestamp = o.getLong("timestamp")
-                            )
+                    repository.addBookmark(
+                        Bookmark(
+                            id = o.getString("id"),
+                            novelId = o.getString("novelId"),
+                            chapterId = o.getString("chapterId"),
+                            chapterTitle = o.getString("chapterTitle"),
+                            paragraphIndex = o.getInt("paragraphIndex"),
+                            excerpt = o.getString("excerpt"),
+                            note = o.optString("note", ""),
+                            timestamp = o.getLong("timestamp")
                         )
-                    }
+                    )
                 }
-                libraryManager.setBookmarks(currentBookmarks)
             }
 
             if (root.has("termReplacements")) {

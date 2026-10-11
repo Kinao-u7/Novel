@@ -13,10 +13,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.random.Random
 
+// TEMPORARY: Stage 5 deletes this file and replaces it with WorkManager DownloadEngine
 class DownloadManager(
     private val storageManager: StorageManager,
-    private val preferencesManager: PreferencesManager,
-    private val libraryManager: LibraryManager
+    private val preferencesManager: PreferencesManager
 ) {
 
     private val _downloadedChapters = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
@@ -59,8 +59,6 @@ class DownloadManager(
         current[novelId] = set
         _downloadedChapters.value = current
         saveDownloadedChaptersIndex()
-
-        libraryManager.updateDownloadedCount(novelId, set.size)
     }
 
     fun markChaptersDownloaded(novelId: String, chapterIds: Set<String>) {
@@ -70,8 +68,6 @@ class DownloadManager(
         current[novelId] = set
         _downloadedChapters.value = current
         saveDownloadedChaptersIndex()
-
-        libraryManager.updateDownloadedCount(novelId, set.size)
     }
 
     suspend fun downloadChapter(
@@ -118,10 +114,8 @@ class DownloadManager(
         }
     }
 
-    suspend fun deleteDownloadedNovelChapters(novelId: String) = withContext(Dispatchers.IO) {
-        val novel = libraryManager.libraryNovels.value.find { it.id == novelId }
-        val isEpub = novel?.let { it.isEpub || it.sourceId == "local_epub" } ?: novelId.startsWith("epub_")
-        if (isEpub) {
+    suspend fun deleteDownloadedNovelChapters(novelId: String, isEpub: Boolean = false) = withContext(Dispatchers.IO) {
+        if (isEpub || novelId.startsWith("epub_")) {
             return@withContext
         }
 
@@ -132,25 +126,16 @@ class DownloadManager(
         current.remove(novelId)
         _downloadedChapters.value = current
         saveDownloadedChaptersIndex()
-
-        libraryManager.updateDownloadedCount(novelId, 0)
     }
 
-    suspend fun deleteAllDownloadedContent(): Int = withContext(Dispatchers.IO) {
-        val epubNovelIds = libraryManager.libraryNovels.value
-            .filter { it.isEpub || it.sourceId == "local_epub" || it.id.startsWith("epub_") }
-            .map { it.id }
-            .toSet()
-
+    suspend fun deleteAllDownloadedContent(epubNovelIds: Set<String> = emptySet()): Int = withContext(Dispatchers.IO) {
         val customUri = preferencesManager.downloadSettings.value.customDownloadLocationUri
         val count = storageManager.deleteAllDownloadedContent(customUri, epubNovelIds)
 
-        // Keep downloaded records for EPUBs, remove all other novels
         val retained = _downloadedChapters.value.filterKeys { epubNovelIds.contains(it) }
         _downloadedChapters.value = retained
         saveDownloadedChaptersIndex()
 
-        libraryManager.resetNonEpubDownloadedCounts(epubNovelIds)
         count
     }
 

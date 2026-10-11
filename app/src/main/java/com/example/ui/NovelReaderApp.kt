@@ -116,25 +116,6 @@ fun NovelReaderApp(
         showSetupStoragePrompt = false
     }
 
-    // First run initialization: pre-seed featured novels into library if totally empty
-    LaunchedEffect(Unit) {
-        if (repo.libraryNovels.value.isEmpty()) {
-            val defaultSource = SourceManager.getActiveSource()
-            val popular = defaultSource.getPopularNovels()
-            popular.firstOrNull()?.let { firstNovel ->
-                repo.addToLibrary(firstNovel)
-                // Download first chapter for instant offline reading
-                val chapters = repo.getChapterList(firstNovel)
-                chapters.firstOrNull()?.let { ch1 ->
-                    repo.downloadChapter(firstNovel, ch1)
-                }
-            }
-            popular.getOrNull(1)?.let { secondNovel ->
-                repo.addToLibrary(secondNovel)
-            }
-        }
-    }
-
     // Handle Android Back Navigation
     BackHandler(enabled = currentScreen !is Screen.Main) {
         when (val s = currentScreen) {

@@ -1,5 +1,6 @@
 package com.example.data.local.db.dao
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -7,6 +8,11 @@ import androidx.room.Query
 import androidx.room.Transaction
 import com.example.data.local.db.entity.ChapterEntity
 import kotlinx.coroutines.flow.Flow
+
+data class ChapterReadPair(
+    @ColumnInfo(name = "novel_id") val novelId: String,
+    val id: String
+)
 
 @Dao
 interface ChapterDao {
@@ -118,6 +124,36 @@ interface ChapterDao {
 
     @Query("SELECT COUNT(*) FROM chapters WHERE novel_id = :novelId AND storage_tier = 'DOWNLOADED'")
     suspend fun getDownloadedCount(novelId: String): Int
+
+    @Query("SELECT novel_id, id FROM chapters WHERE is_read = 1")
+    fun getAllReadChaptersFlow(): Flow<List<ChapterReadPair>>
+
+    @Query("SELECT id FROM chapters WHERE novel_id = :novelId AND is_read = 1")
+    fun getReadChapterIdsFlow(novelId: String): Flow<List<String>>
+
+    @Query("SELECT novel_id, id FROM chapters WHERE storage_tier IN ('DOWNLOADED', 'EPUB')")
+    fun getAllDownloadedChaptersFlow(): Flow<List<ChapterReadPair>>
+
+    @Query("UPDATE chapters SET is_read = 1 WHERE novel_id = :novelId AND id = :id AND is_read = 0")
+    suspend fun markChapterRead(novelId: String, id: String): Int
+
+    @Query("UPDATE chapters SET read_paragraph_index = :paragraphIndex, read_char_offset = :charOffset WHERE novel_id = :novelId AND id = :id")
+    suspend fun updatePosition(novelId: String, id: String, paragraphIndex: Int, charOffset: Int): Int
+
+    @Query("UPDATE chapters SET storage_tier = CASE WHEN storage_tier = 'NONE' THEN 'CACHE' ELSE storage_tier END, last_accessed_at = :lastAccessedAt WHERE novel_id = :novelId AND id = :id")
+    suspend fun recordChapterAccess(novelId: String, id: String, lastAccessedAt: Long = System.currentTimeMillis()): Int
+
+    @Query("UPDATE chapters SET storage_tier = 'DOWNLOADED', storage_location = 'INTERNAL', last_accessed_at = :timestamp WHERE novel_id = :novelId AND id = :id")
+    suspend fun markChapterDownloaded(novelId: String, id: String, timestamp: Long = System.currentTimeMillis()): Int
+
+    @Query("UPDATE chapters SET storage_tier = 'DOWNLOADED', storage_location = 'INTERNAL', last_accessed_at = :timestamp WHERE novel_id = :novelId AND id IN (:ids)")
+    suspend fun markChaptersDownloaded(novelId: String, ids: Collection<String>, timestamp: Long = System.currentTimeMillis()): Int
+
+    @Query("UPDATE chapters SET storage_tier = 'NONE' WHERE novel_id = :novelId AND storage_tier IN ('DOWNLOADED', 'CACHE')")
+    suspend fun deleteNovelDownloads(novelId: String): Int
+
+    @Query("UPDATE chapters SET storage_tier = 'NONE' WHERE storage_tier IN ('DOWNLOADED', 'CACHE')")
+    suspend fun deleteAllDownloads(): Int
 
     @Query("DELETE FROM chapters WHERE novel_id = :novelId")
     suspend fun deleteChaptersForNovel(novelId: String): Int

@@ -66,28 +66,6 @@ class PreferencesManager(
         prefs.edit().putBoolean("library_is_grid_view", isGrid).apply()
     }
 
-    fun loadLibraryJson(): String? {
-        return prefs.getString("library_novels_json", null)
-    }
-
-    fun saveLibraryJson(jsonString: String) {
-        prefs.edit().putString("library_novels_json", jsonString).apply()
-    }
-
-    fun saveLibraryBackupJson(jsonString: String) {
-        prefs.edit().putString("library_novels_json_bak", jsonString).apply()
-    }
-
-    fun loadLibraryBackupJson(): String? {
-        return prefs.getString("library_novels_json_bak", null)
-    }
-
-    fun saveCorruptedLibraryBackup(rawString: String) {
-        if (!prefs.contains("library_novels_json_corrupted")) {
-            prefs.edit().putString("library_novels_json_corrupted", rawString).apply()
-        }
-    }
-
     fun isEpubCoversMigrated(): Boolean {
         return prefs.getBoolean("epub_covers_migrated", false)
     }
@@ -102,22 +80,6 @@ class PreferencesManager(
 
     fun saveDownloadedIndexJson(jsonString: String) {
         prefs.edit().putString("downloaded_index_json", jsonString).apply()
-    }
-
-    fun loadReadChaptersJson(): String? {
-        return prefs.getString("read_chapters_json", null)
-    }
-
-    fun saveReadChaptersJson(jsonString: String) {
-        prefs.edit().putString("read_chapters_json", jsonString).apply()
-    }
-
-    fun loadBookmarksJson(): String? {
-        return prefs.getString("bookmarks_json", null)
-    }
-
-    fun saveBookmarksJson(jsonString: String) {
-        prefs.edit().putString("bookmarks_json", jsonString).apply()
     }
 
     // --- READER SETTINGS ---
