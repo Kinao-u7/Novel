@@ -23,6 +23,7 @@ import com.example.data.source.webscrape.ScrapedNovelData
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -30,6 +31,7 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -848,12 +850,37 @@ class NovelRepositoryTest {
             )
         }
 
-        val cappedList = withTimeout(5000L) {
-            repository.notifications.first { it.size == 200 }
+        val cappedList = try {
+            withTimeout(5000L) {
+                repository.notifications.first { list ->
+                    list.size == 200 && list.first().id == "bulk_notif_250"
+                }
+            }
+        } catch (e: TimeoutCancellationException) {
+            val current = repository.notifications.value
+            val firstId = current.firstOrNull()?.id
+            val lastId = current.lastOrNull()?.id
+            fail("Timed out waiting for notifications: size=${current.size}, first=$firstId, last=$lastId")
         }
         assertEquals(200, cappedList.size)
         assertEquals("bulk_notif_250", cappedList.first().id)
         assertEquals("bulk_notif_51", cappedList.last().id)
+
+        // Oldest 50 bulk notifications (1..50) and earlier 3 notifications are gone from Flow
+        for (i in 1..50) {
+            assertTrue(cappedList.none { it.id == "bulk_notif_$i" })
+        }
+        assertTrue(cappedList.none { it.id == firstId || it.id.startsWith("Notif ") })
+
+        // Check directly through the DAO with a one-shot query (not the Flow)
+        val daoList = database.notificationDao().getAllNotifications()
+        assertEquals(200, daoList.size)
+        assertEquals("bulk_notif_250", daoList.first().id)
+        assertEquals("bulk_notif_51", daoList.last().id)
+        for (i in 1..50) {
+            assertTrue(daoList.none { it.id == "bulk_notif_$i" })
+        }
+        assertTrue(daoList.none { it.id == firstId || it.id.startsWith("Notif ") })
 
         // Clear all notifications
         repository.clear()
