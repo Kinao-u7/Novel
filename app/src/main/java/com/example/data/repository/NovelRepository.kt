@@ -216,30 +216,8 @@ class NovelRepository(context: Context) {
         novelDao.upsertSafe(entity)
     }
 
-    // TODO: remove in Stage 2b
-    fun addToLibraryAsync(novel: Novel) {
-        repoScope.launch {
-            try {
-                addToLibrary(novel)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
     suspend fun removeFromLibrary(novelId: String) = withContext(Dispatchers.IO) {
         novelDao.setInLibrary(novelId, false)
-    }
-
-    // TODO: remove in Stage 2b
-    fun removeFromLibraryAsync(novelId: String) {
-        repoScope.launch {
-            try {
-                removeFromLibrary(novelId)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
     }
 
     suspend fun removeNovelCompletely(novelId: String) = withContext(Dispatchers.IO) {
@@ -247,17 +225,6 @@ class NovelRepository(context: Context) {
         novelDao.deleteById(novelId)
         val customUri = settingsRepository.downloadSettings.value.customDownloadLocationUri
         storageManager.deleteNovelChapters(novelId, isEpub = false, customUriStr = customUri)
-    }
-
-    // TODO: remove in Stage 2b
-    fun removeNovelCompletelyAsync(novelId: String) {
-        repoScope.launch {
-            try {
-                removeNovelCompletely(novelId)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
     }
 
     suspend fun updateNovelDetails(
@@ -276,37 +243,9 @@ class NovelRepository(context: Context) {
         )
     }
 
-    // TODO: remove in Stage 2b
-    fun updateNovelDetailsAsync(
-        novelId: String,
-        newTitle: String,
-        newAuthor: String,
-        newDescription: String,
-        newCoverUrl: String?
-    ) {
-        repoScope.launch {
-            try {
-                updateNovelDetails(novelId, newTitle, newAuthor, newDescription, newCoverUrl)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
     suspend fun clearNovelReadingHistory(novelId: String) = withContext(Dispatchers.IO) {
         // Keeps last_read_chapter_id, sets last_read_timestamp = 0
         novelDao.clearLastReadTimestamp(novelId)
-    }
-
-    // TODO: remove in Stage 2b
-    fun clearNovelReadingHistoryAsync(novelId: String) {
-        repoScope.launch {
-            try {
-                clearNovelReadingHistory(novelId)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
     }
 
     fun isNovelInLibrary(novelId: String): Boolean {
@@ -339,44 +278,12 @@ class NovelRepository(context: Context) {
         }
     }
 
-    // TODO: remove in Stage 2b
-    fun updateReadingProgressAsync(
-        novelId: String,
-        chapterId: String,
-        chapterTitle: String = "",
-        chapterIndex: Int = 0,
-        scrollPosition: Int = 0,
-        wordsReadDelta: Int = 0
-    ) {
-        repoScope.launch {
-            try {
-                updateReadingProgress(novelId, chapterId, chapterTitle, chapterIndex, scrollPosition, wordsReadDelta)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
-    // TODO: remove in Stage 2b
-    fun persistReadingProgressAsync(
-        novelId: String,
-        chapterId: String,
-        chapterTitle: String = "",
-        chapterIndex: Int = 0,
-        scrollPosition: Int = 0,
-        wordsReadDelta: Int = 0
-    ) = updateReadingProgressAsync(novelId, chapterId, chapterTitle, chapterIndex, scrollPosition, wordsReadDelta)
-
     fun getChapterReadingPosition(novelId: String, chapterId: String): Int {
         // Read fast cached position
         return preferencesManager.getChapterReadingPosition(novelId, chapterId)
     }
 
     fun saveChapterReadingPosition(novelId: String, chapterId: String, position: Int) {
-        saveChapterReadingPositionDebounced(novelId, chapterId, position, 0)
-    }
-
-    fun saveChapterReadingPositionAsync(novelId: String, chapterId: String, position: Int) {
         saveChapterReadingPositionDebounced(novelId, chapterId, position, 0)
     }
 
@@ -412,17 +319,6 @@ class NovelRepository(context: Context) {
     suspend fun markChapterAsRead(novelId: String, chapterId: String) = withContext(Dispatchers.IO) {
         // markChapterAsRead only sets is_read (skips write if already read) and never touches last_read_*
         chapterDao.markChapterRead(novelId, chapterId)
-    }
-
-    // TODO: remove in Stage 2b
-    fun markChapterAsReadAsync(novelId: String, chapterId: String) {
-        repoScope.launch {
-            try {
-                markChapterAsRead(novelId, chapterId)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
     }
 
     fun getReadChapterIds(novelId: String): Flow<Set<String>> {
@@ -693,65 +589,14 @@ class NovelRepository(context: Context) {
         novelEntity.toModel()
     }
 
-    // TEMPORARY: remove in Stage 2b
-    fun saveWebScrapedNovelAsync(
-        scrapedData: ScrapedNovelData,
-        customTitle: String,
-        customAuthor: String,
-        customSynopsis: String,
-        customTags: List<String>,
-        customCoverUrl: String?,
-        onResult: (Novel) -> Unit
-    ) {
-        repoScope.launch(Dispatchers.IO) {
-            try {
-                val novel = saveWebScrapedNovel(
-                    scrapedData = scrapedData,
-                    customTitle = customTitle,
-                    customAuthor = customAuthor,
-                    customSynopsis = customSynopsis,
-                    customTags = customTags,
-                    customCoverUrl = customCoverUrl
-                )
-                withContext(Dispatchers.Main) {
-                    onResult(novel)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
     // --- BOOKMARKS ---
 
     suspend fun addBookmark(bookmark: Bookmark) = withContext(Dispatchers.IO) {
         bookmarkDao.insertIgnore(bookmark.toEntity())
     }
 
-    // TODO: remove in Stage 2b
-    fun addBookmarkAsync(bookmark: Bookmark) {
-        repoScope.launch {
-            try {
-                addBookmark(bookmark)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
     suspend fun removeBookmark(bookmarkId: String) = withContext(Dispatchers.IO) {
         bookmarkDao.deleteById(bookmarkId)
-    }
-
-    // TODO: remove in Stage 2b
-    fun removeBookmarkAsync(bookmarkId: String) {
-        repoScope.launch {
-            try {
-                removeBookmark(bookmarkId)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
     }
 
     fun getBookmarksForNovel(novelId: String): List<Bookmark> {
@@ -821,50 +666,6 @@ class NovelRepository(context: Context) {
         termReplacementDao.setEnabled(id, isEnabled)
     }
 
-    // TEMPORARY: remove when old screens are replaced
-    fun addTermReplacementRule(rule: TermReplacementRule) {
-        repoScope.launch(Dispatchers.IO) {
-            try {
-                addTermReplacement(rule)
-            } catch (e: Exception) {
-                android.util.Log.e("NovelRepository", "Failed to add term replacement rule", e)
-            }
-        }
-    }
-
-    // TEMPORARY: remove when old screens are replaced
-    fun updateTermReplacementRule(rule: TermReplacementRule) {
-        repoScope.launch(Dispatchers.IO) {
-            try {
-                updateTermReplacement(rule)
-            } catch (e: Exception) {
-                android.util.Log.e("NovelRepository", "Failed to update term replacement rule", e)
-            }
-        }
-    }
-
-    // TEMPORARY: remove when old screens are replaced
-    fun deleteTermReplacementRule(id: String) {
-        repoScope.launch(Dispatchers.IO) {
-            try {
-                deleteTermReplacement(id)
-            } catch (e: Exception) {
-                android.util.Log.e("NovelRepository", "Failed to delete term replacement rule", e)
-            }
-        }
-    }
-
-    // TEMPORARY: remove when old screens are replaced
-    fun toggleTermReplacementRule(id: String, isEnabled: Boolean) {
-        repoScope.launch(Dispatchers.IO) {
-            try {
-                setTermReplacementEnabled(id, isEnabled)
-            } catch (e: Exception) {
-                android.util.Log.e("NovelRepository", "Failed to toggle term replacement rule", e)
-            }
-        }
-    }
-
     // --- APP THEME & ACCENT SETTINGS ---
 
     fun updateThemeSettings(settings: ThemeSettings) = settingsRepository.updateThemeSettingsSync(settings)
@@ -911,28 +712,6 @@ class NovelRepository(context: Context) {
 
     suspend fun clear(): Int = withContext(Dispatchers.IO) {
         notificationDao.clearAll()
-    }
-
-    // TEMPORARY: remove when old screens are replaced
-    fun addNotification(title: String, message: String, type: String = "info") {
-        repoScope.launch(Dispatchers.IO) {
-            try {
-                postNotification(title, message, type)
-            } catch (e: Exception) {
-                android.util.Log.e("NovelRepository", "Failed to add notification", e)
-            }
-        }
-    }
-
-    // TEMPORARY: remove when old screens are replaced
-    fun clearNotifications() {
-        repoScope.launch(Dispatchers.IO) {
-            try {
-                clear()
-            } catch (e: Exception) {
-                android.util.Log.e("NovelRepository", "Failed to clear notifications", e)
-            }
-        }
     }
 
     fun updateNotificationSettings(settings: NotificationSettings) = settingsRepository.updateNotificationSettingsSync(settings)
@@ -996,36 +775,6 @@ class NovelRepository(context: Context) {
         customSourceDao.deleteById(id)
     }
 
-    // TEMPORARY: remove when old screens are replaced
-    fun addCustomSource(name: String, url: String, language: String = "English", description: String = "Custom web source") {
-        repoScope.launch(Dispatchers.IO) {
-            try {
-                when (val result = addCustomSource(name, url, language, description)) {
-                    is CustomSourceResult.Added -> { /* Success */ }
-                    is CustomSourceResult.InvalidUrl -> {
-                        android.util.Log.w("NovelRepository", "Rejected custom source: Invalid URL '$url'")
-                    }
-                    is CustomSourceResult.Duplicate -> {
-                        android.util.Log.w("NovelRepository", "Rejected custom source: Duplicate URL '$url'")
-                    }
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("NovelRepository", "Failed to add custom source", e)
-            }
-        }
-    }
-
-    // TEMPORARY: remove when old screens are replaced
-    fun removeCustomSource(id: String) {
-        repoScope.launch(Dispatchers.IO) {
-            try {
-                deleteCustomSource(id)
-            } catch (e: Exception) {
-                android.util.Log.e("NovelRepository", "Failed to remove custom source", e)
-            }
-        }
-    }
-
     // --- REQUESTED SOURCES ---
 
     fun getRequestedSourcesFlow(): Flow<List<RequestedSourceEntity>> {
@@ -1041,17 +790,6 @@ class NovelRepository(context: Context) {
             requestedAt = System.currentTimeMillis()
         )
         requestedSourceDao.insertIgnore(entity)
-    }
-
-    // TEMPORARY: remove when old screens are replaced
-    fun requestSource(siteName: String, url: String) {
-        repoScope.launch(Dispatchers.IO) {
-            try {
-                addRequestedSource(siteName, url)
-            } catch (e: Exception) {
-                android.util.Log.e("NovelRepository", "Failed to request source", e)
-            }
-        }
     }
 
     // --- STARTUP PURGE ---

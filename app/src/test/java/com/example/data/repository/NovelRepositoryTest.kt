@@ -855,6 +855,18 @@ class NovelRepositoryTest {
     }
 
     @Test
+    fun requestedSources_addsAndFormatsCorrectly() = runBlocking {
+        repository.addRequestedSource("Source Without URL", "")
+        repository.addRequestedSource("Source With URL", "https://example.com")
+
+        val requests = withTimeout(5000L) {
+            repository.requestedSources.first { it.size >= 2 }
+        }
+        assertTrue(requests.contains("Source Without URL"))
+        assertTrue(requests.contains("Source With URL (https://example.com)"))
+    }
+
+    @Test
     fun startupPurge_removesOnlyUnusedNovels() = runBlocking {
         // Novel 1: unused browse novel (in_library = 0, last_read = 0, no chapters, no bookmarks) -> PURGED
         val n1 = testNovel(id = "n_unused", inLibrary = false, lastReadTimestamp = 0L)

@@ -276,7 +276,7 @@ class BackupManager(
                     val o = trArr.getJSONObject(i)
                     val rId = o.getString("id")
                     if (currentRules.none { it.id == rId }) {
-                        repository.addTermReplacementRule(
+                        repository.addTermReplacement(
                             TermReplacementRule(
                                 id = rId,
                                 original = o.getString("original"),

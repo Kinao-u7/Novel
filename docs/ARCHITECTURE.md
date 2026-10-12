@@ -146,6 +146,7 @@ Every stage ends with: the app compiling and launching, tests passing, and a sum
 - **h.** `Application.onCreate` does no disk or database work; the UI renders immediately and collects Flows.
 - **i.** Stage 7 follows `docs/CARRYOVER.md`.
 - **j.** Robolectric test configuration (section 11).
+- **k.** The old UI has been moved to `legacy/ui` (reference only, not compiled); new UI screens and ViewModels are rewritten from scratch in subsequent stages. Tests are the verification until then.
 
 ## 14. Rules
 
