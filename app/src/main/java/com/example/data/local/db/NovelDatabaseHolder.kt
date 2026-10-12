@@ -19,6 +19,26 @@ object NovelDatabaseHolder {
     }
 
     /**
+     * For tests only: sets an explicit (e.g. in-memory) database instance.
+     */
+    fun setInstanceForTesting(db: NovelDatabase) {
+        synchronized(this) {
+            instance?.close()
+            instance = db
+        }
+    }
+
+    /**
+     * For tests only: clears and closes any testing database instance.
+     */
+    fun clearInstanceForTesting() {
+        synchronized(this) {
+            instance?.close()
+            instance = null
+        }
+    }
+
+    /**
      * For unit tests requiring an isolated in-memory database instance.
      */
     fun createInMemory(context: Context): NovelDatabase {

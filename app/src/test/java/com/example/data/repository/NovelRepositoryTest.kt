@@ -52,30 +52,127 @@ class NovelRepositoryTest {
         database.close()
     }
 
-    private fun createTestNovel(
+    private fun testNovel(
         id: String = "test_novel_1",
         title: String = "Test Novel",
+        author: String = "Author",
+        coverUrl: String? = null,
+        description: String = "Description",
+        genres: List<String> = listOf("Fantasy"),
+        status: String = "Ongoing",
+        sourceId: String = "test_src",
+        sourceName: String = "Test Source",
         inLibrary: Boolean = true,
+        lastReadChapterId: String? = null,
+        lastReadChapterTitle: String? = null,
+        lastReadChapterIndex: Int = 0,
+        lastReadScrollPosition: Int = 0,
+        totalChapters: Int = 10,
+        downloadedChaptersCount: Int = 0,
+        rating: Float = 4.5f,
         lastReadTimestamp: Long = 0L,
-        sourceId: String = "test_src"
-    ): Novel {
-        return Novel(
-            id = id,
-            title = title,
-            author = "Author",
-            coverUrl = null,
-            description = "Description",
-            genres = listOf("Fantasy"),
-            status = "Ongoing",
-            sourceId = sourceId,
-            sourceName = "Test Source",
-            inLibrary = inLibrary,
-            totalChapters = 10,
-            downloadedChaptersCount = 0,
-            rating = 4.5f,
-            lastReadTimestamp = lastReadTimestamp
-        )
-    }
+        isEpub: Boolean = false,
+        rawId: String? = null,
+        locale: String? = null,
+        sourceUrl: String? = null
+    ): Novel = Novel(
+        id = id,
+        title = title,
+        author = author,
+        coverUrl = coverUrl,
+        description = description,
+        genres = genres,
+        status = status,
+        sourceId = sourceId,
+        sourceName = sourceName,
+        inLibrary = inLibrary,
+        lastReadChapterId = lastReadChapterId,
+        lastReadChapterTitle = lastReadChapterTitle,
+        lastReadChapterIndex = lastReadChapterIndex,
+        lastReadScrollPosition = lastReadScrollPosition,
+        totalChapters = totalChapters,
+        downloadedChaptersCount = downloadedChaptersCount,
+        rating = rating,
+        lastReadTimestamp = lastReadTimestamp,
+        isEpub = isEpub,
+        rawId = rawId,
+        locale = locale,
+        sourceUrl = sourceUrl
+    )
+
+    private fun testChapter(
+        id: String = "test_ch_1",
+        novelId: String = "test_novel_1",
+        title: String = "Test Chapter 1",
+        chapterIndex: Int = 1,
+        releaseDate: String = "Recent",
+        isDownloaded: Boolean = false,
+        isRead: Boolean = false,
+        wordCount: Int = 500
+    ): Chapter = Chapter(
+        id = id,
+        novelId = novelId,
+        title = title,
+        chapterIndex = chapterIndex,
+        releaseDate = releaseDate,
+        isDownloaded = isDownloaded,
+        isRead = isRead,
+        wordCount = wordCount
+    )
+
+    private fun testBookmark(
+        id: String = "test_bm_1",
+        novelId: String = "test_novel_1",
+        chapterId: String = "test_ch_1",
+        chapterTitle: String = "Chapter 1",
+        paragraphIndex: Int = 0,
+        excerpt: String = "Excerpt",
+        note: String = "",
+        timestamp: Long = 1000L
+    ): Bookmark = Bookmark(
+        id = id,
+        novelId = novelId,
+        chapterId = chapterId,
+        chapterTitle = chapterTitle,
+        paragraphIndex = paragraphIndex,
+        excerpt = excerpt,
+        note = note,
+        timestamp = timestamp
+    )
+
+    private fun testScrapedChapter(
+        title: String = "Ch 1",
+        url: String = "https://example.com/ch1",
+        order: Int = 1
+    ): ScrapedChapter = ScrapedChapter(
+        title = title,
+        url = url,
+        order = order
+    )
+
+    private fun testScrapedNovelData(
+        title: String = "Test Web Novel",
+        author: String = "Author",
+        coverUrl: String? = null,
+        description: String = "Description",
+        genres: List<String> = emptyList(),
+        chapters: List<ScrapedChapter> = listOf(testScrapedChapter()),
+        sourceUrl: String = "https://example.com/novel/1",
+        rawId: String? = null,
+        locale: String? = null,
+        rating: Float? = null
+    ): ScrapedNovelData = ScrapedNovelData(
+        title = title,
+        author = author,
+        coverUrl = coverUrl,
+        description = description,
+        genres = genres,
+        chapters = chapters,
+        sourceUrl = sourceUrl,
+        rawId = rawId,
+        locale = locale,
+        rating = rating
+    )
 
     @Test
     fun libraryNovels_startsEmpty_andReflectsInLibraryNovelsOnly() = runBlocking {
@@ -84,7 +181,7 @@ class NovelRepositoryTest {
         assertTrue(initial.isEmpty())
 
         // Add novel to library
-        val novel = createTestNovel(id = "novel_1", inLibrary = true)
+        val novel = testNovel(id = "novel_1", inLibrary = true)
         repository.addToLibrary(novel)
 
         val updated = repository.libraryNovels.first { it.isNotEmpty() }
@@ -93,7 +190,7 @@ class NovelRepositoryTest {
         assertTrue(repository.isNovelInLibrary("novel_1"))
 
         // Add novel with inLibrary = false
-        val browseNovel = createTestNovel(id = "novel_2", inLibrary = false)
+        val browseNovel = testNovel(id = "novel_2", inLibrary = false)
         database.novelDao().upsertSafe(browseNovel.toEntity())
 
         // Library must still contain only 1 novel
@@ -104,7 +201,7 @@ class NovelRepositoryTest {
 
     @Test
     fun removeFromLibrary_setsInLibraryFalse_doesNotDeleteRow_removeCompletelyDeletesRow() = runBlocking {
-        val novel = createTestNovel(id = "novel_1", inLibrary = true)
+        val novel = testNovel(id = "novel_1", inLibrary = true)
         repository.addToLibrary(novel)
         repository.libraryNovels.first { it.isNotEmpty() }
 
@@ -127,7 +224,7 @@ class NovelRepositoryTest {
 
     @Test
     fun chapterRefresh_preservesReadState_position_tier_andBookmarks() = runBlocking {
-        val novel = createTestNovel(id = "novel_refresh", inLibrary = true, sourceId = "test_refresh_src")
+        val novel = testNovel(id = "novel_refresh", inLibrary = true, sourceId = "test_refresh_src")
         repository.addToLibrary(novel)
 
         // Insert initial chapter with custom read state, position, and tier
@@ -149,16 +246,15 @@ class NovelRepositoryTest {
         database.chapterDao().insertIgnore(initialChapter)
 
         // Add a bookmark on this chapter
-        val bookmark = Bookmark(
+        val bookmark = testBookmark(
             id = "bm_refresh_1",
             novelId = "novel_refresh",
             chapterId = "ch_1",
             chapterTitle = "Chapter 1 Initial",
             paragraphIndex = 12,
-            charOffset = 45,
             excerpt = "Important quote",
             note = "Note on quote",
-            createdAt = 1000L
+            timestamp = 1000L
         )
         repository.addBookmark(bookmark)
 
@@ -175,7 +271,7 @@ class NovelRepositoryTest {
             override suspend fun searchNovels(query: String, page: Int) = emptyList<Novel>()
             override suspend fun getNovelDetails(novelId: String) = novel
             override suspend fun getChapterList(novelId: String): List<Chapter> = listOf(
-                Chapter(
+                testChapter(
                     id = "ch_1",
                     novelId = novelId,
                     title = "Chapter 1 Updated Title",
@@ -185,7 +281,7 @@ class NovelRepositoryTest {
                     isRead = false,
                     wordCount = 999
                 ),
-                Chapter(
+                testChapter(
                     id = "ch_2",
                     novelId = novelId,
                     title = "Chapter 2 New",
@@ -231,7 +327,7 @@ class NovelRepositoryTest {
 
     @Test
     fun downloadedCount_isDerivedFromTiers_downloadedAndEpubCount_cacheAndNoneDoNot() = runBlocking {
-        val novel = createTestNovel(id = "novel_tiers", inLibrary = true)
+        val novel = testNovel(id = "novel_tiers", inLibrary = true)
         repository.addToLibrary(novel)
 
         val chDownloaded = ChapterEntity(
@@ -284,8 +380,9 @@ class NovelRepositoryTest {
 
     @Test
     fun readingChapter_setsCache_andNeverDownloaded() = runBlocking {
-        val novel = createTestNovel(id = "novel_read_tier", inLibrary = true, sourceId = "test_read_src")
+        val novel = testNovel(id = "novel_read_tier", inLibrary = true, sourceId = "test_read_src")
         repository.addToLibrary(novel)
+        repository.libraryNovels.first { it.any { it.id == "novel_read_tier" } }
 
         val chapter = ChapterEntity(
             novelId = "novel_read_tier",
@@ -334,7 +431,7 @@ class NovelRepositoryTest {
 
     @Test
     fun deleteDownloads_resetsDownloadedAndCacheToNone_leavesEpubRows() = runBlocking {
-        val novel = createTestNovel(id = "novel_delete_dl", inLibrary = true)
+        val novel = testNovel(id = "novel_delete_dl", inLibrary = true)
         repository.addToLibrary(novel)
 
         val chDl = ChapterEntity(novelId = "novel_delete_dl", id = "ch_dl", title = "DL", chapterIndex = 1, storageTier = "DOWNLOADED")
@@ -362,12 +459,15 @@ class NovelRepositoryTest {
     @Test
     fun webNovelDedupe_bySourceAndRawId_andByNormalizedSourceUrl() = runBlocking {
         // 1. Dedupe by (source_id, raw_id)
-        val data1 = ScrapedNovelData(
+        val data1 = testScrapedNovelData(
             title = "Web Novel One",
+            author = "Author One",
+            description = "Synopsis One",
+            genres = listOf("Action"),
             sourceUrl = "https://wtr-lab.com/novel/123/",
             rawId = "123",
             chapters = listOf(
-                ScrapedChapter(title = "Ch 1", url = "https://wtr-lab.com/novel/123/1")
+                testScrapedChapter(title = "Ch 1", url = "https://wtr-lab.com/novel/123/1", order = 1)
             )
         )
         val novel1 = repository.saveWebScrapedNovel(
@@ -380,12 +480,15 @@ class NovelRepositoryTest {
         )
 
         // Same rawId with different URL path
-        val data2 = ScrapedNovelData(
+        val data2 = testScrapedNovelData(
             title = "Web Novel One",
+            author = "Author One",
+            description = "Synopsis One",
+            genres = listOf("Action"),
             sourceUrl = "https://wtr-lab.com/novel/123/alternate-slug",
             rawId = "123",
             chapters = listOf(
-                ScrapedChapter(title = "Ch 1", url = "https://wtr-lab.com/novel/123/1")
+                testScrapedChapter(title = "Ch 1", url = "https://wtr-lab.com/novel/123/1", order = 1)
             )
         )
         val novel2 = repository.saveWebScrapedNovel(
@@ -399,12 +502,15 @@ class NovelRepositoryTest {
         assertEquals(novel1.id, novel2.id)
 
         // 2. Dedupe by normalized source_url
-        val data3 = ScrapedNovelData(
+        val data3 = testScrapedNovelData(
             title = "Web Novel Two",
+            author = "Author Two",
+            description = "Synopsis Two",
+            genres = listOf("Romance"),
             sourceUrl = "https://www.example.com/novel/xyz/",
             rawId = null,
             chapters = listOf(
-                ScrapedChapter(title = "Ch 1", url = "https://www.example.com/novel/xyz/1")
+                testScrapedChapter(title = "Ch 1", url = "https://www.example.com/novel/xyz/1", order = 1)
             )
         )
         val novel3 = repository.saveWebScrapedNovel(
@@ -417,12 +523,15 @@ class NovelRepositoryTest {
         )
 
         // Same URL without www, without trailing slash
-        val data4 = ScrapedNovelData(
+        val data4 = testScrapedNovelData(
             title = "Web Novel Two",
+            author = "Author Two",
+            description = "Synopsis Two",
+            genres = listOf("Romance"),
             sourceUrl = "https://example.com/novel/xyz",
             rawId = null,
             chapters = listOf(
-                ScrapedChapter(title = "Ch 1", url = "https://example.com/novel/xyz/1")
+                testScrapedChapter(title = "Ch 1", url = "https://example.com/novel/xyz/1", order = 1)
             )
         )
         val novel4 = repository.saveWebScrapedNovel(
@@ -439,7 +548,7 @@ class NovelRepositoryTest {
     @Test
     fun newNovels_haveLastReadTimestampZero() = runBlocking {
         // Novel added directly
-        val novel = createTestNovel(id = "novel_new", inLibrary = true, lastReadTimestamp = 0L)
+        val novel = testNovel(id = "novel_new", inLibrary = true, lastReadTimestamp = 0L)
         repository.addToLibrary(novel)
 
         val novelEntity = database.novelDao().getNovelById("novel_new")
@@ -447,11 +556,14 @@ class NovelRepositoryTest {
         assertEquals(0L, novelEntity!!.lastReadTimestamp)
 
         // Web novel added via saveWebScrapedNovel
-        val scrapedData = ScrapedNovelData(
+        val scrapedData = testScrapedNovelData(
             title = "Brand New Web Novel",
+            author = "Author",
+            description = "Synopsis",
+            genres = emptyList(),
             sourceUrl = "https://wtr-lab.com/novel/brand-new",
             chapters = listOf(
-                ScrapedChapter(title = "Ch 1", url = "https://wtr-lab.com/novel/brand-new/1")
+                testScrapedChapter(title = "Ch 1", url = "https://wtr-lab.com/novel/brand-new/1", order = 1)
             )
         )
         val webNovel = repository.saveWebScrapedNovel(
@@ -474,8 +586,9 @@ class NovelRepositoryTest {
 
     @Test
     fun clearNovelReadingHistory_keepsLastReadChapterId() = runBlocking {
-        val novel = createTestNovel(id = "novel_clear_hist", inLibrary = true, lastReadTimestamp = 0L)
+        val novel = testNovel(id = "novel_clear_hist", inLibrary = true, lastReadTimestamp = 0L)
         repository.addToLibrary(novel)
+        repository.libraryNovels.first { it.any { it.id == "novel_clear_hist" } }
 
         repository.updateReadingProgress(
             novelId = "novel_clear_hist",
@@ -483,6 +596,7 @@ class NovelRepositoryTest {
             chapterTitle = "Chapter Preserved",
             chapterIndex = 10
         )
+        repository.libraryNovels.first { it.any { it.id == "novel_clear_hist" && it.lastReadTimestamp > 0L } }
 
         val beforeClear = database.novelDao().getNovelById("novel_clear_hist")
         assertNotNull(beforeClear)
@@ -492,6 +606,7 @@ class NovelRepositoryTest {
 
         // Clear history: resets last_read_timestamp to 0, keeps last_read_chapter_id
         repository.clearNovelReadingHistory("novel_clear_hist")
+        repository.libraryNovels.first { it.any { it.id == "novel_clear_hist" && it.lastReadTimestamp == 0L } }
 
         val afterClear = database.novelDao().getNovelById("novel_clear_hist")
         assertNotNull(afterClear)
@@ -504,7 +619,7 @@ class NovelRepositoryTest {
 
     @Test
     fun markChapterAsRead_onlySetsIsRead_doesNotTouchLastRead() = runBlocking {
-        val novel = createTestNovel(id = "novel_1", inLibrary = true, lastReadTimestamp = 0L)
+        val novel = testNovel(id = "novel_1", inLibrary = true, lastReadTimestamp = 0L)
         repository.addToLibrary(novel)
 
         val chapterEntity = ChapterEntity(
@@ -530,7 +645,7 @@ class NovelRepositoryTest {
 
     @Test
     fun getReadChapterIds_returnsReadChapterIdsFlow() = runBlocking {
-        val novel = createTestNovel(id = "novel_read_ids", inLibrary = true)
+        val novel = testNovel(id = "novel_read_ids", inLibrary = true)
         repository.addToLibrary(novel)
 
         val ch1 = ChapterEntity(novelId = "novel_read_ids", id = "ch_1", title = "Ch 1", chapterIndex = 1, isRead = false)
@@ -548,19 +663,18 @@ class NovelRepositoryTest {
 
     @Test
     fun bookmarks_crud_persistsInRoom() = runBlocking {
-        val novel = createTestNovel(id = "novel_1", inLibrary = true)
+        val novel = testNovel(id = "novel_1", inLibrary = true)
         repository.addToLibrary(novel)
 
-        val bookmark = Bookmark(
+        val bookmark = testBookmark(
             id = "bm_1",
             novelId = "novel_1",
             chapterId = "ch_1",
             chapterTitle = "Chapter 1",
             paragraphIndex = 2,
-            charOffset = 15,
             excerpt = "Some highlighted text",
             note = "My note",
-            createdAt = 1000L
+            timestamp = 1000L
         )
 
         repository.addBookmark(bookmark)
