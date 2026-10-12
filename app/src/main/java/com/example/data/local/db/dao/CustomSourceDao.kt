@@ -18,6 +18,9 @@ interface CustomSourceDao {
     @Query("SELECT * FROM custom_sources")
     suspend fun getAllSources(): List<CustomSourceEntity>
 
+    @Query("SELECT * FROM custom_sources WHERE url = :url LIMIT 1")
+    suspend fun getSourceByUrl(url: String): CustomSourceEntity?
+
     @Query("SELECT * FROM custom_sources WHERE is_enabled = 1")
     fun getEnabledSourcesFlow(): Flow<List<CustomSourceEntity>>
 

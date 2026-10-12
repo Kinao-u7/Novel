@@ -5,18 +5,24 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.db.NovelDatabase
 import com.example.data.local.db.NovelDatabaseHolder
+import com.example.data.local.db.entity.BookmarkEntity
 import com.example.data.local.db.entity.ChapterEntity
+import com.example.data.local.db.entity.NotificationEntity
 import com.example.data.local.db.toEntity
 import com.example.data.model.Bookmark
 import com.example.data.model.Chapter
 import com.example.data.model.ChapterContent
+import com.example.data.model.CustomNovelSource
+import com.example.data.model.CustomSourceResult
 import com.example.data.model.Novel
+import com.example.data.model.TermReplacementRule
 import com.example.data.source.NovelSource
 import com.example.data.source.SourceManager
 import com.example.data.source.webscrape.ScrapedChapter
 import com.example.data.source.webscrape.ScrapedNovelData
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -687,5 +693,291 @@ class NovelRepositoryTest {
         repository.removeBookmark("bm_1")
         val bookmarksAfterRemove = repository.bookmarks.first { it.isEmpty() }
         assertTrue(bookmarksAfterRemove.isEmpty())
+    }
+
+    @Test
+    fun termRules_globalAndEnableDisable_persistsInRoom() = runBlocking {
+        val rule1 = TermReplacementRule(
+            id = "rule_test_1",
+            original = "cultivator",
+            replacement = "practitioner",
+            isEnabled = true
+        )
+        repository.addTermReplacement(rule1)
+
+        val list1 = withTimeout(5000L) {
+            repository.termReplacements.first { it.any { r -> r.id == "rule_test_1" } }
+        }
+        assertEquals(1, list1.size)
+        assertTrue(list1.first { it.id == "rule_test_1" }.isEnabled)
+
+        // Verify entity in Room has novel_id = null (global rule)
+        val entityInDb = database.termReplacementDao().getById("rule_test_1")
+        assertNotNull(entityInDb)
+        assertNull(entityInDb!!.novelId)
+        assertEquals("cultivator", entityInDb.pattern)
+        assertEquals("practitioner", entityInDb.replacement)
+        assertTrue(entityInDb.isEnabled)
+
+        // Disable rule
+        repository.setTermReplacementEnabled("rule_test_1", false)
+        val list2 = withTimeout(5000L) {
+            repository.termReplacements.first { it.any { r -> r.id == "rule_test_1" && !r.isEnabled } }
+        }
+        assertFalse(list2.first { it.id == "rule_test_1" }.isEnabled)
+
+        // Global flow only returns enabled rules
+        val globalDisabled = withTimeout(5000L) {
+            repository.getGlobalTermReplacementsFlow().first()
+        }
+        assertTrue(globalDisabled.none { it.id == "rule_test_1" })
+
+        // Re-enable
+        repository.setTermReplacementEnabled("rule_test_1", true)
+        val globalEnabled = withTimeout(5000L) {
+            repository.getGlobalTermReplacementsFlow().first { it.any { r -> r.id == "rule_test_1" } }
+        }
+        assertTrue(globalEnabled.any { it.id == "rule_test_1" && it.isEnabled })
+
+        // Delete rule
+        repository.deleteTermReplacement("rule_test_1")
+        val listAfterDelete = withTimeout(5000L) {
+            repository.termReplacements.first { it.none { r -> r.id == "rule_test_1" } }
+        }
+        assertTrue(listAfterDelete.none { it.id == "rule_test_1" })
+    }
+
+    @Test
+    fun customSource_validationAndDedupe_andSourceManagerPushed() = runBlocking {
+        // Invalid URLs rejected
+        val res1: CustomSourceResult = repository.addCustomSource("Bad 1", "")
+        assertEquals(CustomSourceResult.InvalidUrl, res1)
+
+        val res2: CustomSourceResult = repository.addCustomSource("Bad 2", "https://")
+        assertEquals(CustomSourceResult.InvalidUrl, res2)
+
+        val res3: CustomSourceResult = repository.addCustomSource("Bad 3", "http://")
+        assertEquals(CustomSourceResult.InvalidUrl, res3)
+
+        val res4: CustomSourceResult = repository.addCustomSource("Bad 4", "   https://   ")
+        assertEquals(CustomSourceResult.InvalidUrl, res4)
+
+        // Valid addition & URL normalization (default https, trimmed, no trailing slash, no www)
+        val resValid: CustomSourceResult = repository.addCustomSource("Test Site", "www.mysite.com/novels/")
+        assertTrue(resValid is CustomSourceResult.Added)
+        val addedSource = (resValid as CustomSourceResult.Added).source
+        assertEquals("https://mysite.com/novels", addedSource.url)
+
+        // StateFlow receives the source
+        val sources = withTimeout(5000L) {
+            repository.customSources.first { it.any { s -> s.url == "https://mysite.com/novels" } }
+        }
+        assertEquals(1, sources.size)
+        assertEquals("Test Site", sources.first().name)
+
+        // SourceManager had current list pushed
+        val smSources = withTimeout(5000L) {
+            SourceManager.customSources.first { it.any { s -> s.url == "https://mysite.com/novels" } }
+        }
+        assertEquals(1, smSources.size)
+        assertEquals("https://mysite.com/novels", smSources.first().url)
+
+        // Duplicate rejected by normalized URL
+        val resDup: CustomSourceResult = repository.addCustomSource("Duplicate Site", "https://mysite.com/novels")
+        assertEquals(CustomSourceResult.Duplicate, resDup)
+
+        val resDup2: CustomSourceResult = repository.addCustomSource("Duplicate Site 2", "http://mysite.com/novels/")
+        assertEquals(CustomSourceResult.Duplicate, resDup2)
+    }
+
+    @Test
+    fun notifications_cap200_markRead_andUnreadCount() = runBlocking {
+        // Post first notification
+        repository.postNotification("Notif 1", "Body 1")
+        val unread1 = withTimeout(5000L) {
+            repository.unreadNotificationCount.first { it == 1 }
+        }
+        assertEquals(1, unread1)
+
+        val list1 = withTimeout(5000L) {
+            repository.notifications.first { it.size == 1 }
+        }
+        val firstId = list1.first().id
+
+        // Mark read
+        repository.markRead(firstId)
+        val unreadAfterRead = withTimeout(5000L) {
+            repository.unreadNotificationCount.first { it == 0 }
+        }
+        assertEquals(0, unreadAfterRead)
+
+        // Post 2 more notifications
+        repository.postNotification("Notif 2", "Body 2")
+        repository.postNotification("Notif 3", "Body 3")
+        withTimeout(5000L) {
+            repository.unreadNotificationCount.first { it == 2 }
+        }
+
+        // Mark all read
+        repository.markAllRead()
+        val unreadAll = withTimeout(5000L) {
+            repository.unreadNotificationCount.first { it == 0 }
+        }
+        assertEquals(0, unreadAll)
+
+        // Test 200 cap in insertAndTrim
+        for (i in 1..250) {
+            database.notificationDao().insertAndTrim(
+                NotificationEntity(
+                    id = "bulk_notif_$i",
+                    title = "Title $i",
+                    message = "Message $i",
+                    type = "info",
+                    timestamp = 1000L + i,
+                    isRead = false
+                )
+            )
+        }
+
+        val cappedList = withTimeout(5000L) {
+            repository.notifications.first { it.size == 200 }
+        }
+        assertEquals(200, cappedList.size)
+        assertEquals("bulk_notif_250", cappedList.first().id)
+        assertEquals("bulk_notif_51", cappedList.last().id)
+
+        // Clear all notifications
+        repository.clear()
+        val emptyList = withTimeout(5000L) {
+            repository.notifications.first { it.isEmpty() }
+        }
+        assertTrue(emptyList.isEmpty())
+    }
+
+    @Test
+    fun startupPurge_removesOnlyUnusedNovels() = runBlocking {
+        // Novel 1: unused browse novel (in_library = 0, last_read = 0, no chapters, no bookmarks) -> PURGED
+        val n1 = testNovel(id = "n_unused", inLibrary = false, lastReadTimestamp = 0L)
+        database.novelDao().insertIgnore(n1.toEntity())
+
+        // Novel 2: in library (in_library = 1, last_read = 0) -> PRESERVED
+        val n2 = testNovel(id = "n_in_lib", inLibrary = true, lastReadTimestamp = 0L)
+        database.novelDao().insertIgnore(n2.toEntity())
+
+        // Novel 3: has reading history (in_library = 0, last_read = 1000L) -> PRESERVED
+        val n3 = testNovel(id = "n_history", inLibrary = false, lastReadTimestamp = 1000L)
+        database.novelDao().insertIgnore(n3.toEntity())
+
+        // Novel 4: has bookmark (in_library = 0, last_read = 0) -> PRESERVED
+        val n4 = testNovel(id = "n_bookmarked", inLibrary = false, lastReadTimestamp = 0L)
+        database.novelDao().insertIgnore(n4.toEntity())
+        database.bookmarkDao().insertIgnore(
+            BookmarkEntity(
+                id = "bm_purge",
+                novelId = "n_bookmarked",
+                chapterId = "ch_1",
+                chapterTitle = "Ch 1",
+                paragraphIndex = 0,
+                charOffset = 0,
+                excerpt = "text",
+                note = "",
+                createdAt = 1000L
+            )
+        )
+
+        // Novel 5: has read chapter (in_library = 0, last_read = 0, is_read = 1) -> PRESERVED
+        val n5 = testNovel(id = "n_read_ch", inLibrary = false, lastReadTimestamp = 0L)
+        database.novelDao().insertIgnore(n5.toEntity())
+        database.chapterDao().insertIgnore(
+            ChapterEntity(
+                novelId = "n_read_ch",
+                id = "ch_5",
+                title = "Ch 5",
+                chapterIndex = 1,
+                isRead = true,
+                storageTier = "NONE"
+            )
+        )
+
+        // Novel 6: has DOWNLOADED chapter -> PRESERVED
+        val n6 = testNovel(id = "n_downloaded", inLibrary = false, lastReadTimestamp = 0L)
+        database.novelDao().insertIgnore(n6.toEntity())
+        database.chapterDao().insertIgnore(
+            ChapterEntity(
+                novelId = "n_downloaded",
+                id = "ch_6",
+                title = "Ch 6",
+                chapterIndex = 1,
+                isRead = false,
+                storageTier = "DOWNLOADED"
+            )
+        )
+
+        // Novel 7: has EPUB chapter -> PRESERVED
+        val n7 = testNovel(id = "n_epub", inLibrary = false, lastReadTimestamp = 0L)
+        database.novelDao().insertIgnore(n7.toEntity())
+        database.chapterDao().insertIgnore(
+            ChapterEntity(
+                novelId = "n_epub",
+                id = "ch_7",
+                title = "Ch 7",
+                chapterIndex = 1,
+                isRead = false,
+                storageTier = "EPUB"
+            )
+        )
+
+        // Novel 8: has only CACHE chapter and unread -> PURGED
+        val n8 = testNovel(id = "n_cache_only", inLibrary = false, lastReadTimestamp = 0L)
+        database.novelDao().insertIgnore(n8.toEntity())
+        database.chapterDao().insertIgnore(
+            ChapterEntity(
+                novelId = "n_cache_only",
+                id = "ch_8",
+                title = "Ch 8",
+                chapterIndex = 1,
+                isRead = false,
+                storageTier = "CACHE"
+            )
+        )
+
+        // Run purge
+        val purgedCount = repository.purgeUnusedBrowseNovels()
+        assertEquals(2, purgedCount)
+
+        // n_unused and n_cache_only are deleted
+        assertNull(database.novelDao().getNovelById("n_unused"))
+        assertNull(database.novelDao().getNovelById("n_cache_only"))
+
+        // All other 6 novels are preserved
+        assertNotNull(database.novelDao().getNovelById("n_in_lib"))
+        assertNotNull(database.novelDao().getNovelById("n_history"))
+        assertNotNull(database.novelDao().getNovelById("n_bookmarked"))
+        assertNotNull(database.novelDao().getNovelById("n_read_ch"))
+        assertNotNull(database.novelDao().getNovelById("n_downloaded"))
+        assertNotNull(database.novelDao().getNovelById("n_epub"))
+    }
+
+    @Test
+    fun preferencesManager_noLongerHoldsMovedDomains() {
+        val prefs = context.getSharedPreferences("novel_reader_prefs", Context.MODE_PRIVATE)
+
+        // Write dummy data to the old SharedPreferences keys
+        prefs.edit()
+            .putString("term_replacements_json", "[{\"id\":\"1\",\"original\":\"a\",\"replacement\":\"b\"}]")
+            .putString("custom_novel_sources_json", "[{\"id\":\"1\",\"name\":\"S\",\"url\":\"u\"}]")
+            .putStringSet("requested_sources_set", setOf("Req 1"))
+            .putString("notifications_json", "[{\"id\":\"1\",\"title\":\"T\",\"message\":\"M\"}]")
+            .apply()
+
+        // Create PreferencesManager instance
+        val pm = PreferencesManager(context)
+
+        // Check reading stats still works and is retained in PreferencesManager
+        val statsBefore = pm.readingStats.value
+        pm.recordReadingSession(minutesDelta = 10, wordsDelta = 2500)
+        val statsAfter = pm.readingStats.value
+        assertEquals(statsBefore.todayMinutesRead + 10, statsAfter.todayMinutesRead)
+        assertEquals(statsBefore.totalWordsRead + 2500, statsAfter.totalWordsRead)
     }
 }

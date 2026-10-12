@@ -103,7 +103,8 @@ interface NovelDao {
         WHERE in_library = 0 
           AND last_read_timestamp = 0 
           AND id NOT IN (SELECT DISTINCT novel_id FROM bookmarks) 
-          AND id NOT IN (SELECT DISTINCT novel_id FROM chapters WHERE storage_tier IN ('CACHE', 'DOWNLOADED', 'EPUB'))
+          AND id NOT IN (SELECT DISTINCT novel_id FROM chapters WHERE is_read = 1) 
+          AND id NOT IN (SELECT DISTINCT novel_id FROM chapters WHERE storage_tier IN ('DOWNLOADED', 'EPUB'))
     """)
     suspend fun purgeUnusedBrowseNovels(): Int
 }

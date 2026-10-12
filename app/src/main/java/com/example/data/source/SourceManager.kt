@@ -1,5 +1,6 @@
 package com.example.data.source
 
+import com.example.data.model.CustomNovelSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,8 +14,15 @@ object SourceManager {
     )
     val sources: StateFlow<List<NovelSource>> = _sources.asStateFlow()
 
+    private val _customSources = MutableStateFlow<List<CustomNovelSource>>(emptyList())
+    val customSources: StateFlow<List<CustomNovelSource>> = _customSources.asStateFlow()
+
     private val _activeSourceId = MutableStateFlow(webNovelSource.id)
     val activeSourceId: StateFlow<String> = _activeSourceId.asStateFlow()
+
+    fun setCustomSources(list: List<CustomNovelSource>) {
+        _customSources.value = list
+    }
 
     fun getActiveSource(): NovelSource {
         val currentId = _activeSourceId.value

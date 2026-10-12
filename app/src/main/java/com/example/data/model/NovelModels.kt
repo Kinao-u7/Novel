@@ -317,3 +317,9 @@ data class CustomNovelSource(
     val description: String = "Custom web source"
 )
 
+sealed class CustomSourceResult {
+    data class Added(val source: CustomNovelSource) : CustomSourceResult()
+    data object InvalidUrl : CustomSourceResult()
+    data object Duplicate : CustomSourceResult()
+}
+

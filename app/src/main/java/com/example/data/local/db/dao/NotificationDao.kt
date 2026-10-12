@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import com.example.data.local.db.entity.NotificationEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -19,6 +20,22 @@ interface NotificationDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(notification: NotificationEntity): Long
+
+    @Query("""
+        DELETE FROM notifications 
+        WHERE id NOT IN (
+            SELECT id FROM notifications 
+            ORDER BY timestamp DESC 
+            LIMIT 200
+        )
+    """)
+    suspend fun trimToNewest200(): Int
+
+    @Transaction
+    suspend fun insertAndTrim(notification: NotificationEntity) {
+        insertIgnore(notification)
+        trimToNewest200()
+    }
 
     @Query("UPDATE notifications SET is_read = 1 WHERE id = :id")
     suspend fun markAsRead(id: String): Int

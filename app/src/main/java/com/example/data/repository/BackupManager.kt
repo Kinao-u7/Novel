@@ -91,7 +91,7 @@ class BackupManager(
             root.put("bookmarks", bmArr)
 
             val rulesArr = JSONArray()
-            for (r in preferencesManager.termReplacements.value) {
+            for (r in repository.termReplacements.value) {
                 rulesArr.put(JSONObject().apply {
                     put("id", r.id)
                     put("original", r.original)
@@ -271,12 +271,12 @@ class BackupManager(
 
             if (root.has("termReplacements")) {
                 val trArr = root.getJSONArray("termReplacements")
-                val currentRules = preferencesManager.termReplacements.value.toMutableList()
+                val currentRules = repository.termReplacements.value.toMutableList()
                 for (i in 0 until trArr.length()) {
                     val o = trArr.getJSONObject(i)
                     val rId = o.getString("id")
                     if (currentRules.none { it.id == rId }) {
-                        preferencesManager.addTermReplacementRule(
+                        repository.addTermReplacementRule(
                             TermReplacementRule(
                                 id = rId,
                                 original = o.getString("original"),

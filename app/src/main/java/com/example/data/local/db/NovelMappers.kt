@@ -3,10 +3,16 @@ package com.example.data.local.db
 import com.example.data.local.db.dao.NovelWithChapterInfo
 import com.example.data.local.db.entity.BookmarkEntity
 import com.example.data.local.db.entity.ChapterEntity
+import com.example.data.local.db.entity.CustomSourceEntity
+import com.example.data.local.db.entity.NotificationEntity
 import com.example.data.local.db.entity.NovelEntity
+import com.example.data.local.db.entity.TermReplacementEntity
+import com.example.data.model.AppNotificationItem
 import com.example.data.model.Bookmark
 import com.example.data.model.Chapter
+import com.example.data.model.CustomNovelSource
 import com.example.data.model.Novel
+import com.example.data.model.TermReplacementRule
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.net.URI
@@ -193,5 +199,105 @@ fun Bookmark.toEntity(): BookmarkEntity {
         excerpt = excerpt,
         note = note,
         createdAt = timestamp
+    )
+}
+
+fun normalizeCustomSourceUrl(rawUrl: String): String? {
+    val trimmed = rawUrl.trim()
+    if (trimmed.isEmpty()) return null
+    if (trimmed.equals("https://", ignoreCase = true) || trimmed.equals("http://", ignoreCase = true) ||
+        trimmed.equals("https:", ignoreCase = true) || trimmed.equals("http:", ignoreCase = true)) {
+        return null
+    }
+    val candidate = if (!trimmed.startsWith("http://", ignoreCase = true) && !trimmed.startsWith("https://", ignoreCase = true)) {
+        if (trimmed.contains("://")) return null // unsupported scheme
+        "https://$trimmed"
+    } else {
+        trimmed
+    }
+    return try {
+        val uri = URI(candidate)
+        val scheme = (uri.scheme ?: "https").lowercase()
+        if (scheme != "http" && scheme != "https") return null
+        val host = uri.host?.lowercase()?.removePrefix("www.")
+        if (host.isNullOrBlank()) return null
+        val port = if (uri.port != -1 && uri.port != 80 && uri.port != 443) ":${uri.port}" else ""
+        val path = (uri.rawPath ?: "").trimEnd('/')
+        val query = if (!uri.rawQuery.isNullOrEmpty()) "?${uri.rawQuery}" else ""
+        val normalized = "$scheme://$host$port$path$query"
+        if (normalized.equals("https://", ignoreCase = true) || normalized.equals("http://", ignoreCase = true)) {
+            null
+        } else {
+            normalized
+        }
+    } catch (e: Exception) {
+        null
+    }
+}
+
+fun TermReplacementEntity.toModel(): TermReplacementRule {
+    return TermReplacementRule(
+        id = id,
+        original = pattern,
+        replacement = replacement,
+        isEnabled = isEnabled
+    )
+}
+
+fun TermReplacementRule.toEntity(
+    novelId: String? = null,
+    isRegex: Boolean = false,
+    matchCase: Boolean = false
+): TermReplacementEntity {
+    return TermReplacementEntity(
+        id = id,
+        novelId = novelId,
+        pattern = original,
+        replacement = replacement,
+        isRegex = isRegex,
+        matchCase = matchCase,
+        isEnabled = isEnabled
+    )
+}
+
+fun CustomSourceEntity.toModel(): CustomNovelSource {
+    return CustomNovelSource(
+        id = id,
+        name = name,
+        url = url,
+        language = language,
+        description = description
+    )
+}
+
+fun CustomNovelSource.toEntity(isEnabled: Boolean = true): CustomSourceEntity {
+    return CustomSourceEntity(
+        id = id,
+        name = name,
+        url = url,
+        language = language,
+        description = description,
+        isEnabled = isEnabled
+    )
+}
+
+fun NotificationEntity.toModel(): AppNotificationItem {
+    return AppNotificationItem(
+        id = id,
+        title = title,
+        message = message,
+        timestamp = timestamp,
+        type = type
+    )
+}
+
+fun AppNotificationItem.toEntity(isRead: Boolean = false): NotificationEntity {
+    return NotificationEntity(
+        id = id,
+        title = title,
+        message = message,
+        type = type,
+        timestamp = timestamp,
+        isRead = isRead
     )
 }

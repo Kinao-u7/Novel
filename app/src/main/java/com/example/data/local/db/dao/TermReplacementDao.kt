@@ -24,6 +24,12 @@ interface TermReplacementDao {
     @Query("SELECT * FROM term_replacements")
     fun getAllReplacementsFlow(): Flow<List<TermReplacementEntity>>
 
+    @Query("SELECT * FROM term_replacements WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): TermReplacementEntity?
+
+    @Query("UPDATE term_replacements SET is_enabled = :isEnabled WHERE id = :id")
+    suspend fun setEnabled(id: String, isEnabled: Boolean): Int
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(replacement: TermReplacementEntity): Long
 

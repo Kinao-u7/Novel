@@ -3,9 +3,12 @@ package com.example.data.repository
 import android.content.Context
 import android.net.Uri
 import com.example.data.local.db.NovelDatabaseHolder
+import com.example.data.local.db.normalizeCustomSourceUrl
 import com.example.data.local.db.normalizeSourceUrl
 import com.example.data.local.db.toEntity
 import com.example.data.local.db.toModel
+import com.example.data.local.db.entity.NotificationEntity
+import com.example.data.local.db.entity.RequestedSourceEntity
 import com.example.data.model.*
 import com.example.data.source.SourceManager
 import com.example.data.source.webscrape.ScrapedNovelData
@@ -20,6 +23,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -32,11 +36,13 @@ import java.io.File
  * Modern Room-backed Repository for Novel operations.
  *
  * Adheres to Architectural Invariants:
- * - Room is the single source of truth for library, chapters, read state, positions and bookmarks.
+ * - Room is the single source of truth for library, chapters, read state, positions, bookmarks,
+ *   term replacements, custom sources, requested sources and notifications.
  * - LibraryNovels derives downloaded counts and last read info in the query (no stored counters).
  * - Safe insert-ignore plus update transactions; never OnConflictStrategy.REPLACE.
  * - Reading sets CACHE tier; explicit downloads set DOWNLOADED tier.
  * - Debounced position writes (1-second debounce, flushed on chapter leave).
+ * - Startup purge of unused Browse novels.
  */
 class NovelRepository(context: Context) {
 
@@ -45,6 +51,10 @@ class NovelRepository(context: Context) {
     private val novelDao = database.novelDao()
     private val chapterDao = database.chapterDao()
     private val bookmarkDao = database.bookmarkDao()
+    private val termReplacementDao = database.termReplacementDao()
+    private val customSourceDao = database.customSourceDao()
+    private val requestedSourceDao = database.requestedSourceDao()
+    private val notificationDao = database.notificationDao()
 
     val settingsRepository = SettingsRepository.getInstance(appContext)
     internal val storageManager = StorageManager(appContext)
@@ -101,21 +111,64 @@ class NovelRepository(context: Context) {
         .distinctUntilChanged()
         .stateIn(repoScope, SharingStarted.Eagerly, emptyList())
 
+    // 5. Reactive Term Replacements StateFlow (Room backed, global & local rules)
+    val termReplacements: StateFlow<List<TermReplacementRule>> = termReplacementDao.getAllReplacementsFlow()
+        .map { list -> list.map { it.toModel() } }
+        .distinctUntilChanged()
+        .stateIn(repoScope, SharingStarted.Eagerly, emptyList())
+
+    // 6. Reactive Custom Sources StateFlow (Room backed)
+    val customSources: StateFlow<List<CustomNovelSource>> = customSourceDao.getAllSourcesFlow()
+        .map { list -> list.map { it.toModel() } }
+        .distinctUntilChanged()
+        .stateIn(repoScope, SharingStarted.Eagerly, emptyList())
+
+    // 7. Reactive Requested Sources StateFlow (Room backed, keeps old "$siteName ($url)" string format)
+    val requestedSources: StateFlow<List<String>> = requestedSourceDao.getAllRequestsFlow()
+        .map { list ->
+            list.map { item ->
+                if (item.url.isNotBlank()) "${item.siteName} (${item.url})" else item.siteName
+            }
+        }
+        .distinctUntilChanged()
+        .stateIn(repoScope, SharingStarted.Eagerly, emptyList())
+
+    // 8. Reactive Notifications StateFlow (Room backed, newest 200 kept)
+    val notifications: StateFlow<List<AppNotificationItem>> = notificationDao.getNotificationsFlow()
+        .map { list -> list.map { it.toModel() } }
+        .distinctUntilChanged()
+        .stateIn(repoScope, SharingStarted.Eagerly, emptyList())
+
+    // Unread notification count Flow
+    val unreadNotificationCount: Flow<Int> = notificationDao.getUnreadCountFlow()
+        .distinctUntilChanged()
+
     // Settings & preferences StateFlows
     val readerSettings: StateFlow<ReaderSettings> = settingsRepository.readerSettings
-    val termReplacements: StateFlow<List<TermReplacementRule>> = preferencesManager.termReplacements
     val themeSettings: StateFlow<ThemeSettings> = settingsRepository.themeSettings
     val downloadSettings: StateFlow<DownloadSettings> = settingsRepository.downloadSettings
     val notificationSettings: StateFlow<NotificationSettings> = settingsRepository.notificationSettings
-    val notifications: StateFlow<List<AppNotificationItem>> = preferencesManager.notifications
     val readingStats: StateFlow<ReadingStats> = preferencesManager.readingStats
-    val customSources: StateFlow<List<CustomNovelSource>> = preferencesManager.customSources
-    val requestedSources: StateFlow<List<String>> = preferencesManager.requestedSources
 
     init {
         SourceManager.registerSource(WebScrapeSource(appContext))
-        repoScope.launch {
+        repoScope.launch(Dispatchers.IO) {
+            customSources.collect { list ->
+                SourceManager.setCustomSources(list)
+            }
+        }
+        repoScope.launch(Dispatchers.IO) {
             migrateEpubCoversIfNeeded()
+        }
+        repoScope.launch(Dispatchers.IO) {
+            try {
+                // Startup purge: runs once per app start in the background on Dispatchers.IO,
+                // only after the library flow has emitted its first value.
+                libraryNovels.first()
+                purgeUnusedBrowseNovels()
+            } catch (e: Exception) {
+                android.util.Log.e("NovelRepository", "Failed to purge unused browse novels", e)
+            }
         }
     }
 
@@ -718,13 +771,99 @@ class NovelRepository(context: Context) {
 
     // --- TERM REPLACEMENT RULES ---
 
-    fun addTermReplacementRule(rule: TermReplacementRule) = preferencesManager.addTermReplacementRule(rule)
+    fun getTermReplacementsFlow(): Flow<List<TermReplacementRule>> {
+        return termReplacementDao.getAllReplacementsFlow()
+            .map { list -> list.map { it.toModel() } }
+            .distinctUntilChanged()
+    }
 
-    fun updateTermReplacementRule(rule: TermReplacementRule) = preferencesManager.updateTermReplacementRule(rule)
+    fun getGlobalTermReplacementsFlow(): Flow<List<TermReplacementRule>> {
+        return termReplacementDao.getGlobalReplacementsFlow()
+            .map { list -> list.map { it.toModel() } }
+            .distinctUntilChanged()
+    }
 
-    fun deleteTermReplacementRule(id: String) = preferencesManager.deleteTermReplacementRule(id)
+    fun getTermReplacementsForNovelFlow(novelId: String): Flow<List<TermReplacementRule>> {
+        return termReplacementDao.getReplacementsForNovelFlow(novelId)
+            .map { list -> list.map { it.toModel() } }
+            .distinctUntilChanged()
+    }
 
-    fun toggleTermReplacementRule(id: String, isEnabled: Boolean) = preferencesManager.toggleTermReplacementRule(id, isEnabled)
+    suspend fun addTermReplacement(
+        rule: TermReplacementRule,
+        novelId: String? = null,
+        isRegex: Boolean = false,
+        matchCase: Boolean = false
+    ) = withContext(Dispatchers.IO) {
+        val entity = rule.toEntity(novelId = novelId, isRegex = isRegex, matchCase = matchCase)
+        termReplacementDao.insertIgnore(entity)
+    }
+
+    suspend fun updateTermReplacement(rule: TermReplacementRule) = withContext(Dispatchers.IO) {
+        val existing = termReplacementDao.getById(rule.id)
+        val entity = if (existing != null) {
+            existing.copy(
+                pattern = rule.original,
+                replacement = rule.replacement,
+                isEnabled = rule.isEnabled
+            )
+        } else {
+            rule.toEntity(novelId = null)
+        }
+        termReplacementDao.update(entity)
+    }
+
+    suspend fun deleteTermReplacement(id: String) = withContext(Dispatchers.IO) {
+        termReplacementDao.deleteById(id)
+    }
+
+    suspend fun setTermReplacementEnabled(id: String, isEnabled: Boolean) = withContext(Dispatchers.IO) {
+        termReplacementDao.setEnabled(id, isEnabled)
+    }
+
+    // TEMPORARY: remove when old screens are replaced
+    fun addTermReplacementRule(rule: TermReplacementRule) {
+        repoScope.launch(Dispatchers.IO) {
+            try {
+                addTermReplacement(rule)
+            } catch (e: Exception) {
+                android.util.Log.e("NovelRepository", "Failed to add term replacement rule", e)
+            }
+        }
+    }
+
+    // TEMPORARY: remove when old screens are replaced
+    fun updateTermReplacementRule(rule: TermReplacementRule) {
+        repoScope.launch(Dispatchers.IO) {
+            try {
+                updateTermReplacement(rule)
+            } catch (e: Exception) {
+                android.util.Log.e("NovelRepository", "Failed to update term replacement rule", e)
+            }
+        }
+    }
+
+    // TEMPORARY: remove when old screens are replaced
+    fun deleteTermReplacementRule(id: String) {
+        repoScope.launch(Dispatchers.IO) {
+            try {
+                deleteTermReplacement(id)
+            } catch (e: Exception) {
+                android.util.Log.e("NovelRepository", "Failed to delete term replacement rule", e)
+            }
+        }
+    }
+
+    // TEMPORARY: remove when old screens are replaced
+    fun toggleTermReplacementRule(id: String, isEnabled: Boolean) {
+        repoScope.launch(Dispatchers.IO) {
+            try {
+                setTermReplacementEnabled(id, isEnabled)
+            } catch (e: Exception) {
+                android.util.Log.e("NovelRepository", "Failed to toggle term replacement rule", e)
+            }
+        }
+    }
 
     // --- APP THEME & ACCENT SETTINGS ---
 
@@ -740,11 +879,63 @@ class NovelRepository(context: Context) {
 
     // --- NOTIFICATIONS ---
 
+    fun getNotificationsFlow(): Flow<List<AppNotificationItem>> {
+        return notificationDao.getNotificationsFlow()
+            .map { list -> list.map { it.toModel() } }
+            .distinctUntilChanged()
+    }
+
+    fun getUnreadNotificationCountFlow(): Flow<Int> {
+        return notificationDao.getUnreadCountFlow().distinctUntilChanged()
+    }
+
+    suspend fun postNotification(title: String, message: String, type: String = "info") = withContext(Dispatchers.IO) {
+        val entity = NotificationEntity(
+            id = java.util.UUID.randomUUID().toString(),
+            title = title.trim(),
+            message = message.trim(),
+            type = type.trim(),
+            timestamp = System.currentTimeMillis(),
+            isRead = false
+        )
+        notificationDao.insertAndTrim(entity)
+    }
+
+    suspend fun markRead(id: String) = withContext(Dispatchers.IO) {
+        notificationDao.markAsRead(id)
+    }
+
+    suspend fun markAllRead() = withContext(Dispatchers.IO) {
+        notificationDao.markAllAsRead()
+    }
+
+    suspend fun clear(): Int = withContext(Dispatchers.IO) {
+        notificationDao.clearAll()
+    }
+
+    // TEMPORARY: remove when old screens are replaced
+    fun addNotification(title: String, message: String, type: String = "info") {
+        repoScope.launch(Dispatchers.IO) {
+            try {
+                postNotification(title, message, type)
+            } catch (e: Exception) {
+                android.util.Log.e("NovelRepository", "Failed to add notification", e)
+            }
+        }
+    }
+
+    // TEMPORARY: remove when old screens are replaced
+    fun clearNotifications() {
+        repoScope.launch(Dispatchers.IO) {
+            try {
+                clear()
+            } catch (e: Exception) {
+                android.util.Log.e("NovelRepository", "Failed to clear notifications", e)
+            }
+        }
+    }
+
     fun updateNotificationSettings(settings: NotificationSettings) = settingsRepository.updateNotificationSettingsSync(settings)
-
-    fun addNotification(title: String, message: String, type: String = "info") = preferencesManager.addNotification(title, message, type)
-
-    fun clearNotifications() = preferencesManager.clearNotifications()
 
     // --- STORAGE & CACHE MANAGEMENT ---
 
@@ -775,12 +966,97 @@ class NovelRepository(context: Context) {
 
     // --- CUSTOM SOURCES ---
 
-    fun addCustomSource(name: String, url: String, language: String = "English", description: String = "Custom web source") =
-        preferencesManager.addCustomSource(name, url, language, description)
+    fun getCustomSourcesFlow(): Flow<List<CustomNovelSource>> {
+        return customSourceDao.getAllSourcesFlow()
+            .map { list -> list.map { it.toModel() } }
+            .distinctUntilChanged()
+    }
 
-    fun removeCustomSource(id: String) = preferencesManager.removeCustomSource(id)
+    suspend fun addCustomSource(
+        name: String,
+        url: String,
+        language: String = "English",
+        description: String = "Custom web source"
+    ): CustomSourceResult = withContext(Dispatchers.IO) {
+        val normalizedUrl = normalizeCustomSourceUrl(url) ?: return@withContext CustomSourceResult.InvalidUrl
+        if (customSourceDao.getSourceByUrl(normalizedUrl) != null) {
+            return@withContext CustomSourceResult.Duplicate
+        }
+        val entity = CustomNovelSource(
+            name = name.trim().ifBlank { "Custom Source" },
+            url = normalizedUrl,
+            language = language.trim().ifBlank { "English" },
+            description = description.trim().ifBlank { "Custom web source" }
+        ).toEntity(isEnabled = true)
+        customSourceDao.insertIgnore(entity)
+        CustomSourceResult.Added(entity.toModel())
+    }
+
+    suspend fun deleteCustomSource(id: String) = withContext(Dispatchers.IO) {
+        customSourceDao.deleteById(id)
+    }
+
+    // TEMPORARY: remove when old screens are replaced
+    fun addCustomSource(name: String, url: String, language: String = "English", description: String = "Custom web source") {
+        repoScope.launch(Dispatchers.IO) {
+            try {
+                when (val result = addCustomSource(name, url, language, description)) {
+                    is CustomSourceResult.Added -> { /* Success */ }
+                    is CustomSourceResult.InvalidUrl -> {
+                        android.util.Log.w("NovelRepository", "Rejected custom source: Invalid URL '$url'")
+                    }
+                    is CustomSourceResult.Duplicate -> {
+                        android.util.Log.w("NovelRepository", "Rejected custom source: Duplicate URL '$url'")
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("NovelRepository", "Failed to add custom source", e)
+            }
+        }
+    }
+
+    // TEMPORARY: remove when old screens are replaced
+    fun removeCustomSource(id: String) {
+        repoScope.launch(Dispatchers.IO) {
+            try {
+                deleteCustomSource(id)
+            } catch (e: Exception) {
+                android.util.Log.e("NovelRepository", "Failed to remove custom source", e)
+            }
+        }
+    }
 
     // --- REQUESTED SOURCES ---
 
-    fun requestSource(siteName: String, url: String) = preferencesManager.requestSource(siteName, url)
+    fun getRequestedSourcesFlow(): Flow<List<RequestedSourceEntity>> {
+        return requestedSourceDao.getAllRequestsFlow().distinctUntilChanged()
+    }
+
+    suspend fun addRequestedSource(siteName: String, url: String) = withContext(Dispatchers.IO) {
+        if (siteName.isBlank()) return@withContext
+        val entity = RequestedSourceEntity(
+            id = java.util.UUID.randomUUID().toString(),
+            siteName = siteName.trim(),
+            url = url.trim(),
+            requestedAt = System.currentTimeMillis()
+        )
+        requestedSourceDao.insertIgnore(entity)
+    }
+
+    // TEMPORARY: remove when old screens are replaced
+    fun requestSource(siteName: String, url: String) {
+        repoScope.launch(Dispatchers.IO) {
+            try {
+                addRequestedSource(siteName, url)
+            } catch (e: Exception) {
+                android.util.Log.e("NovelRepository", "Failed to request source", e)
+            }
+        }
+    }
+
+    // --- STARTUP PURGE ---
+
+    suspend fun purgeUnusedBrowseNovels(): Int = withContext(Dispatchers.IO) {
+        novelDao.purgeUnusedBrowseNovels()
+    }
 }
