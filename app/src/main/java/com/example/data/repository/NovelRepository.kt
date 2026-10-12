@@ -3,6 +3,7 @@ package com.example.data.repository
 import android.content.Context
 import android.net.Uri
 import com.example.data.local.db.NovelDatabaseHolder
+import com.example.data.local.db.getCustomSourceDedupeKey
 import com.example.data.local.db.normalizeCustomSourceUrl
 import com.example.data.local.db.normalizeSourceUrl
 import com.example.data.local.db.toEntity
@@ -758,7 +759,12 @@ class NovelRepository(context: Context) {
         description: String = "Custom web source"
     ): CustomSourceResult = withContext(Dispatchers.IO) {
         val normalizedUrl = normalizeCustomSourceUrl(url) ?: return@withContext CustomSourceResult.InvalidUrl
-        if (customSourceDao.getSourceByUrl(normalizedUrl) != null) {
+        val newKey = getCustomSourceDedupeKey(normalizedUrl) ?: return@withContext CustomSourceResult.InvalidUrl
+        val existingSources = customSourceDao.getAllSources()
+        if (existingSources.any { existing ->
+            val existingKey = getCustomSourceDedupeKey(existing.url)
+            existingKey != null && existingKey == newKey
+        }) {
             return@withContext CustomSourceResult.Duplicate
         }
         val entity = CustomNovelSource(

@@ -202,6 +202,33 @@ fun Bookmark.toEntity(): BookmarkEntity {
     )
 }
 
+fun getCustomSourceDedupeKey(rawUrl: String): String? {
+    val trimmed = rawUrl.trim()
+    if (trimmed.isEmpty()) return null
+    if (trimmed.equals("https://", ignoreCase = true) || trimmed.equals("http://", ignoreCase = true) ||
+        trimmed.equals("https:", ignoreCase = true) || trimmed.equals("http:", ignoreCase = true)) {
+        return null
+    }
+    val candidate = if (!trimmed.startsWith("http://", ignoreCase = true) && !trimmed.startsWith("https://", ignoreCase = true)) {
+        if (trimmed.contains("://")) return null // unsupported scheme
+        "https://$trimmed"
+    } else {
+        trimmed
+    }
+    return try {
+        val uri = URI(candidate)
+        val scheme = (uri.scheme ?: "https").lowercase()
+        if (scheme != "http" && scheme != "https") return null
+        val host = uri.host?.lowercase()?.removePrefix("www.")
+        if (host.isNullOrBlank()) return null
+        val port = if (uri.port != -1 && uri.port != 80 && uri.port != 443) ":${uri.port}" else ""
+        val path = (uri.rawPath ?: "").trimEnd('/')
+        "$host$port$path"
+    } catch (e: Exception) {
+        null
+    }
+}
+
 fun normalizeCustomSourceUrl(rawUrl: String): String? {
     val trimmed = rawUrl.trim()
     if (trimmed.isEmpty()) return null

@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface NotificationDao {
 
-    @Query("SELECT * FROM notifications ORDER BY timestamp DESC")
+    @Query("SELECT * FROM notifications ORDER BY timestamp DESC, rowid DESC")
     fun getNotificationsFlow(): Flow<List<NotificationEntity>>
 
     @Query("SELECT COUNT(*) FROM notifications WHERE is_read = 0")
@@ -23,9 +23,9 @@ interface NotificationDao {
 
     @Query("""
         DELETE FROM notifications 
-        WHERE id NOT IN (
-            SELECT id FROM notifications 
-            ORDER BY timestamp DESC 
+        WHERE rowid NOT IN (
+            SELECT rowid FROM notifications 
+            ORDER BY timestamp DESC, rowid DESC 
             LIMIT 200
         )
     """)

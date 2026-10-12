@@ -788,6 +788,9 @@ class NovelRepositoryTest {
 
         val resDup2: CustomSourceResult = repository.addCustomSource("Duplicate Site 2", "http://mysite.com/novels/")
         assertEquals(CustomSourceResult.Duplicate, resDup2)
+
+        val resDup3: CustomSourceResult = repository.addCustomSource("Duplicate Site 3", "MySite.com/novels/")
+        assertEquals(CustomSourceResult.Duplicate, resDup3)
     }
 
     @Test
@@ -824,6 +827,12 @@ class NovelRepositoryTest {
             repository.unreadNotificationCount.first { it == 0 }
         }
         assertEquals(0, unreadAll)
+
+        // Clear existing notifications before bulk insert
+        repository.clear()
+        withTimeout(5000L) {
+            repository.notifications.first { it.isEmpty() }
+        }
 
         // Test 200 cap in insertAndTrim
         for (i in 1..250) {
