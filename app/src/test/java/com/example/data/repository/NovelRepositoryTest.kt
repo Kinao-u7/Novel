@@ -850,7 +850,9 @@ class NovelRepositoryTest {
             )
         }
 
-        val cappedList = try {
+        var timedOut = false
+        var timeoutMsg = ""
+        val cappedList: List<AppNotificationItem> = try {
             withTimeout(5000L) {
                 repository.notifications.first { list ->
                     list.size == 200 && list.first().id == "bulk_notif_250"
@@ -860,7 +862,12 @@ class NovelRepositoryTest {
             val current = repository.notifications.value
             val firstId = current.firstOrNull()?.id
             val lastId = current.lastOrNull()?.id
-            fail("Timed out waiting for notifications: size=${current.size}, first=$firstId, last=$lastId")
+            timedOut = true
+            timeoutMsg = "Timed out waiting for notifications: size=${current.size}, first=$firstId, last=$lastId"
+            emptyList()
+        }
+        if (timedOut) {
+            fail(timeoutMsg)
         }
         assertEquals(200, cappedList.size)
         assertEquals("bulk_notif_250", cappedList.first().id)
@@ -873,7 +880,7 @@ class NovelRepositoryTest {
         assertTrue(cappedList.none { it.id == firstId || it.id.startsWith("Notif ") })
 
         // Check directly through the DAO with a one-shot query (not the Flow)
-        val daoList = database.notificationDao().getAllNotifications()
+        val daoList: List<NotificationEntity> = database.notificationDao().getAllOnce()
         assertEquals(200, daoList.size)
         assertEquals("bulk_notif_250", daoList.first().id)
         assertEquals("bulk_notif_51", daoList.last().id)

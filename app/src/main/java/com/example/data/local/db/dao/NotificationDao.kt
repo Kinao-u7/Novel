@@ -18,6 +18,9 @@ interface NotificationDao {
     @Query("SELECT * FROM notifications ORDER BY timestamp DESC, rowid DESC")
     suspend fun getAllNotifications(): List<NotificationEntity>
 
+    @Query("SELECT * FROM notifications ORDER BY timestamp DESC, rowid DESC")
+    suspend fun getAllOnce(): List<NotificationEntity>
+
     @Query("SELECT COUNT(*) FROM notifications WHERE is_read = 0")
     fun getUnreadCountFlow(): Flow<Int>
 
