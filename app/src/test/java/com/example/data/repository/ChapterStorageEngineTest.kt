@@ -13,12 +13,16 @@ import com.example.data.model.ChapterContent
 import com.example.data.model.Novel
 import com.example.data.source.NovelSource
 import com.example.data.source.SourceManager
+import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -573,6 +577,7 @@ class ChapterStorageEngineTest {
                         assertEquals("Both reads return identical content", res1, res2)
                         val fetchCount = slowSource.fetchCount.get()
                         assertEquals("Two simultaneous reads must fetch uncached chapter exactly once, but fetched $fetchCount", 1, fetchCount)
+                        assertTrue("inFlightFetches must be empty after release", chapterRepository.inFlightFetches.isEmpty())
                         assertTrue("chapterLocks must be empty after release", chapterRepository.chapterLocks.isEmpty())
                     }
                 } finally {
@@ -581,6 +586,120 @@ class ChapterStorageEngineTest {
             } finally {
                 releaseFetch.complete(Unit)
                 SourceManager.unregisterSource(slowSource.id)
+            }
+        }
+    }
+
+    @Test
+    fun failingFetch_propagatesExceptionToAllWaiters_andSubsequentFetchRetries() = runBlocking {
+        withTimeout(10_000L) {
+            insertTestNovel("novel_fail_retry")
+            database.chapterDao().insertIgnore(
+                ChapterEntity(
+                    novelId = "novel_fail_retry",
+                    id = "ch_fail_retry",
+                    title = "Fail Retry Chapter",
+                    chapterIndex = 1,
+                    storageTier = "NONE"
+                )
+            )
+
+            val fetchStarted = CompletableDeferred<Unit>()
+            val releaseFetch = CompletableDeferred<Unit>()
+            val shouldFail = AtomicBoolean(true)
+            val fetchCount = AtomicInteger(0)
+
+            val failSource = object : NovelSource {
+                override val id = "fail_test_src"
+                override val name = "Fail Test Source"
+                override val language = "English"
+                override val version = "1.0"
+                override val description = "Fail test source"
+                override val isLocal = false
+
+                override suspend fun getPopularNovels(page: Int): List<Novel> = emptyList()
+                override suspend fun searchNovels(query: String, page: Int): List<Novel> = emptyList()
+                override suspend fun getNovelDetails(novelId: String): Novel = Novel(
+                    id = novelId,
+                    title = "Test Novel",
+                    author = "Author",
+                    description = "Desc",
+                    sourceId = id,
+                    sourceName = name
+                )
+                override suspend fun getChapterList(novelId: String): List<Chapter> = emptyList()
+                override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent {
+                    fetchCount.incrementAndGet()
+                    if (shouldFail.get()) {
+                        fetchStarted.complete(Unit)
+                        releaseFetch.await()
+                        throw IOException("Simulated network failure")
+                    } else {
+                        return ChapterContent(
+                            chapterId = chapterId,
+                            novelId = novelId,
+                            title = "Retried Title for $chapterId",
+                            paragraphs = listOf("Retry P1", "Retry P2")
+                        )
+                    }
+                }
+            }
+
+            SourceManager.registerSource(failSource)
+            try {
+                val updatedNovel = database.novelDao().getNovelById("novel_fail_retry")!!.copy(sourceId = failSource.id)
+                database.novelDao().update(updatedNovel)
+
+                try {
+                    supervisorScope {
+                        val deferred1 = async(Dispatchers.IO) {
+                            chapterRepository.getChapterContent("novel_fail_retry", "ch_fail_retry")
+                        }
+                        val deferred2 = async(Dispatchers.IO) {
+                            chapterRepository.getChapterContent("novel_fail_retry", "ch_fail_retry")
+                        }
+
+                        fetchStarted.await()
+                        delay(50)
+                        releaseFetch.complete(Unit)
+
+                        var ex1: Throwable? = null
+                        try {
+                            deferred1.await()
+                        } catch (t: Throwable) {
+                            ex1 = t
+                        }
+
+                        var ex2: Throwable? = null
+                        try {
+                            deferred2.await()
+                        } catch (t: Throwable) {
+                            ex2 = t
+                        }
+
+                        assertTrue("First waiter received IOException", ex1 is IOException)
+                        assertTrue("Second waiter received IOException", ex2 is IOException)
+                        assertEquals("Both waiters should fail after 1 fetch attempt", 1, fetchCount.get())
+                    }
+                } finally {
+                    releaseFetch.complete(Unit)
+                }
+
+                assertTrue("inFlightFetches must be removed after failure", chapterRepository.inFlightFetches.isEmpty())
+
+                // Subsequent read should retry and succeed
+                shouldFail.set(false)
+                val retriedContent = chapterRepository.getChapterContent("novel_fail_retry", "ch_fail_retry")
+                assertEquals("Retried Title for ch_fail_retry", retriedContent.title)
+                assertEquals(2, fetchCount.get())
+                assertTrue("inFlightFetches must be empty after retry succeeds", chapterRepository.inFlightFetches.isEmpty())
+
+                val chapterRow = database.chapterDao().getChapter("novel_fail_retry", "ch_fail_retry")
+                assertNotNull(chapterRow)
+                assertEquals("CACHE", chapterRow?.storageTier)
+            } finally {
+                releaseFetch.complete(Unit)
+                SourceManager.unregisterSource(failSource.id)
             }
         }
     }
