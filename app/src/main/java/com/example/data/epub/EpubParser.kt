@@ -15,7 +15,8 @@ import java.util.regex.Pattern
 data class ParsedEpub(
     val novel: Novel,
     val chapters: List<Chapter>,
-    val chapterContents: Map<String, ChapterContent>
+    val chapterContents: Map<String, ChapterContent>,
+    val coverBytes: ByteArray? = null
 )
 
 object EpubParser {
@@ -105,8 +106,8 @@ object EpubParser {
             }
         }
 
-        // 4. Extract Cover image file if found
-        var coverFilePath: String? = null
+        // 4. Extract Cover image bytes if found (saved by caller to covers/{novelId}.jpg)
+        var coverBytes: ByteArray? = null
         val resolvedCoverHref = coverHref ?: entries.keys.firstOrNull { 
             (it.contains("cover", ignoreCase = true) || it.contains("titlepage", ignoreCase = true)) &&
             (it.endsWith(".jpg", ignoreCase = true) || it.endsWith(".jpeg", ignoreCase = true) || it.endsWith(".png", ignoreCase = true))
@@ -116,15 +117,7 @@ object EpubParser {
             val key = if (entries.containsKey(resolvedCoverHref)) resolvedCoverHref else opfDir + resolvedCoverHref
             val imageBytes = entries[key] ?: entries[resolvedCoverHref]
             if (imageBytes != null && imageBytes.isNotEmpty()) {
-                try {
-                    val coversDir = File(context.filesDir, "covers")
-                    if (!coversDir.exists()) coversDir.mkdirs()
-                    val coverFile = File(coversDir, "cover_${System.currentTimeMillis()}.jpg")
-                    FileOutputStream(coverFile).use { it.write(imageBytes) }
-                    coverFilePath = coverFile.absolutePath
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
+                coverBytes = imageBytes
             }
         }
 
@@ -186,7 +179,7 @@ object EpubParser {
             id = novelId,
             title = title,
             author = author,
-            coverUrl = coverFilePath,
+            coverUrl = null,
             description = cleanHtml(description),
             genres = listOf("EPUB", "Local File"),
             status = "Local Book",
@@ -198,7 +191,7 @@ object EpubParser {
             isEpub = true
         )
 
-        return ParsedEpub(novel, chapters, chapterContents)
+        return ParsedEpub(novel, chapters, chapterContents, coverBytes)
     }
 
     private fun extractXmlTag(xml: String, tag: String): String {

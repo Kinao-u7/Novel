@@ -19,6 +19,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -487,5 +488,124 @@ class ChapterStorageEngineTest {
 
         assertTrue("EPUB files must survive deleteAllDownloads", epubFile.exists())
         assertEquals("EPUB", database.chapterDao().getChapter("novel_epub", "ch_epub_1")?.storageTier)
+    }
+
+    @Test
+    fun parallelReads_fetchOnce_viaChapterMutex() = runBlocking {
+        insertTestNovel("novel_parallel")
+        database.chapterDao().insertIgnore(
+            ChapterEntity(
+                novelId = "novel_parallel",
+                id = "ch_parallel",
+                title = "Parallel Chapter",
+                chapterIndex = 1,
+                storageTier = "NONE"
+            )
+        )
+
+        val slowSource = object : NovelSource {
+            override val id = "slow_test_src"
+            override val name = "Slow Test Source"
+            override val language = "English"
+            override val version = "1.0"
+            override val description = "Slow test source"
+            override val isLocal = false
+
+            val fetchCount = java.util.concurrent.atomic.AtomicInteger(0)
+
+            override suspend fun getPopularNovels(page: Int): List<Novel> = emptyList()
+            override suspend fun searchNovels(query: String, page: Int): List<Novel> = emptyList()
+            override suspend fun getNovelDetails(novelId: String): Novel = Novel(
+                id = novelId,
+                title = "Test Novel",
+                author = "Author",
+                description = "Desc",
+                sourceId = id,
+                sourceName = name
+            )
+            override suspend fun getChapterList(novelId: String): List<Chapter> = emptyList()
+            override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent {
+                fetchCount.incrementAndGet()
+                kotlinx.coroutines.delay(50)
+                return ChapterContent(
+                    chapterId = chapterId,
+                    novelId = novelId,
+                    title = "Title for $chapterId",
+                    paragraphs = listOf("P1", "P2")
+                )
+            }
+        }
+
+        SourceManager.registerSource(slowSource)
+        try {
+            val updatedNovel = database.novelDao().getNovelById("novel_parallel")!!.copy(sourceId = slowSource.id)
+            database.novelDao().update(updatedNovel)
+
+            val deferred1 = kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
+                chapterRepository.getChapterContent("novel_parallel", "ch_parallel")
+            }
+            val deferred2 = kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
+                chapterRepository.getChapterContent("novel_parallel", "ch_parallel")
+            }
+
+            val res1 = deferred1.await()
+            val res2 = deferred2.await()
+
+            assertEquals("Title for ch_parallel", res1.title)
+            assertEquals("Title for ch_parallel", res2.title)
+            assertEquals("Two simultaneous reads fetch uncached chapter exactly once", 1, slowSource.fetchCount.get())
+            assertTrue("chapterLocks must be empty after release", chapterRepository.chapterLocks.isEmpty())
+        } finally {
+            SourceManager.unregisterSource(slowSource.id)
+        }
+    }
+
+    @Test
+    fun removeNovelCompletely_deletesCoverOriginalEpubAndEpubsFolder_forEpub_andCoversFileOtherwise() = runBlocking {
+        // 1. EPUB novel
+        insertTestNovel("novel_epub_rm", isEpub = true)
+        val coverFileEpub = storageResolver.getCoverFile("novel_epub_rm")
+        val origEpubFile = storageResolver.getOriginalEpubFile("novel_epub_rm")
+        val epubChapterFile = storageResolver.getEpubChapterFile("novel_epub_rm", "ch_1")
+
+        coverFileEpub.parentFile?.mkdirs()
+        coverFileEpub.writeText("cover data")
+        origEpubFile.parentFile?.mkdirs()
+        origEpubFile.writeText("original epub data")
+        chapterStorage.writeToEpub(ChapterContent("ch_1", "novel_epub_rm", "Ch 1", listOf("paragraph text")))
+
+        assertTrue(coverFileEpub.exists())
+        assertTrue(origEpubFile.exists())
+        assertTrue(epubChapterFile.exists())
+        assertTrue(storageResolver.getNovelEpubDir("novel_epub_rm").exists())
+
+        chapterRepository.removeNovelCompletely("novel_epub_rm")
+
+        assertFalse("EPUB cover must be deleted", coverFileEpub.exists())
+        assertFalse("original_epubs file must be deleted", origEpubFile.exists())
+        assertFalse("epubs folder must be deleted", storageResolver.getNovelEpubDir("novel_epub_rm").exists())
+        assertNull("Novel row must be deleted from Room", database.novelDao().getNovelById("novel_epub_rm"))
+
+        // 2. Non-EPUB novel
+        insertTestNovel("novel_web_rm", isEpub = false)
+        val coverFileWeb = storageResolver.getCoverFile("novel_web_rm")
+        coverFileWeb.parentFile?.mkdirs()
+        coverFileWeb.writeText("web cover data")
+        chapterStorage.writeToDownloads(ChapterContent("ch_web_dl", "novel_web_rm", "Web DL", listOf("text")))
+        chapterStorage.writeToCache(ChapterContent("ch_web_c", "novel_web_rm", "Web Cache", listOf("text")))
+
+        val dlFile = storageResolver.getDownloadChapterFile("novel_web_rm", "ch_web_dl")
+        val cacheFile = storageResolver.getCacheChapterFile("novel_web_rm", "ch_web_c")
+
+        assertTrue(coverFileWeb.exists())
+        assertTrue(dlFile.exists())
+        assertTrue(cacheFile.exists())
+
+        chapterRepository.removeNovelCompletely("novel_web_rm")
+
+        assertFalse("Web cover file must be deleted", coverFileWeb.exists())
+        assertFalse("Downloads dir must be deleted", storageResolver.getNovelDownloadsDir("novel_web_rm").exists())
+        assertFalse("Cache dir must be deleted", storageResolver.getNovelCacheDir("novel_web_rm").exists())
+        assertNull("Novel row must be deleted from Room", database.novelDao().getNovelById("novel_web_rm"))
     }
 }

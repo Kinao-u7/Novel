@@ -149,15 +149,19 @@ class ChapterStorage(
         before
     }
 
-    suspend fun removeNovelCompletely(novelId: String) = withContext(ioDispatcher) {
-        deleteDownloadsForNovel(novelId)
-        deleteCacheForNovel(novelId)
-        val epubDir = resolver.getNovelEpubDir(novelId)
-        if (epubDir.exists()) epubDir.deleteRecursively()
+    suspend fun removeNovelCompletely(novelId: String, isEpub: Boolean = false) = withContext(ioDispatcher) {
         val coverFile = resolver.getCoverFile(novelId)
         if (coverFile.exists()) coverFile.delete()
-        val originalEpub = resolver.getOriginalEpubFile(novelId)
-        if (originalEpub.exists()) originalEpub.delete()
+
+        if (isEpub) {
+            val originalEpub = resolver.getOriginalEpubFile(novelId)
+            if (originalEpub.exists()) originalEpub.delete()
+            val epubDir = resolver.getNovelEpubDir(novelId)
+            if (epubDir.exists()) epubDir.deleteRecursively()
+        } else {
+            deleteDownloadsForNovel(novelId)
+            deleteCacheForNovel(novelId)
+        }
     }
 
     suspend fun getCacheSizeBytes(): Long = withContext(ioDispatcher) {

@@ -19,11 +19,13 @@ class StorageResolver(val filesDir: File) {
 
     constructor(context: Context) : this(context.filesDir)
 
-    fun sha256(input: String): String {
+    fun sha256(bytes: ByteArray): String {
         val digest = MessageDigest.getInstance("SHA-256")
-        val bytes = digest.digest(input.toByteArray(Charsets.UTF_8))
-        return bytes.joinToString("") { "%02x".format(it) }
+        val hash = digest.digest(bytes)
+        return hash.joinToString("") { "%02x".format(it) }
     }
+
+    fun sha256(input: String): String = sha256(input.toByteArray(Charsets.UTF_8))
 
     fun sha256FileName(chapterId: String): String {
         return "${sha256(chapterId)}.json"

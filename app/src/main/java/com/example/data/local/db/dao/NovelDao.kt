@@ -53,6 +53,9 @@ interface NovelDao {
     @Query("SELECT * FROM novels WHERE source_id = :sourceId AND raw_id = :rawId LIMIT 1")
     suspend fun getNovelBySourceAndRawId(sourceId: String, rawId: String): NovelEntity?
 
+    @Query("SELECT * FROM novels WHERE is_epub = 1 AND LOWER(TRIM(title)) = LOWER(TRIM(:title)) AND LOWER(TRIM(author)) = LOWER(TRIM(:author)) LIMIT 1")
+    suspend fun getEpubNovelByTitleAndAuthor(title: String, author: String): NovelEntity?
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(novel: NovelEntity): Long
 

@@ -1,8 +1,13 @@
 package com.example.data.repository
 
 import android.content.Context
+import android.net.Uri
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import com.example.data.local.db.NovelDatabase
 import com.example.data.local.db.NovelDatabaseHolder
 import com.example.data.local.db.entity.BookmarkEntity
@@ -1038,5 +1043,195 @@ class NovelRepositoryTest {
         val statsAfter = pm.readingStats.value
         assertEquals(statsBefore.todayMinutesRead + 10, statsAfter.todayMinutesRead)
         assertEquals(statsBefore.totalWordsRead + 2500, statsAfter.totalWordsRead)
+    }
+
+    private fun createTestEpubFile(
+        fileName: String,
+        title: String = "Test Novel",
+        author: String = "Test Author",
+        hasCover: Boolean = true
+    ): Pair<File, Uri> {
+        val file = File(context.cacheDir, fileName)
+        val baos = ByteArrayOutputStream()
+        val zos = ZipOutputStream(baos)
+
+        val containerXml = """<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"""
+        zos.putNextEntry(ZipEntry("META-INF/container.xml"))
+        zos.write(containerXml.toByteArray(Charsets.UTF_8))
+        zos.closeEntry()
+
+        if (hasCover) {
+            zos.putNextEntry(ZipEntry("OEBPS/cover.jpg"))
+            zos.write(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()))
+            zos.closeEntry()
+        }
+
+        val opf = """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>$title</dc:title>
+    <dc:creator>$author</dc:creator>
+  </metadata>
+  <manifest>
+    ${if (hasCover) """<item id="cover-image" href="cover.jpg" media-type="image/jpeg" properties="cover-image"/>""" else ""}
+    <item id="ch1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="ch1"/>
+  </spine>
+</package>"""
+        zos.putNextEntry(ZipEntry("OEBPS/content.opf"))
+        zos.write(opf.toByteArray(Charsets.UTF_8))
+        zos.closeEntry()
+
+        val ch1 = """<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Chapter 1</title></head>
+<body>
+  <h1>Chapter 1</h1>
+  <p>Test text paragraph.</p>
+</body>
+</html>"""
+        zos.putNextEntry(ZipEntry("OEBPS/chapter1.xhtml"))
+        zos.write(ch1.toByteArray(Charsets.UTF_8))
+        zos.closeEntry()
+
+        zos.close()
+        file.writeBytes(baos.toByteArray())
+        return Pair(file, Uri.fromFile(file))
+    }
+
+    @Test
+    fun importEpub_savesCoverPathAndOriginalEpubCopy() = runBlocking {
+        val (file, uri) = createTestEpubFile(
+            fileName = "book_with_cover.epub",
+            title = "Epub With Cover",
+            author = "Epub Author",
+            hasCover = true
+        )
+
+        val novel = repository.importEpub(uri, "book_with_cover.epub")
+        assertNotNull(novel)
+        assertEquals("Epub With Cover", novel.title)
+        assertEquals("Epub Author", novel.author)
+        assertTrue(novel.isEpub)
+
+        // 1. Cover path: covers/{novelId}.jpg (not cover_{timestamp}.jpg)
+        assertNotNull("coverUrl must be set", novel.coverUrl)
+        val expectedCover = repository.storageResolver.getCoverFile(novel.id)
+        assertEquals(expectedCover.absolutePath, novel.coverUrl)
+        assertTrue("Cover file must exist on disk", expectedCover.exists())
+        assertEquals("${novel.id}.jpg", expectedCover.name)
+        assertFalse("Must not use timestamp cover naming", expectedCover.name.startsWith("cover_"))
+
+        // 2. Original file copy: original_epubs/{novelId}.epub
+        val expectedOriginal = repository.storageResolver.getOriginalEpubFile(novel.id)
+        assertTrue("Original epub file must exist on disk", expectedOriginal.exists())
+        assertEquals("${novel.id}.epub", expectedOriginal.name)
+        assertTrue("Original epub copy matches source file", expectedOriginal.readBytes().contentEquals(file.readBytes()))
+
+        // 3. EPUB chapter files exist
+        val chapterFile = repository.storageResolver.getEpubChapterFile(novel.id, "${novel.id}_ch_1")
+        assertTrue("EPUB chapter file must exist on disk", chapterFile.exists())
+    }
+
+    @Test
+    fun importEpub_dedupesOnSecondImport_andWritesNothing() = runBlocking {
+        val (_, uri) = createTestEpubFile(
+            fileName = "dedupe_book.epub",
+            title = "Dedupe Title",
+            author = "Dedupe Author",
+            hasCover = true
+        )
+
+        val novelFirst = repository.importEpub(uri, "dedupe_book.epub")
+        assertNotNull(novelFirst)
+
+        val coverFile = repository.storageResolver.getCoverFile(novelFirst.id)
+        val originalFile = repository.storageResolver.getOriginalEpubFile(novelFirst.id)
+        assertTrue(coverFile.exists())
+        assertTrue(originalFile.exists())
+
+        val coverModBefore = coverFile.lastModified()
+        val origModBefore = originalFile.lastModified()
+
+        // Second import of the exact same EPUB
+        val novelSecond = repository.importEpub(uri, "dedupe_book.epub")
+        assertEquals("Second import must return the existing novel", novelFirst.id, novelSecond.id)
+
+        // Writes nothing: files were untouched
+        assertEquals("Cover file must not be modified", coverModBefore, coverFile.lastModified())
+        assertEquals("Original epub file must not be modified", origModBefore, originalFile.lastModified())
+
+        // Dedupe found in Room
+        val existingInRoom = database.novelDao().getNovelById(novelFirst.id)
+        assertNotNull(existingInRoom)
+        assertEquals(novelFirst.id, existingInRoom!!.id)
+    }
+
+    @Test
+    fun importEpub_cleanupFilesOnFailure() = runBlocking {
+        val (_, uri) = createTestEpubFile(
+            fileName = "fail_test.epub",
+            title = "Fail Book",
+            author = "Fail Author",
+            hasCover = true
+        )
+
+        // Close current database to trigger failure during Room transaction
+        database.close()
+
+        var caughtException = false
+        try {
+            repository.importEpub(uri, "fail_test.epub")
+        } catch (e: Throwable) {
+            caughtException = true
+        }
+        assertTrue("Exception must be rethrown on failure", caughtException)
+
+        // Verify all files written for this novel were removed
+        val covers = repository.storageResolver.getCoversDir().listFiles()?.filter { it.name.startsWith("epub_") } ?: emptyList()
+        val origs = repository.storageResolver.getOriginalEpubsDir().listFiles()?.filter { it.name.startsWith("epub_") } ?: emptyList()
+        val epubs = repository.storageResolver.getEpubsDir().listFiles()?.filter { it.name.startsWith("epub_") } ?: emptyList()
+
+        assertTrue("No leftover covers after failure", covers.isEmpty())
+        assertTrue("No leftover original epubs after failure", origs.isEmpty())
+        assertTrue("No leftover epubs folder after failure", epubs.isEmpty())
+
+        // Recreate database so tearDown can close normally
+        database = Room.inMemoryDatabaseBuilder(context, NovelDatabase::class.java).allowMainThreadQueries().build()
+        NovelDatabaseHolder.setInstanceForTesting(database)
+    }
+
+    @Test
+    fun removeNovelCompletely_deletesCoverOriginalEpubAndEpubsFolder_forEpub() = runBlocking {
+        val (_, uri) = createTestEpubFile(
+            fileName = "rm_test.epub",
+            title = "Remove Test",
+            author = "Remove Author",
+            hasCover = true
+        )
+
+        val novel = repository.importEpub(uri, "rm_test.epub")
+        val coverFile = repository.storageResolver.getCoverFile(novel.id)
+        val origFile = repository.storageResolver.getOriginalEpubFile(novel.id)
+        val epubDir = repository.storageResolver.getNovelEpubDir(novel.id)
+
+        assertTrue(coverFile.exists())
+        assertTrue(origFile.exists())
+        assertTrue(epubDir.exists())
+
+        repository.removeNovelCompletely(novel.id)
+
+        assertFalse("Cover file must be deleted", coverFile.exists())
+        assertFalse("Original epub file must be deleted", origFile.exists())
+        assertFalse("Epub dir must be deleted", epubDir.exists())
+        assertNull("Novel must be deleted from Room", database.novelDao().getNovelById(novel.id))
     }
 }

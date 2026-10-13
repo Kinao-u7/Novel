@@ -9,9 +9,13 @@ import com.example.data.model.Chapter
 import com.example.data.model.ChapterContent
 import com.example.data.model.Novel
 import com.example.data.source.SourceManager
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -25,6 +29,7 @@ import kotlinx.coroutines.withContext
  * - Deletes reset DOWNLOADED and CACHE rows to NONE; never touches EPUB rows or files (Rule 1).
  * - All disk and database operations run on Dispatchers.IO (Rule 11).
  * - Delete operations are atomic and wrapped in NonCancellable (Rule 5).
+ * - Per-chapter lock: Mutex keyed by (novelId, chapterId) kept in ConcurrentHashMap and removed when released.
  */
 class ChapterRepository(
     private val chapterDao: ChapterDao,
@@ -35,6 +40,26 @@ class ChapterRepository(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
 
+    internal val chapterLocks = ConcurrentHashMap<Pair<String, String>, Mutex>()
+    private val chapterLockWaiters = ConcurrentHashMap<Pair<String, String>, AtomicInteger>()
+
+    private suspend fun <T> withChapterLock(novelId: String, chapterId: String, action: suspend () -> T): T {
+        val key = Pair(novelId, chapterId)
+        val waiters = chapterLockWaiters.computeIfAbsent(key) { AtomicInteger(0) }
+        waiters.incrementAndGet()
+        val mutex = chapterLocks.computeIfAbsent(key) { Mutex() }
+        return try {
+            mutex.withLock {
+                action()
+            }
+        } finally {
+            if (waiters.decrementAndGet() == 0) {
+                chapterLockWaiters.remove(key)
+                chapterLocks.remove(key)
+            }
+        }
+    }
+
     /**
      * Reads chapter content according to the 2-tier storage rules:
      * - EPUB or DOWNLOADED: reads from the recorded location.
@@ -44,7 +69,9 @@ class ChapterRepository(
      *   last_accessed_at, then runs LRU eviction.
      * Reading NEVER sets DOWNLOADED.
      */
-    suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent = withContext(ioDispatcher) {
+    suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent =
+        withChapterLock(novelId, chapterId) {
+            withContext(ioDispatcher) {
         val chapterRow = chapterDao.getChapter(novelId, chapterId)
 
         if (chapterRow != null) {
@@ -127,6 +154,7 @@ class ChapterRepository(
         // Reading NEVER sets DOWNLOADED
         cleanContent
     }
+}
 
     /**
      * LRU eviction: when cache folder exceeds DownloadSettings.cacheSizeCapMb,
@@ -162,44 +190,47 @@ class ChapterRepository(
      * - Otherwise fetch and write straight to downloads/.
      * Sets storageTier DOWNLOADED and storageLocation INTERNAL in Room.
      */
-    suspend fun downloadChapter(novel: Novel, chapter: Chapter): Boolean = withContext(ioDispatcher) {
-        val isPromoted = chapterStorage.promoteCacheToDownload(novel.id, chapter.id)
-        if (isPromoted) {
-            val now = System.currentTimeMillis()
-            val fileHash = storageResolver.sha256(chapter.id)
-            chapterDao.updateStorageTier(
-                novelId = novel.id,
-                id = chapter.id,
-                storageTier = "DOWNLOADED",
-                storageLocation = "INTERNAL",
-                fileHash = fileHash,
-                lastAccessedAt = now
-            )
-            return@withContext true
-        }
+    suspend fun downloadChapter(novel: Novel, chapter: Chapter): Boolean =
+        withChapterLock(novel.id, chapter.id) {
+            withContext(ioDispatcher) {
+                val isPromoted = chapterStorage.promoteCacheToDownload(novel.id, chapter.id)
+                if (isPromoted) {
+                    val now = System.currentTimeMillis()
+                    val fileHash = storageResolver.sha256(chapter.id)
+                    chapterDao.updateStorageTier(
+                        novelId = novel.id,
+                        id = chapter.id,
+                        storageTier = "DOWNLOADED",
+                        storageLocation = "INTERNAL",
+                        fileHash = fileHash,
+                        lastAccessedAt = now
+                    )
+                    return@withContext true
+                }
 
-        // Not cached: fetch from remote source and write straight to downloads/
-        val source = SourceManager.getSourceById(novel.sourceId) ?: SourceManager.getActiveSource()
-        val content = try {
-            source.getChapterContent(novel.id, chapter.id)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return@withContext false
-        }
+                // Not cached: fetch from remote source and write straight to downloads/
+                val source = SourceManager.getSourceById(novel.sourceId) ?: SourceManager.getActiveSource()
+                val content = try {
+                    source.getChapterContent(novel.id, chapter.id)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    return@withContext false
+                }
 
-        chapterStorage.writeToDownloads(content)
-        val now = System.currentTimeMillis()
-        val fileHash = storageResolver.sha256(chapter.id)
-        chapterDao.updateStorageTier(
-            novelId = novel.id,
-            id = chapter.id,
-            storageTier = "DOWNLOADED",
-            storageLocation = "INTERNAL",
-            fileHash = fileHash,
-            lastAccessedAt = now
-        )
-        true
-    }
+                chapterStorage.writeToDownloads(content)
+                val now = System.currentTimeMillis()
+                val fileHash = storageResolver.sha256(chapter.id)
+                chapterDao.updateStorageTier(
+                    novelId = novel.id,
+                    id = chapter.id,
+                    storageTier = "DOWNLOADED",
+                    storageLocation = "INTERNAL",
+                    fileHash = fileHash,
+                    lastAccessedAt = now
+                )
+                true
+            }
+        }
 
     /**
      * Deletes downloads for a single novel.
@@ -242,8 +273,10 @@ class ChapterRepository(
      * Wrapped in NonCancellable + Dispatchers.IO.
      */
     suspend fun removeNovelCompletely(novelId: String) = withContext(NonCancellable + ioDispatcher) {
+        val novel = novelDao.getNovelById(novelId)
+        val isEpub = novel?.isEpub == true || novelId.startsWith("epub_")
         novelDao.deleteById(novelId)
-        chapterStorage.removeNovelCompletely(novelId)
+        chapterStorage.removeNovelCompletely(novelId, isEpub = isEpub)
     }
 
     suspend fun getCacheSizeBytes(): Long = chapterStorage.getCacheSizeBytes()

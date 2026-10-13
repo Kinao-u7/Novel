@@ -18,6 +18,10 @@ class StorageManager(private val context: Context) {
     fun parseEpub(uri: Uri, fileName: String): ParsedEpub {
         val inputStream = context.contentResolver.openInputStream(uri)
             ?: throw IllegalArgumentException("Cannot open stream for URI")
+        return parseEpub(inputStream, fileName)
+    }
+
+    fun parseEpub(inputStream: java.io.InputStream, fileName: String): ParsedEpub {
         return EpubParser.parseEpub(context, inputStream, fileName)
     }
 

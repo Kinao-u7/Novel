@@ -30,9 +30,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayInputStream
 import java.io.File
 
 /**
@@ -389,33 +391,95 @@ class NovelRepository(context: Context) {
     // --- EPUB IMPORT ---
 
     suspend fun importEpub(uri: Uri, fileName: String): Novel = withContext(Dispatchers.IO) {
-        val parsed = storageManager.parseEpub(uri, fileName)
+        val bytes = appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: throw IllegalArgumentException("Cannot open stream for URI: $uri")
 
-        // Save permanent EPUB chapter files to epubs/{novelId}/{sha256}.json
-        for ((_, content) in parsed.chapterContents) {
-            chapterStorage.writeToEpub(content)
+        // 1. Dedupe by SHA-256 of file bytes
+        val fileHash = storageResolver.sha256(bytes)
+        val existingByHash = novelDao.getNovelBySourceAndRawId("local_epub", fileHash)
+        if (existingByHash != null) {
+            return@withContext existingByHash.toModel(
+                downloadedCount = chapterDao.getDownloadedCount(existingByHash.id)
+            ).copy(inLibrary = true)
         }
 
-        // New novels keep last_read_timestamp = 0; insert-ignore plus update
-        val novelEntity = parsed.novel.toEntity().copy(
-            inLibrary = true,
-            isEpub = true,
-            lastReadTimestamp = 0L
-        )
-        novelDao.upsertSafe(novelEntity)
+        // Parse EPUB metadata and chapters
+        val parsed = storageManager.parseEpub(ByteArrayInputStream(bytes), fileName)
 
-        // EPUB rows get storage_tier EPUB and storage_location INTERNAL
-        val chapterEntities = parsed.chapters.map { ch ->
-            ch.toEntity(
-                storageTier = "EPUB",
-                storageLocation = "INTERNAL",
-                fileHash = storageResolver.sha256(ch.id),
-                lastAccessedAt = System.currentTimeMillis()
+        // 2. Dedupe by normalized title + author
+        val existingByTitleAuthor = novelDao.getEpubNovelByTitleAndAuthor(parsed.novel.title, parsed.novel.author)
+        if (existingByTitleAuthor != null) {
+            return@withContext existingByTitleAuthor.toModel(
+                downloadedCount = chapterDao.getDownloadedCount(existingByTitleAuthor.id)
+            ).copy(inLibrary = true)
+        }
+
+        val novelId = parsed.novel.id
+        val writtenFiles = mutableListOf<File>()
+
+        try {
+            // Write files first:
+            // a. Save cover to covers/{novelId}.jpg and set coverUrl
+            var coverUrl: String? = null
+            if (parsed.coverBytes != null && parsed.coverBytes.isNotEmpty()) {
+                val coverFile = storageResolver.getCoverFile(novelId)
+                coverFile.parentFile?.mkdirs()
+                coverFile.writeBytes(parsed.coverBytes)
+                writtenFiles.add(coverFile)
+                coverUrl = coverFile.absolutePath
+            }
+
+            // b. Copy original .epub to original_epubs/{novelId}.epub
+            val originalEpubFile = storageResolver.getOriginalEpubFile(novelId)
+            originalEpubFile.parentFile?.mkdirs()
+            originalEpubFile.writeBytes(bytes)
+            writtenFiles.add(originalEpubFile)
+
+            // Permanent EPUB chapter files to epubs/{novelId}/{sha256}.json
+            for ((_, content) in parsed.chapterContents) {
+                chapterStorage.writeToEpub(content)
+                val chapterFile = storageResolver.getEpubChapterFile(novelId, content.chapterId)
+                writtenFiles.add(chapterFile)
+            }
+
+            // Insert novel and chapter rows in one transaction
+            val novelEntity = parsed.novel.toEntity().copy(
+                coverUrl = coverUrl,
+                inLibrary = true,
+                isEpub = true,
+                rawId = fileHash,
+                lastReadTimestamp = 0L
             )
-        }
-        chapterDao.refreshChapters(parsed.novel.id, chapterEntities)
 
-        parsed.novel.copy(inLibrary = true, lastReadTimestamp = 0L)
+            val chapterEntities = parsed.chapters.map { ch ->
+                ch.toEntity(
+                    storageTier = "EPUB",
+                    storageLocation = "INTERNAL",
+                    fileHash = storageResolver.sha256(ch.id),
+                    lastAccessedAt = System.currentTimeMillis()
+                )
+            }
+
+            database.runInTransaction {
+                runBlocking {
+                    novelDao.upsertSafe(novelEntity)
+                    chapterDao.refreshChapters(novelId, chapterEntities)
+                }
+            }
+
+            novelEntity.toModel()
+        } catch (e: Throwable) {
+            for (file in writtenFiles) {
+                try {
+                    if (file.exists()) file.delete()
+                } catch (_: Exception) {}
+            }
+            val epubDir = storageResolver.getNovelEpubDir(novelId)
+            if (epubDir.exists() && epubDir.listFiles().isNullOrEmpty()) {
+                try { epubDir.delete() } catch (_: Exception) {}
+            }
+            throw e
+        }
     }
 
     // --- WEB SCRAPED NOVELS ---
