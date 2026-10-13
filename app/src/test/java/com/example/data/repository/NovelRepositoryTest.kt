@@ -198,7 +198,7 @@ class NovelRepositoryTest {
         val novel = testNovel(id = "novel_1", inLibrary = true)
         repository.addToLibrary(novel)
 
-        val updated = repository.libraryNovels.first { it.isNotEmpty() }
+        val updated = withTimeout(5000L) { repository.libraryNovels.first { it.isNotEmpty() } }
         assertEquals(1, updated.size)
         assertEquals("novel_1", updated.first().id)
         assertTrue(repository.isNovelInLibrary("novel_1"))
@@ -208,7 +208,7 @@ class NovelRepositoryTest {
         database.novelDao().upsertSafe(browseNovel.toEntity())
 
         // Library must still contain only 1 novel
-        val libAfterBrowse = repository.libraryNovels.first { it.any { n -> n.id == "novel_1" } }
+        val libAfterBrowse = withTimeout(5000L) { repository.libraryNovels.first { it.any { n -> n.id == "novel_1" } } }
         assertEquals(1, libAfterBrowse.size)
         assertFalse(repository.isNovelInLibrary("novel_2"))
     }
@@ -217,11 +217,11 @@ class NovelRepositoryTest {
     fun removeFromLibrary_setsInLibraryFalse_doesNotDeleteRow_removeCompletelyDeletesRow() = runBlocking {
         val novel = testNovel(id = "novel_1", inLibrary = true)
         repository.addToLibrary(novel)
-        repository.libraryNovels.first { it.isNotEmpty() }
+        withTimeout(5000L) { repository.libraryNovels.first { it.isNotEmpty() } }
 
         // Remove from library (sets in_library = 0)
         repository.removeFromLibrary("novel_1")
-        val afterRemove = repository.libraryNovels.first { it.isEmpty() }
+        val afterRemove = withTimeout(5000L) { repository.libraryNovels.first { it.isEmpty() } }
         assertTrue(afterRemove.isEmpty())
         assertFalse(repository.isNovelInLibrary("novel_1"))
 
@@ -332,7 +332,9 @@ class NovelRepositoryTest {
             assertEquals(12345L, ch1After.lastAccessedAt)
 
             // Preserved bookmark
-            val bookmarks = repository.bookmarks.first { it.any { b -> b.id == "bm_refresh_1" } }
+            val bookmarks = withTimeout(5000L) {
+                repository.bookmarks.first { it.any { b -> b.id == "bm_refresh_1" } }
+            }
             assertTrue(bookmarks.any { it.id == "bm_refresh_1" && it.chapterId == "ch_1" })
         } finally {
             SourceManager.unregisterSource(testSource.id)
@@ -375,16 +377,20 @@ class NovelRepositoryTest {
         database.chapterDao().insertIgnore(listOf(chDownloaded, chEpub, chCache, chNone))
 
         // Check libraryNovels derived count
-        val libraryNovel = repository.libraryNovels.first { list ->
-            list.any { it.id == "novel_tiers" && it.downloadedChaptersCount > 0 }
+        val libraryNovel = withTimeout(5000L) {
+            repository.libraryNovels.first { list ->
+                list.any { it.id == "novel_tiers" && it.downloadedChaptersCount > 0 }
+            }
         }.first { it.id == "novel_tiers" }
 
         // DOWNLOADED (1) + EPUB (1) = 2; CACHE and NONE do not count
         assertEquals(2, libraryNovel.downloadedChaptersCount)
 
         // Check downloadedChapters StateFlow mapping
-        val downloadedMap = repository.downloadedChapters.first { map ->
-            map.containsKey("novel_tiers") && map["novel_tiers"]!!.isNotEmpty()
+        val downloadedMap = withTimeout(5000L) {
+            repository.downloadedChapters.first { map ->
+                map.containsKey("novel_tiers") && map["novel_tiers"]!!.isNotEmpty()
+            }
         }
         val downloadedSet = downloadedMap["novel_tiers"] ?: emptySet()
         assertEquals(setOf("ch_dl", "ch_ep"), downloadedSet)
@@ -396,7 +402,7 @@ class NovelRepositoryTest {
     fun readingChapter_setsCache_andNeverDownloaded() = runBlocking {
         val novel = testNovel(id = "novel_read_tier", inLibrary = true, sourceId = "test_read_src")
         repository.addToLibrary(novel)
-        repository.libraryNovels.first { it.any { it.id == "novel_read_tier" } }
+        withTimeout(5000L) { repository.libraryNovels.first { it.any { it.id == "novel_read_tier" } } }
 
         val chapter = ChapterEntity(
             novelId = "novel_read_tier",
@@ -435,8 +441,9 @@ class NovelRepositoryTest {
             assertNotEquals("DOWNLOADED", chapterInDb.storageTier)
 
             // Reading does not increment downloadedChaptersCount
-            val libraryNovel = repository.libraryNovels.first { list -> list.any { it.id == "novel_read_tier" } }
-                .first { it.id == "novel_read_tier" }
+            val libraryNovel = withTimeout(5000L) {
+                repository.libraryNovels.first { list -> list.any { it.id == "novel_read_tier" } }
+            }.first { it.id == "novel_read_tier" }
             assertEquals(0, libraryNovel.downloadedChaptersCount)
         } finally {
             SourceManager.unregisterSource(testSource.id)
@@ -602,7 +609,7 @@ class NovelRepositoryTest {
     fun clearNovelReadingHistory_keepsLastReadChapterId() = runBlocking {
         val novel = testNovel(id = "novel_clear_hist", inLibrary = true, lastReadTimestamp = 0L)
         repository.addToLibrary(novel)
-        repository.libraryNovels.first { it.any { it.id == "novel_clear_hist" } }
+        withTimeout(5000L) { repository.libraryNovels.first { it.any { it.id == "novel_clear_hist" } } }
 
         repository.updateReadingProgress(
             novelId = "novel_clear_hist",
@@ -610,7 +617,9 @@ class NovelRepositoryTest {
             chapterTitle = "Chapter Preserved",
             chapterIndex = 10
         )
-        repository.libraryNovels.first { it.any { it.id == "novel_clear_hist" && it.lastReadTimestamp > 0L } }
+        withTimeout(5000L) {
+            repository.libraryNovels.first { it.any { it.id == "novel_clear_hist" && it.lastReadTimestamp > 0L } }
+        }
 
         val beforeClear = database.novelDao().getNovelById("novel_clear_hist")
         assertNotNull(beforeClear)
@@ -620,7 +629,9 @@ class NovelRepositoryTest {
 
         // Clear history: resets last_read_timestamp to 0, keeps last_read_chapter_id
         repository.clearNovelReadingHistory("novel_clear_hist")
-        repository.libraryNovels.first { it.any { it.id == "novel_clear_hist" && it.lastReadTimestamp == 0L } }
+        withTimeout(5000L) {
+            repository.libraryNovels.first { it.any { it.id == "novel_clear_hist" && it.lastReadTimestamp == 0L } }
+        }
 
         val afterClear = database.novelDao().getNovelById("novel_clear_hist")
         assertNotNull(afterClear)
@@ -666,12 +677,12 @@ class NovelRepositoryTest {
         val ch2 = ChapterEntity(novelId = "novel_read_ids", id = "ch_2", title = "Ch 2", chapterIndex = 2, isRead = false)
         database.chapterDao().insertIgnore(listOf(ch1, ch2))
 
-        val initialIds = repository.getReadChapterIds("novel_read_ids").first()
+        val initialIds = withTimeout(5000L) { repository.getReadChapterIds("novel_read_ids").first() }
         assertTrue(initialIds.isEmpty())
 
         repository.markChapterAsRead("novel_read_ids", "ch_1")
 
-        val updatedIds = repository.getReadChapterIds("novel_read_ids").first { it.isNotEmpty() }
+        val updatedIds = withTimeout(5000L) { repository.getReadChapterIds("novel_read_ids").first { it.isNotEmpty() } }
         assertEquals(setOf("ch_1"), updatedIds)
     }
 
@@ -693,13 +704,13 @@ class NovelRepositoryTest {
 
         repository.addBookmark(bookmark)
 
-        val bookmarksForNovel = repository.bookmarks.first { it.isNotEmpty() }
+        val bookmarksForNovel = withTimeout(5000L) { repository.bookmarks.first { it.isNotEmpty() } }
         assertEquals(1, bookmarksForNovel.size)
         assertEquals("bm_1", bookmarksForNovel.first().id)
         assertEquals("Some highlighted text", bookmarksForNovel.first().excerpt)
 
         repository.removeBookmark("bm_1")
-        val bookmarksAfterRemove = repository.bookmarks.first { it.isEmpty() }
+        val bookmarksAfterRemove = withTimeout(5000L) { repository.bookmarks.first { it.isEmpty() } }
         assertTrue(bookmarksAfterRemove.isEmpty())
     }
 

@@ -19,6 +19,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -497,83 +498,90 @@ class ChapterStorageEngineTest {
 
     @Test
     fun parallelReads_fetchOnce_viaChapterMutex() = runBlocking {
-        insertTestNovel("novel_parallel")
-        database.chapterDao().insertIgnore(
-            ChapterEntity(
-                novelId = "novel_parallel",
-                id = "ch_parallel",
-                title = "Parallel Chapter",
-                chapterIndex = 1,
-                storageTier = "NONE"
-            )
-        )
-
-        val fetchStarted = CompletableDeferred<Unit>()
-        val releaseFetch = CompletableDeferred<Unit>()
-
-        val slowSource = object : NovelSource {
-            override val id = "slow_test_src"
-            override val name = "Slow Test Source"
-            override val language = "English"
-            override val version = "1.0"
-            override val description = "Slow test source"
-            override val isLocal = false
-
-            val fetchCount = java.util.concurrent.atomic.AtomicInteger(0)
-
-            override suspend fun getPopularNovels(page: Int): List<Novel> = emptyList()
-            override suspend fun searchNovels(query: String, page: Int): List<Novel> = emptyList()
-            override suspend fun getNovelDetails(novelId: String): Novel = Novel(
-                id = novelId,
-                title = "Test Novel",
-                author = "Author",
-                description = "Desc",
-                sourceId = id,
-                sourceName = name
-            )
-            override suspend fun getChapterList(novelId: String): List<Chapter> = emptyList()
-            override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent {
-                fetchCount.incrementAndGet()
-                fetchStarted.complete(Unit)
-                releaseFetch.await()
-                return ChapterContent(
-                    chapterId = chapterId,
-                    novelId = novelId,
-                    title = "Title for $chapterId",
-                    paragraphs = listOf("P1", "P2")
+        withTimeout(10_000L) {
+            insertTestNovel("novel_parallel")
+            database.chapterDao().insertIgnore(
+                ChapterEntity(
+                    novelId = "novel_parallel",
+                    id = "ch_parallel",
+                    title = "Parallel Chapter",
+                    chapterIndex = 1,
+                    storageTier = "NONE"
                 )
+            )
+
+            val fetchStarted = CompletableDeferred<Unit>()
+            val releaseFetch = CompletableDeferred<Unit>()
+
+            val slowSource = object : NovelSource {
+                override val id = "slow_test_src"
+                override val name = "Slow Test Source"
+                override val language = "English"
+                override val version = "1.0"
+                override val description = "Slow test source"
+                override val isLocal = false
+
+                val fetchCount = java.util.concurrent.atomic.AtomicInteger(0)
+
+                override suspend fun getPopularNovels(page: Int): List<Novel> = emptyList()
+                override suspend fun searchNovels(query: String, page: Int): List<Novel> = emptyList()
+                override suspend fun getNovelDetails(novelId: String): Novel = Novel(
+                    id = novelId,
+                    title = "Test Novel",
+                    author = "Author",
+                    description = "Desc",
+                    sourceId = id,
+                    sourceName = name
+                )
+                override suspend fun getChapterList(novelId: String): List<Chapter> = emptyList()
+                override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent {
+                    fetchCount.incrementAndGet()
+                    fetchStarted.complete(Unit)
+                    releaseFetch.await()
+                    return ChapterContent(
+                        chapterId = chapterId,
+                        novelId = novelId,
+                        title = "Title for $chapterId",
+                        paragraphs = listOf("P1", "P2")
+                    )
+                }
             }
-        }
 
-        SourceManager.registerSource(slowSource)
-        try {
-            val updatedNovel = database.novelDao().getNovelById("novel_parallel")!!.copy(sourceId = slowSource.id)
-            database.novelDao().update(updatedNovel)
+            SourceManager.registerSource(slowSource)
+            try {
+                val updatedNovel = database.novelDao().getNovelById("novel_parallel")!!.copy(sourceId = slowSource.id)
+                database.novelDao().update(updatedNovel)
 
-            coroutineScope {
-                val deferred1 = async(Dispatchers.IO) {
-                    chapterRepository.getChapterContent("novel_parallel", "ch_parallel")
+                try {
+                    coroutineScope {
+                        val deferred1 = async(Dispatchers.IO) {
+                            chapterRepository.getChapterContent("novel_parallel", "ch_parallel")
+                        }
+                        val deferred2 = async(Dispatchers.IO) {
+                            chapterRepository.getChapterContent("novel_parallel", "ch_parallel")
+                        }
+
+                        fetchStarted.await()
+                        delay(50)
+                        releaseFetch.complete(Unit)
+
+                        val res1 = deferred1.await()
+                        val res2 = deferred2.await()
+
+                        assertEquals("Both reads return the same title", "Title for ch_parallel", res1.title)
+                        assertEquals("Both reads return the same title", "Title for ch_parallel", res2.title)
+                        assertEquals("Both reads return identical content", res1, res2)
+                        val fetchCount = slowSource.fetchCount.get()
+                        assertEquals("Two simultaneous reads must fetch uncached chapter exactly once, but fetched $fetchCount", 1, fetchCount)
+                        assertTrue("chapterLocks must be empty after release", chapterRepository.chapterLocks.isEmpty())
+                    }
+                } finally {
+                    releaseFetch.complete(Unit)
                 }
-                val deferred2 = async(Dispatchers.IO) {
-                    chapterRepository.getChapterContent("novel_parallel", "ch_parallel")
-                }
-
-                fetchStarted.await()
-                delay(50)
+            } finally {
                 releaseFetch.complete(Unit)
-
-                val res1 = deferred1.await()
-                val res2 = deferred2.await()
-
-                assertEquals("Both reads return the same title", "Title for ch_parallel", res1.title)
-                assertEquals("Both reads return the same title", "Title for ch_parallel", res2.title)
-                assertEquals("Both reads return identical content", res1, res2)
-                val fetchCount = slowSource.fetchCount.get()
-                assertEquals("Two simultaneous reads must fetch uncached chapter exactly once, but fetched $fetchCount", 1, fetchCount)
-                assertTrue("chapterLocks must be empty after release", chapterRepository.chapterLocks.isEmpty())
+                SourceManager.unregisterSource(slowSource.id)
             }
-        } finally {
-            SourceManager.unregisterSource(slowSource.id)
         }
     }
 

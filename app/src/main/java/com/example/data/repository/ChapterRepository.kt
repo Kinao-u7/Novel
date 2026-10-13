@@ -45,17 +45,22 @@ class ChapterRepository(
 
     private suspend fun <T> withChapterLock(novelId: String, chapterId: String, action: suspend () -> T): T {
         val key = Pair(novelId, chapterId)
-        val waiters = chapterLockWaiters.computeIfAbsent(key) { AtomicInteger(0) }
-        waiters.incrementAndGet()
-        val mutex = chapterLocks.computeIfAbsent(key) { Mutex() }
+        val mutex = synchronized(chapterLocks) {
+            val waiters = chapterLockWaiters.computeIfAbsent(key) { AtomicInteger(0) }
+            waiters.incrementAndGet()
+            chapterLocks.computeIfAbsent(key) { Mutex() }
+        }
         return try {
             mutex.withLock {
                 action()
             }
         } finally {
-            if (waiters.decrementAndGet() == 0) {
-                chapterLockWaiters.remove(key)
-                chapterLocks.remove(key)
+            synchronized(chapterLocks) {
+                val waiters = chapterLockWaiters[key]
+                if (waiters != null && waiters.decrementAndGet() == 0) {
+                    chapterLockWaiters.remove(key)
+                    chapterLocks.remove(key)
+                }
             }
         }
     }
