@@ -9,6 +9,7 @@ import com.example.data.local.db.entity.BookmarkEntity
 import com.example.data.local.db.entity.ChapterEntity
 import com.example.data.local.db.entity.NotificationEntity
 import com.example.data.local.db.toEntity
+import com.example.data.model.AppNotificationItem
 import com.example.data.model.Bookmark
 import com.example.data.model.Chapter
 import com.example.data.model.ChapterContent
