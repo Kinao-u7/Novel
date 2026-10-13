@@ -15,6 +15,8 @@ import com.example.data.source.SourceManager
 import com.example.data.source.webscrape.ScrapedNovelData
 import com.example.data.source.webscrape.WebScrapeSource
 import com.example.data.source.webscrape.WtrLabExtractor
+import com.example.data.local.storage.ChapterStorage
+import com.example.data.local.storage.StorageResolver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -58,9 +60,12 @@ class NovelRepository(context: Context) {
     private val notificationDao = database.notificationDao()
 
     val settingsRepository = SettingsRepository.getInstance(appContext)
+    val storageResolver = StorageResolver(appContext)
+    val chapterStorage = ChapterStorage(storageResolver)
+    val chapterRepository = ChapterRepository(chapterDao, novelDao, chapterStorage, storageResolver, settingsRepository)
     internal val storageManager = StorageManager(appContext)
     internal val preferencesManager = PreferencesManager(appContext, settingsRepository)
-    internal val downloadManager = DownloadManager(storageManager, preferencesManager)
+    internal val downloadManager = DownloadManager(chapterRepository, settingsRepository)
     internal val backupManager = BackupManager(this, preferencesManager)
 
     private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -222,10 +227,7 @@ class NovelRepository(context: Context) {
     }
 
     suspend fun removeNovelCompletely(novelId: String) = withContext(Dispatchers.IO) {
-        // Cascade delete in Room deletes chapters, bookmarks, download_queue
-        novelDao.deleteById(novelId)
-        val customUri = settingsRepository.downloadSettings.value.customDownloadLocationUri
-        storageManager.deleteNovelChapters(novelId, isEpub = false, customUriStr = customUri)
+        chapterRepository.removeNovelCompletely(novelId)
     }
 
     suspend fun updateNovelDetails(
@@ -356,105 +358,29 @@ class NovelRepository(context: Context) {
             val entities = rawChapters.map { it.toEntity(storageTier = "NONE", storageLocation = "INTERNAL") }
             chapterDao.refreshChapters(novel.id, entities)
 
-            // Cache to disk & memory for Stage 4 storage continuity
-            val customUri = settingsRepository.downloadSettings.value.customDownloadLocationUri
-            storageManager.putCachedChapters(novel.id, rawChapters)
-            storageManager.saveNovelChaptersToDisk(novel.id, rawChapters, customUri)
-
             return@withContext chapterDao.getChapters(novel.id).map { it.toModel() }
         }
 
         roomChapters.map { it.toModel() }
     }
 
-    fun getCachedChapters(novelId: String): List<Chapter>? = storageManager.getCachedChapters(novelId)
+    suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent =
+        chapterRepository.getChapterContent(novelId, chapterId)
 
-    // Dead for chapter list in Stage 1b-2; left for Stage 4
-    fun loadChaptersFromDiskFast(novelId: String): List<Chapter> {
-        val customUriStr = preferencesManager.downloadSettings.value.customDownloadLocationUri
-        val list = storageManager.loadNovelChaptersFromDisk(novelId, customUriStr)
-        if (list.isNotEmpty()) {
-            storageManager.putCachedChapters(novelId, list)
-        }
-        return list
-    }
-
-    suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent = withContext(Dispatchers.IO) {
-        val customUriStr = preferencesManager.downloadSettings.value.customDownloadLocationUri
-
-        // Reading sets CACHE tier when it is NONE and updates last_accessed_at; never sets DOWNLOADED
-        chapterDao.recordChapterAccess(novelId, chapterId, System.currentTimeMillis())
-
-        // 1. Check local cache (memory)
-        storageManager.getCachedChapterContent(chapterId)?.let { return@withContext it }
-
-        // 2. Check local disk file
-        val offlineContent = storageManager.readChapterFromDisk(novelId, chapterId, customUriStr)
-        if (offlineContent != null) {
-            storageManager.putCachedChapterContent(chapterId, offlineContent)
-            return@withContext offlineContent
-        }
-
-        // 3. Fetch from Source
-        val novel = libraryNovels.value.firstOrNull { it.id == novelId }
-        val source = if (novel != null) {
-            SourceManager.getSourceById(novel.sourceId) ?: SourceManager.getActiveSource()
-        } else {
-            SourceManager.getActiveSource()
-        }
-
-        val content = source.getChapterContent(novelId, chapterId)
-        storageManager.saveChapterToDisk(content, customUriStr)
-        storageManager.putCachedChapterContent(chapterId, content)
-        content
-    }
-
-    suspend fun downloadChapter(novel: Novel, chapter: Chapter): Boolean = withContext(Dispatchers.IO) {
-        val success = downloadManager.downloadChapter(novel, chapter) {
-            getChapterContent(novel.id, chapter.id)
-        }
-        if (success) {
-            // Explicit download sets storage_tier DOWNLOADED and storage_location INTERNAL
-            chapterDao.markChapterDownloaded(novel.id, chapter.id)
-        }
-        success
-    }
+    suspend fun downloadChapter(novel: Novel, chapter: Chapter): Boolean =
+        chapterRepository.downloadChapter(novel, chapter)
 
     suspend fun downloadChaptersBatch(
         novel: Novel,
         chaptersToDownload: List<Chapter>,
         onProgress: (Int, Int) -> Unit = { _, _ -> }
-    ) = withContext(Dispatchers.IO) {
-        downloadManager.downloadChaptersBatch(novel, chaptersToDownload, onProgress) { ch ->
-            val content = getChapterContent(novel.id, ch.id)
-            chapterDao.markChapterDownloaded(novel.id, ch.id)
-            content
-        }
-    }
+    ) = downloadManager.downloadChaptersBatch(novel, chaptersToDownload, onProgress)
 
-    suspend fun deleteDownloadedNovelChapters(novelId: String) = withContext(Dispatchers.IO) {
-        val novel = libraryNovels.value.find { it.id == novelId }
-        val isEpub = novel?.let { it.isEpub || it.sourceId == "local_epub" } ?: novelId.startsWith("epub_")
-        if (isEpub) return@withContext
+    suspend fun deleteDownloadedNovelChapters(novelId: String) =
+        chapterRepository.deleteNovelDownloads(novelId)
 
-        // Deleting downloads resets DOWNLOADED and CACHE rows to NONE; never touches EPUB rows
-        chapterDao.deleteNovelDownloads(novelId)
-        val customUri = preferencesManager.downloadSettings.value.customDownloadLocationUri
-        storageManager.deleteNovelChapters(novelId, isEpub = false, customUriStr = customUri)
-        downloadManager.deleteDownloadedNovelChapters(novelId, isEpub = false)
-    }
-
-    suspend fun deleteAllDownloadedContent(): Int = withContext(Dispatchers.IO) {
-        val epubNovelIds = libraryNovels.value
-            .filter { it.isEpub || it.sourceId == "local_epub" || it.id.startsWith("epub_") }
-            .map { it.id }
-            .toSet()
-
-        // Deleting downloads resets DOWNLOADED and CACHE rows to NONE; never touches EPUB rows
-        chapterDao.deleteAllDownloads()
-        val customUri = preferencesManager.downloadSettings.value.customDownloadLocationUri
-        storageManager.deleteAllDownloadedContent(customUri, epubNovelIds)
-    }
+    suspend fun deleteAllDownloadedContent(): Int =
+        chapterRepository.deleteAllDownloads()
 
     suspend fun deleteNovelDownloads(novelId: String) {
         deleteDownloadedNovelChapters(novelId)
@@ -463,16 +389,11 @@ class NovelRepository(context: Context) {
     // --- EPUB IMPORT ---
 
     suspend fun importEpub(uri: Uri, fileName: String): Novel = withContext(Dispatchers.IO) {
-        val customUriStr = preferencesManager.downloadSettings.value.customDownloadLocationUri
         val parsed = storageManager.parseEpub(uri, fileName)
 
-        // Save chapter contents and files to disk
-        storageManager.putCachedChapters(parsed.novel.id, parsed.chapters)
-        storageManager.saveNovelChaptersToDisk(parsed.novel.id, parsed.chapters, customUriStr)
-
-        for ((chId, content) in parsed.chapterContents) {
-            storageManager.putCachedChapterContent(chId, content)
-            storageManager.saveChapterToDisk(content, customUriStr)
+        // Save permanent EPUB chapter files to epubs/{novelId}/{sha256}.json
+        for ((_, content) in parsed.chapterContents) {
+            chapterStorage.writeToEpub(content)
         }
 
         // New novels keep last_read_timestamp = 0; insert-ignore plus update
@@ -488,7 +409,7 @@ class NovelRepository(context: Context) {
             ch.toEntity(
                 storageTier = "EPUB",
                 storageLocation = "INTERNAL",
-                fileHash = ch.id,
+                fileHash = storageResolver.sha256(ch.id),
                 lastAccessedAt = System.currentTimeMillis()
             )
         }
@@ -557,10 +478,6 @@ class NovelRepository(context: Context) {
                 wordCount = 0
             )
         }
-
-        val customUriStr = preferencesManager.downloadSettings.value.customDownloadLocationUri
-        storageManager.putCachedChapters(novelId, chapters)
-        storageManager.saveNovelChaptersToDisk(novelId, chapters, customUriStr)
 
         val novelEntity = Novel(
             id = novelId,
@@ -719,11 +636,17 @@ class NovelRepository(context: Context) {
 
     // --- STORAGE & CACHE MANAGEMENT ---
 
-    fun getStorageUsageBytes(): Long = storageManager.getStorageUsageBytes()
+    suspend fun getCacheSizeBytes(): Long = chapterStorage.getCacheSizeBytes()
 
-    fun getCacheSizeBytes(): Long = storageManager.getCacheSizeBytes()
+    suspend fun getDownloadsSizeBytes(): Long = chapterStorage.getDownloadsSizeBytes()
 
-    fun clearCache(): Long = storageManager.clearCache()
+    suspend fun getEpubsSizeBytes(): Long = chapterStorage.getEpubsSizeBytes()
+
+    suspend fun getStorageUsageBytes(): Long = getDownloadsSizeBytes() + getEpubsSizeBytes()
+
+    suspend fun clearChapterCache(): Long = chapterRepository.clearChapterCache()
+
+    suspend fun clearCache(): Long = clearChapterCache()
 
     fun resetAppPreferences() = settingsRepository.resetAllSettingsSync()
 

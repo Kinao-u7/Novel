@@ -162,6 +162,7 @@ class BackupManager(
                     put("throttleBatchSize", ds.throttleBatchSize)
                     put("throttleDelaySeconds", ds.throttleDelaySeconds.toDouble())
                     put("throttleRandomJitter", ds.throttleRandomJitter)
+                    put("cacheSizeCapMb", ds.cacheSizeCapMb)
                 }
                 put("downloadSettings", dsObj)
             }
@@ -319,7 +320,8 @@ class BackupManager(
                         throttlingEnabled = ds.optBoolean("throttlingEnabled", currentDs.throttlingEnabled),
                         throttleBatchSize = ds.optInt("throttleBatchSize", currentDs.throttleBatchSize),
                         throttleDelaySeconds = ds.optDouble("throttleDelaySeconds", currentDs.throttleDelaySeconds.toDouble()).toFloat(),
-                        throttleRandomJitter = ds.optBoolean("throttleRandomJitter", currentDs.throttleRandomJitter)
+                        throttleRandomJitter = ds.optBoolean("throttleRandomJitter", currentDs.throttleRandomJitter),
+                        cacheSizeCapMb = ds.optInt("cacheSizeCapMb", currentDs.cacheSizeCapMb)
                     )
                     preferencesManager.updateDownloadSettings(newDs)
                 }

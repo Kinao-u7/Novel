@@ -83,6 +83,7 @@ staging/                        temporary restore extraction
 ```
 
 - Chapter file names are SHA-256 hashes of the chapter id (ids can be URLs).
+- Stage 4a status: StorageResolver, ChapterStorage and ChapterRepository operate on INTERNAL storage only (`filesDir`). Custom SAF folder writes and reads are deferred to Stage 4b.
 - A custom SAF folder is a real location, not a mirror: downloads go to `NovelReader/downloads/{novelId}/{sha256}.json` under the SAF tree, and `chapters.storage_location` records where each file lives. Changing the folder never orphans old files. If permission is revoked, new writes fall back to `INTERNAL`. Cache the SAF directory handle, never call `findFile` per chapter.
 
 ## 5. Settings (already implemented in Stage 1a)

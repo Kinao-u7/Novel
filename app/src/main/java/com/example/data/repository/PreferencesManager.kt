@@ -50,14 +50,6 @@ class PreferencesManager(
         prefs.edit().putBoolean("epub_covers_migrated", migrated).apply()
     }
 
-    fun loadDownloadedIndexJson(): String? {
-        return prefs.getString("downloaded_index_json", null)
-    }
-
-    fun saveDownloadedIndexJson(jsonString: String) {
-        prefs.edit().putString("downloaded_index_json", jsonString).apply()
-    }
-
     // --- READER SETTINGS ---
 
     fun updateReaderSettings(settings: ReaderSettings) {

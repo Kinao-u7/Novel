@@ -107,14 +107,19 @@ interface ChapterDao {
     suspend fun updateLastAccessed(novelId: String, id: String, timestamp: Long): Int
 
     /**
-     * LRU query returning only CACHE chapters ordered by last_accessed_at ascending.
+     * LRU query returning only CACHE chapters ordered by last_accessed_at ascending
+     * (tie-break by chapter_index ascending).
      * EPUB, DOWNLOADED, and NONE chapters are never returned by eviction queries.
      */
-    @Query("SELECT * FROM chapters WHERE storage_tier = 'CACHE' ORDER BY last_accessed_at ASC")
+    @Query("SELECT * FROM chapters WHERE storage_tier = 'CACHE' ORDER BY last_accessed_at ASC, chapter_index ASC")
     suspend fun getCacheChaptersLru(): List<ChapterEntity>
 
-    @Query("SELECT * FROM chapters WHERE storage_tier = 'CACHE' ORDER BY last_accessed_at ASC LIMIT :limit")
+    @Query("SELECT * FROM chapters WHERE storage_tier = 'CACHE' ORDER BY last_accessed_at ASC, chapter_index ASC LIMIT :limit")
     suspend fun getCacheChaptersLru(limit: Int): List<ChapterEntity>
+
+    @Query("UPDATE chapters SET storage_tier = 'NONE' WHERE storage_tier = 'CACHE'")
+    suspend fun clearCacheTier(): Int
+
 
     @Query("SELECT * FROM chapters WHERE novel_id = :novelId AND storage_tier = 'DOWNLOADED'")
     suspend fun getDownloadedChapters(novelId: String): List<ChapterEntity>

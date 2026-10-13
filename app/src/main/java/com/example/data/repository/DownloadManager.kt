@@ -1,100 +1,37 @@
 package com.example.data.repository
 
 import com.example.data.model.Chapter
-import com.example.data.model.ChapterContent
 import com.example.data.model.Novel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
 import kotlin.random.Random
 
-// TEMPORARY: Stage 5 deletes this file and replaces it with WorkManager DownloadEngine
+/**
+ * Temporary download orchestrator managing batch downloads and request throttling.
+ *
+ * All file operations route through ChapterStorage and all tier updates route through Room
+ * via ChapterRepository. Stage 5 replaces this with WorkManager DownloadEngine.
+ */
 class DownloadManager(
-    private val storageManager: StorageManager,
-    private val preferencesManager: PreferencesManager
+    private val chapterRepository: ChapterRepository,
+    private val settingsRepository: SettingsRepository
 ) {
-
-    private val _downloadedChapters = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
-    val downloadedChapters: StateFlow<Map<String, Set<String>>> = _downloadedChapters.asStateFlow()
-
-    init {
-        loadDownloadedChaptersIndex()
-    }
-
-    private fun loadDownloadedChaptersIndex() {
-        val str = preferencesManager.loadDownloadedIndexJson() ?: return
-        try {
-            val obj = JSONObject(str)
-            val map = mutableMapOf<String, Set<String>>()
-            val keys = obj.keys()
-            while (keys.hasNext()) {
-                val k = keys.next()
-                val arr = obj.getJSONArray(k)
-                val set = (0 until arr.length()).map { arr.getString(it) }.toSet()
-                map[k] = set
-            }
-            _downloadedChapters.value = map
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun saveDownloadedChaptersIndex() {
-        val obj = JSONObject()
-        for ((k, set) in _downloadedChapters.value) {
-            obj.put(k, JSONArray(set.toList()))
-        }
-        preferencesManager.saveDownloadedIndexJson(obj.toString())
-    }
-
-    fun markChapterDownloaded(novelId: String, chapterId: String) {
-        val current = _downloadedChapters.value.toMutableMap()
-        val set = (current[novelId] ?: emptySet()).toMutableSet()
-        set.add(chapterId)
-        current[novelId] = set
-        _downloadedChapters.value = current
-        saveDownloadedChaptersIndex()
-    }
-
-    fun markChaptersDownloaded(novelId: String, chapterIds: Set<String>) {
-        val current = _downloadedChapters.value.toMutableMap()
-        val set = (current[novelId] ?: emptySet()).toMutableSet()
-        set.addAll(chapterIds)
-        current[novelId] = set
-        _downloadedChapters.value = current
-        saveDownloadedChaptersIndex()
-    }
 
     suspend fun downloadChapter(
         novel: Novel,
-        chapter: Chapter,
-        fetchContent: suspend () -> ChapterContent
+        chapter: Chapter
     ): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val content = fetchContent()
-            val customUri = preferencesManager.downloadSettings.value.customDownloadLocationUri
-            storageManager.saveChapterToDisk(content, customUri)
-            markChapterDownloaded(novel.id, chapter.id)
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
-        }
+        chapterRepository.downloadChapter(novel, chapter)
     }
 
     suspend fun downloadChaptersBatch(
         novel: Novel,
         chaptersToDownload: List<Chapter>,
-        onProgress: (Int, Int) -> Unit = { _, _ -> },
-        fetchContent: suspend (Chapter) -> ChapterContent
+        onProgress: (Int, Int) -> Unit = { _, _ -> }
     ) = withContext(Dispatchers.IO) {
         var completed = 0
-        val settings = preferencesManager.downloadSettings.value
+        val settings = settingsRepository.downloadSettings.value
 
         for ((index, chapter) in chaptersToDownload.withIndex()) {
             if (settings.throttlingEnabled && index > 0 && index % settings.throttleBatchSize == 0) {
@@ -106,45 +43,21 @@ class DownloadManager(
                 delay(delayMs)
             }
 
-            downloadChapter(novel, chapter) {
-                fetchContent(chapter)
-            }
+            downloadChapter(novel, chapter)
             completed++
             onProgress(completed, chaptersToDownload.size)
         }
     }
 
-    suspend fun deleteDownloadedNovelChapters(novelId: String, isEpub: Boolean = false) = withContext(Dispatchers.IO) {
-        if (isEpub || novelId.startsWith("epub_")) {
-            return@withContext
-        }
-
-        val customUri = preferencesManager.downloadSettings.value.customDownloadLocationUri
-        storageManager.deleteNovelChapters(novelId, isEpub = false, customUriStr = customUri)
-
-        val current = _downloadedChapters.value.toMutableMap()
-        current.remove(novelId)
-        _downloadedChapters.value = current
-        saveDownloadedChaptersIndex()
+    suspend fun deleteDownloadedNovelChapters(novelId: String) = withContext(Dispatchers.IO) {
+        chapterRepository.deleteNovelDownloads(novelId)
     }
 
-    suspend fun deleteAllDownloadedContent(epubNovelIds: Set<String> = emptySet()): Int = withContext(Dispatchers.IO) {
-        val customUri = preferencesManager.downloadSettings.value.customDownloadLocationUri
-        val count = storageManager.deleteAllDownloadedContent(customUri, epubNovelIds)
-
-        val retained = _downloadedChapters.value.filterKeys { epubNovelIds.contains(it) }
-        _downloadedChapters.value = retained
-        saveDownloadedChaptersIndex()
-
-        count
+    suspend fun deleteAllDownloadedContent(): Int = withContext(Dispatchers.IO) {
+        chapterRepository.deleteAllDownloads()
     }
 
     suspend fun deleteNovelDownloads(novelId: String) {
         deleteDownloadedNovelChapters(novelId)
-    }
-
-    fun setDownloadedChapters(map: Map<String, Set<String>>) {
-        _downloadedChapters.value = map
-        saveDownloadedChaptersIndex()
     }
 }

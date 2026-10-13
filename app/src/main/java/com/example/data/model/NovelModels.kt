@@ -210,7 +210,9 @@ data class DownloadSettings(
     val throttlingEnabled: Boolean = false,
     val throttleBatchSize: Int = 5, // requests before delay
     val throttleDelaySeconds: Float = 2.0f, // configurable delay duration
-    val throttleRandomJitter: Boolean = true // randomized jitter to delay timing
+    val throttleRandomJitter: Boolean = true, // randomized jitter to delay timing
+    // LRU Cache Size Cap (MB)
+    val cacheSizeCapMb: Int = 250
 )
 
 data class BackupCategories(
