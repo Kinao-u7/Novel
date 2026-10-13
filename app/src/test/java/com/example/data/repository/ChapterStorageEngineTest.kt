@@ -13,6 +13,11 @@ import com.example.data.model.ChapterContent
 import com.example.data.model.Novel
 import com.example.data.source.NovelSource
 import com.example.data.source.SourceManager
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -503,6 +508,9 @@ class ChapterStorageEngineTest {
             )
         )
 
+        val fetchStarted = CompletableDeferred<Unit>()
+        val releaseFetch = CompletableDeferred<Unit>()
+
         val slowSource = object : NovelSource {
             override val id = "slow_test_src"
             override val name = "Slow Test Source"
@@ -526,7 +534,8 @@ class ChapterStorageEngineTest {
             override suspend fun getChapterList(novelId: String): List<Chapter> = emptyList()
             override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent {
                 fetchCount.incrementAndGet()
-                kotlinx.coroutines.delay(50)
+                fetchStarted.complete(Unit)
+                releaseFetch.await()
                 return ChapterContent(
                     chapterId = chapterId,
                     novelId = novelId,
@@ -541,20 +550,28 @@ class ChapterStorageEngineTest {
             val updatedNovel = database.novelDao().getNovelById("novel_parallel")!!.copy(sourceId = slowSource.id)
             database.novelDao().update(updatedNovel)
 
-            val deferred1 = kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
-                chapterRepository.getChapterContent("novel_parallel", "ch_parallel")
-            }
-            val deferred2 = kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
-                chapterRepository.getChapterContent("novel_parallel", "ch_parallel")
-            }
+            coroutineScope {
+                val deferred1 = async(Dispatchers.IO) {
+                    chapterRepository.getChapterContent("novel_parallel", "ch_parallel")
+                }
+                val deferred2 = async(Dispatchers.IO) {
+                    chapterRepository.getChapterContent("novel_parallel", "ch_parallel")
+                }
 
-            val res1 = deferred1.await()
-            val res2 = deferred2.await()
+                fetchStarted.await()
+                delay(50)
+                releaseFetch.complete(Unit)
 
-            assertEquals("Title for ch_parallel", res1.title)
-            assertEquals("Title for ch_parallel", res2.title)
-            assertEquals("Two simultaneous reads fetch uncached chapter exactly once", 1, slowSource.fetchCount.get())
-            assertTrue("chapterLocks must be empty after release", chapterRepository.chapterLocks.isEmpty())
+                val res1 = deferred1.await()
+                val res2 = deferred2.await()
+
+                assertEquals("Both reads return the same title", "Title for ch_parallel", res1.title)
+                assertEquals("Both reads return the same title", "Title for ch_parallel", res2.title)
+                assertEquals("Both reads return identical content", res1, res2)
+                val fetchCount = slowSource.fetchCount.get()
+                assertEquals("Two simultaneous reads must fetch uncached chapter exactly once, but fetched $fetchCount", 1, fetchCount)
+                assertTrue("chapterLocks must be empty after release", chapterRepository.chapterLocks.isEmpty())
+            }
         } finally {
             SourceManager.unregisterSource(slowSource.id)
         }
