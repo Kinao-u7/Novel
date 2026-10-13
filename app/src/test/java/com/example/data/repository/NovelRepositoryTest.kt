@@ -794,6 +794,9 @@ class NovelRepositoryTest {
 
         val resDup3: CustomSourceResult = repository.addCustomSource("Duplicate Site 3", "MySite.com/novels/")
         assertEquals(CustomSourceResult.Duplicate, resDup3)
+
+        val resDup4: CustomSourceResult = repository.addCustomSource("Duplicate Site 4", "http://mysite.com/novels")
+        assertEquals(CustomSourceResult.Duplicate, resDup4)
     }
 
     @Test
