@@ -52,7 +52,14 @@ class ChapterStorageEngineTest {
 
         override suspend fun getPopularNovels(page: Int): List<Novel> = emptyList()
         override suspend fun searchNovels(query: String, page: Int): List<Novel> = emptyList()
-        override suspend fun getNovelDetails(novelId: String): Novel? = null
+        override suspend fun getNovelDetails(novelId: String): Novel = Novel(
+            id = novelId,
+            title = "Test Novel",
+            author = "Author",
+            description = "Desc",
+            sourceId = id,
+            sourceName = name
+        )
         override suspend fun getChapterList(novelId: String): List<Chapter> = emptyList()
 
         override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent {
