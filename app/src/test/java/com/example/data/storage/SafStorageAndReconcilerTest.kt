@@ -178,12 +178,12 @@ private class TestFakeSource : NovelSource {
     override val isLocal: Boolean = false
 
     override suspend fun getPopularNovels(page: Int): List<Novel> = emptyList()
-    override suspend fun getLatestUpdates(page: Int): List<Novel> = emptyList()
     override suspend fun searchNovels(query: String, page: Int): List<Novel> = emptyList()
     override suspend fun getNovelDetails(novelId: String): Novel = Novel(
         id = novelId,
         title = "Novel $novelId",
         author = "Author",
+        description = "Description for $novelId",
         sourceId = id,
         sourceName = name
     )
@@ -256,11 +256,56 @@ class SafStorageAndReconcilerTest {
         database.close()
     }
 
+    private fun testNovel(
+        id: String = "test_novel_saf",
+        title: String = "Test Novel",
+        author: String = "Author",
+        coverUrl: String? = null,
+        description: String = "Test Description",
+        genres: List<String> = listOf("Fantasy"),
+        status: String = "Ongoing",
+        sourceId: String = "test_source_saf",
+        sourceName: String = "Test Source SAF",
+        inLibrary: Boolean = true
+    ): Novel = Novel(
+        id = id,
+        title = title,
+        author = author,
+        coverUrl = coverUrl,
+        description = description,
+        genres = genres,
+        status = status,
+        sourceId = sourceId,
+        sourceName = sourceName,
+        inLibrary = inLibrary
+    )
+
+    private fun testChapter(
+        id: String = "test_ch_saf",
+        novelId: String = "test_novel_saf",
+        title: String = "Test Chapter",
+        chapterIndex: Int = 1,
+        releaseDate: String = "Recent",
+        isDownloaded: Boolean = false,
+        isRead: Boolean = false,
+        wordCount: Int = 500
+    ): Chapter = Chapter(
+        id = id,
+        novelId = novelId,
+        title = title,
+        chapterIndex = chapterIndex,
+        releaseDate = releaseDate,
+        isDownloaded = isDownloaded,
+        isRead = isRead,
+        wordCount = wordCount
+    )
+
     private suspend fun insertTestNovel(novelId: String): Novel {
-        val novel = Novel(
+        val novel = testNovel(
             id = novelId,
             title = "Title $novelId",
             author = "Author $novelId",
+            description = "Description $novelId",
             sourceId = fakeSource.id,
             sourceName = fakeSource.name,
             inLibrary = true
@@ -270,6 +315,8 @@ class SafStorageAndReconcilerTest {
                 id = novel.id,
                 title = novel.title,
                 author = novel.author,
+                description = novel.description,
+                status = novel.status,
                 sourceId = novel.sourceId,
                 sourceName = novel.sourceName,
                 inLibrary = true,
