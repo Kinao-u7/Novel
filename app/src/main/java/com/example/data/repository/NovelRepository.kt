@@ -18,6 +18,8 @@ import com.example.data.source.webscrape.WtrLabExtractor
 import com.example.data.local.storage.ChapterStorage
 import com.example.data.local.storage.StorageResolver
 import androidx.room.withTransaction
+import com.example.data.epub.EpubParser
+import com.example.data.epub.ParsedEpub
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,7 +34,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -407,7 +408,7 @@ class NovelRepository(context: Context) {
         }
 
         // Parse EPUB metadata and chapters from the same bytes (closing stream)
-        val parsed = ByteArrayInputStream(bytes).use { bais ->
+        val parsed: ParsedEpub = ByteArrayInputStream(bytes).use { bais ->
             EpubParser.parseEpub(appContext, bais, fileName)
         }
 
@@ -441,7 +442,8 @@ class NovelRepository(context: Context) {
             writtenFiles.add(originalEpubFile)
 
             // Permanent EPUB chapter files to epubs/{novelId}/{sha256}.json
-            for ((_, content) in parsed.chapterContents) {
+            for (entry in parsed.chapterContents) {
+                val content = entry.value
                 chapterStorage.writeToEpub(content)
                 val chapterFile = storageResolver.getEpubChapterFile(novelId, content.chapterId)
                 writtenFiles.add(chapterFile)
@@ -467,7 +469,10 @@ class NovelRepository(context: Context) {
 
             // Never block inside transaction; do not call nested transaction suspend functions
             database.withTransaction {
-                novelDao.upsertSafe(novelEntity)
+                val rowId = novelDao.insertIgnore(novelEntity)
+                if (rowId == -1L) {
+                    novelDao.update(novelEntity)
+                }
                 chapterDao.insertIgnore(chapterEntities)
                 for (ch in chapterEntities) {
                     chapterDao.updateMetadata(
