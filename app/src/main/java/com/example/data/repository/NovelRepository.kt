@@ -17,6 +17,8 @@ import com.example.data.source.webscrape.WebScrapeSource
 import com.example.data.source.webscrape.WtrLabExtractor
 import com.example.data.local.storage.ChapterStorage
 import com.example.data.local.storage.StorageResolver
+import androidx.room.withTransaction
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -391,6 +393,7 @@ class NovelRepository(context: Context) {
     // --- EPUB IMPORT ---
 
     suspend fun importEpub(uri: Uri, fileName: String): Novel = withContext(Dispatchers.IO) {
+        // Read EPUB bytes ONCE from stream and close with use
         val bytes = appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
             ?: throw IllegalArgumentException("Cannot open stream for URI: $uri")
 
@@ -403,8 +406,10 @@ class NovelRepository(context: Context) {
             ).copy(inLibrary = true)
         }
 
-        // Parse EPUB metadata and chapters
-        val parsed = storageManager.parseEpub(ByteArrayInputStream(bytes), fileName)
+        // Parse EPUB metadata and chapters from the same bytes (closing stream)
+        val parsed = ByteArrayInputStream(bytes).use { bais ->
+            EpubParser.parseEpub(appContext, bais, fileName)
+        }
 
         // 2. Dedupe by normalized title + author
         val existingByTitleAuthor = novelDao.getEpubNovelByTitleAndAuthor(parsed.novel.title, parsed.novel.author)
@@ -418,7 +423,7 @@ class NovelRepository(context: Context) {
         val writtenFiles = mutableListOf<File>()
 
         try {
-            // Write files first:
+            // Write files first (outside and before the database transaction):
             // a. Save cover to covers/{novelId}.jpg and set coverUrl
             var coverUrl: String? = null
             if (parsed.coverBytes != null && parsed.coverBytes.isNotEmpty()) {
@@ -442,7 +447,7 @@ class NovelRepository(context: Context) {
                 writtenFiles.add(chapterFile)
             }
 
-            // Insert novel and chapter rows in one transaction
+            // Insert novel and chapter rows in one non-blocking Room transaction
             val novelEntity = parsed.novel.toEntity().copy(
                 coverUrl = coverUrl,
                 inLibrary = true,
@@ -460,15 +465,25 @@ class NovelRepository(context: Context) {
                 )
             }
 
-            database.runInTransaction {
-                runBlocking {
-                    novelDao.upsertSafe(novelEntity)
-                    chapterDao.refreshChapters(novelId, chapterEntities)
+            // Never block inside transaction; do not call nested transaction suspend functions
+            database.withTransaction {
+                novelDao.upsertSafe(novelEntity)
+                chapterDao.insertIgnore(chapterEntities)
+                for (ch in chapterEntities) {
+                    chapterDao.updateMetadata(
+                        novelId = novelId,
+                        id = ch.id,
+                        title = ch.title,
+                        chapterIndex = ch.chapterIndex,
+                        wordCount = ch.wordCount,
+                        releaseDate = ch.releaseDate
+                    )
                 }
             }
 
             novelEntity.toModel()
         } catch (e: Throwable) {
+            if (e is CancellationException) throw e
             for (file in writtenFiles) {
                 try {
                     if (file.exists()) file.delete()

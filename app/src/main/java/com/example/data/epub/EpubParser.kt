@@ -5,12 +5,10 @@ import com.example.data.model.Chapter
 import com.example.data.model.ChapterContent
 import com.example.data.model.Novel
 import java.io.ByteArrayOutputStream
-import java.io.File
-import java.io.FileOutputStream
 import java.io.InputStream
+import java.util.regex.Pattern
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
-import java.util.regex.Pattern
 
 data class ParsedEpub(
     val novel: Novel,
@@ -21,25 +19,26 @@ data class ParsedEpub(
 
 object EpubParser {
 
+    private const val MAX_CHAPTER_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB bound
+
     fun parseEpub(context: Context, inputStream: InputStream, fileName: String): ParsedEpub {
         val entries = mutableMapOf<String, ByteArray>()
-        val zis = ZipInputStream(inputStream)
-        var entry: ZipEntry? = zis.nextEntry
-
-        while (entry != null) {
-            if (!entry.isDirectory) {
-                val buffer = ByteArrayOutputStream()
-                val temp = ByteArray(4096)
-                var len: Int
-                while (zis.read(temp).also { len = it } > 0) {
-                    buffer.write(temp, 0, len)
+        ZipInputStream(inputStream).use { zis ->
+            var entry: ZipEntry? = zis.nextEntry
+            while (entry != null) {
+                if (!entry.isDirectory) {
+                    val buffer = ByteArrayOutputStream()
+                    val temp = ByteArray(8192)
+                    var len: Int
+                    while (zis.read(temp).also { len = it } > 0) {
+                        buffer.write(temp, 0, len)
+                    }
+                    entries[entry.name] = buffer.toByteArray()
                 }
-                entries[entry.name] = buffer.toByteArray()
+                zis.closeEntry()
+                entry = zis.nextEntry
             }
-            zis.closeEntry()
-            entry = zis.nextEntry
         }
-        zis.close()
 
         // 1. Locate OPF file from META-INF/container.xml
         val containerXml = entries["META-INF/container.xml"]?.toString(Charsets.UTF_8)
@@ -78,14 +77,15 @@ object EpubParser {
         if (description.isBlank()) description = "Imported EPUB light novel from device storage."
 
         // 3. Manifest items: id -> href
-        val manifestPattern = Pattern.compile("<item\\s+([^>]+)/>|<item\\s+([^>]+)>.*?</item>", Pattern.CASE_INSENSITIVE or Pattern.DOTALL)
+        // Match <item tag attributes directly without nested quantifiers or DOTALL backtracking
+        val manifestPattern = Pattern.compile("<item\\s+([^>]+)", Pattern.CASE_INSENSITIVE)
         val manifestMatcher = manifestPattern.matcher(opfContent)
         val manifest = mutableMapOf<String, String>() // id -> href
         val manifestMediaType = mutableMapOf<String, String>()
         var coverHref: String? = null
 
         while (manifestMatcher.find()) {
-            val itemAttr = (manifestMatcher.group(1) ?: manifestMatcher.group(2)) ?: ""
+            val itemAttr = manifestMatcher.group(1) ?: ""
             val idMatch = Pattern.compile("id=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE).matcher(itemAttr)
             val hrefMatch = Pattern.compile("href=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE).matcher(itemAttr)
             val mediaMatch = Pattern.compile("media-type=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE).matcher(itemAttr)
@@ -145,6 +145,10 @@ object EpubParser {
         for (href in orderedHrefs) {
             val fullHref = if (entries.containsKey(href)) href else (opfDir + href)
             val xhtmlBytes = entries[fullHref] ?: entries[href] ?: continue
+            // Bound chapter size to skip chapters over 5 MB
+            if (xhtmlBytes.size > MAX_CHAPTER_SIZE_BYTES) {
+                continue
+            }
             val rawHtml = xhtmlBytes.toString(Charsets.UTF_8)
 
             val parsedChapter = parseChapterHtml(rawHtml, chapterIdx)
@@ -195,33 +199,44 @@ object EpubParser {
     }
 
     private fun extractXmlTag(xml: String, tag: String): String {
-        val pattern = Pattern.compile("<$tag[^>]*>(.*?)</$tag>", Pattern.CASE_INSENSITIVE or Pattern.DOTALL)
-        val matcher = pattern.matcher(xml)
-        return if (matcher.find()) cleanHtml(matcher.group(1) ?: "") else ""
+        val startTag = "<$tag"
+        val endTag = "</$tag>"
+        val startIdx = xml.indexOf(startTag, ignoreCase = true)
+        if (startIdx == -1) return ""
+        val closeBracket = xml.indexOf('>', startIdx)
+        if (closeBracket == -1) return ""
+        val endIdx = xml.indexOf(endTag, closeBracket, ignoreCase = true)
+        if (endIdx == -1) return ""
+        return cleanHtml(xml.substring(closeBracket + 1, endIdx))
     }
 
     private data class ParsedHtmlChapter(val title: String, val paragraphs: List<String>)
 
     private fun parseChapterHtml(html: String, chapterIdx: Int): ParsedHtmlChapter {
-        // Extract title from <h1>, <h2>, <h3> or <title>
+        // Extract title from <h1>, <h2>, <h3> or <title> without nested quantifiers
         var title = ""
-        val hPattern = Pattern.compile("<h[1-3][^>]*>(.*?)</h[1-3]>", Pattern.CASE_INSENSITIVE or Pattern.DOTALL)
+        val hPattern = Pattern.compile("<h[1-3][^>]*>([^<]+)</h[1-3]>", Pattern.CASE_INSENSITIVE)
         val hMatcher = hPattern.matcher(html)
         if (hMatcher.find()) {
             title = cleanHtml(hMatcher.group(1) ?: "")
         } else {
-            val titlePattern = Pattern.compile("<title[^>]*>(.*?)</title>", Pattern.CASE_INSENSITIVE or Pattern.DOTALL)
+            val titlePattern = Pattern.compile("<title[^>]*>([^<]+)</title>", Pattern.CASE_INSENSITIVE)
             val titleMatcher = titlePattern.matcher(html)
             if (titleMatcher.find()) {
                 title = cleanHtml(titleMatcher.group(1) ?: "")
             }
         }
 
-        // Extract paragraphs
-        val paragraphs = mutableListOf<String>()
-        val bodyContent = if (html.contains("<body", ignoreCase = true)) {
-            val bodyMatch = Pattern.compile("<body[^>]*>(.*?)</body>", Pattern.CASE_INSENSITIVE or Pattern.DOTALL).matcher(html)
-            if (bodyMatch.find()) bodyMatch.group(1) ?: html else html
+        // Extract body content via substring instead of regular expression to avoid catastrophic backtracking
+        val bodyStart = html.indexOf("<body", ignoreCase = true)
+        val bodyContent = if (bodyStart != -1) {
+            val bodyTagEnd = html.indexOf('>', bodyStart)
+            val bodyEnd = html.lastIndexOf("</body>", ignoreCase = true)
+            if (bodyTagEnd != -1 && bodyEnd > bodyTagEnd) {
+                html.substring(bodyTagEnd + 1, bodyEnd)
+            } else {
+                html
+            }
         } else {
             html
         }
@@ -235,6 +250,7 @@ object EpubParser {
 
         val cleanText = cleanHtml(formatted)
         val rawParagraphs = cleanText.split("\n\n")
+        val paragraphs = mutableListOf<String>()
 
         for (p in rawParagraphs) {
             val trimmed = p.trim().replace(Regex("[ \\t]+"), " ")
@@ -247,7 +263,7 @@ object EpubParser {
     }
 
     private fun cleanHtml(html: String): String {
-        val noTags = html.replace(Regex("<[^>]*>"), "")
+        val noTags = html.replace(Regex("<[^>]+>"), "")
         return noTags
             .replace("&nbsp;", " ")
             .replace("&quot;", "\"")

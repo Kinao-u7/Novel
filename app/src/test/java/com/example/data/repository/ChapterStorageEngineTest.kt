@@ -1,9 +1,11 @@
 package com.example.data.repository
 
 import android.content.Context
+import android.net.Uri
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.db.NovelDatabase
+import com.example.data.local.db.NovelDatabaseHolder
 import com.example.data.local.db.entity.ChapterEntity
 import com.example.data.local.db.entity.NovelEntity
 import com.example.data.local.storage.ChapterStorage
@@ -13,7 +15,11 @@ import com.example.data.model.ChapterContent
 import com.example.data.model.Novel
 import com.example.data.source.NovelSource
 import com.example.data.source.SourceManager
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.IOException
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
@@ -50,6 +56,7 @@ class ChapterStorageEngineTest {
     private lateinit var chapterStorage: ChapterStorage
     private lateinit var settingsRepository: SettingsRepository
     private lateinit var chapterRepository: ChapterRepository
+    private lateinit var novelRepository: NovelRepository
     private lateinit var fakeSource: FakeChapterSource
 
     class FakeChapterSource(override val id: String = "fake_test_src") : NovelSource {
@@ -90,6 +97,7 @@ class ChapterStorageEngineTest {
         database = Room.inMemoryDatabaseBuilder(context, NovelDatabase::class.java)
             .allowMainThreadQueries()
             .build()
+        NovelDatabaseHolder.setInstanceForTesting(database)
 
         storageResolver = StorageResolver(tempFolder.root)
         chapterStorage = ChapterStorage(storageResolver)
@@ -101,6 +109,7 @@ class ChapterStorageEngineTest {
             storageResolver = storageResolver,
             settingsRepository = settingsRepository
         )
+        novelRepository = NovelRepository(context)
 
         fakeSource = FakeChapterSource()
         SourceManager.registerSource(fakeSource)
@@ -109,6 +118,7 @@ class ChapterStorageEngineTest {
     @After
     fun tearDown() {
         SourceManager.unregisterSource(fakeSource.id)
+        NovelDatabaseHolder.clearInstanceForTesting()
         database.close()
     }
 
@@ -751,5 +761,164 @@ class ChapterStorageEngineTest {
         assertFalse("Downloads dir must be deleted", storageResolver.getNovelDownloadsDir("novel_web_rm").exists())
         assertFalse("Cache dir must be deleted", storageResolver.getNovelCacheDir("novel_web_rm").exists())
         assertNull("Novel row must be deleted from Room", database.novelDao().getNovelById("novel_web_rm"))
+    }
+
+    private fun createTestEpubFile(
+        fileName: String,
+        title: String = "Test Novel",
+        author: String = "Test Author",
+        hasCover: Boolean = true
+    ): Pair<File, Uri> {
+        val file = File(context.cacheDir, fileName)
+        val baos = ByteArrayOutputStream()
+        ZipOutputStream(baos).use { zos ->
+            val containerXml = """<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"""
+            zos.putNextEntry(ZipEntry("META-INF/container.xml"))
+            zos.write(containerXml.toByteArray(Charsets.UTF_8))
+            zos.closeEntry()
+
+            if (hasCover) {
+                zos.putNextEntry(ZipEntry("OEBPS/cover.jpg"))
+                zos.write(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()))
+                zos.closeEntry()
+            }
+
+            val opf = """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>$title</dc:title>
+    <dc:creator>$author</dc:creator>
+  </metadata>
+  <manifest>
+    ${if (hasCover) """<item id="cover-image" href="cover.jpg" media-type="image/jpeg" properties="cover-image"/>""" else ""}
+    <item id="ch1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="ch1"/>
+  </spine>
+</package>"""
+            zos.putNextEntry(ZipEntry("OEBPS/content.opf"))
+            zos.write(opf.toByteArray(Charsets.UTF_8))
+            zos.closeEntry()
+
+            val ch1 = """<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Chapter 1</title></head>
+<body>
+  <h1>Chapter 1</h1>
+  <p>Test text paragraph.</p>
+</body>
+</html>"""
+            zos.putNextEntry(ZipEntry("OEBPS/chapter1.xhtml"))
+            zos.write(ch1.toByteArray(Charsets.UTF_8))
+            zos.closeEntry()
+        }
+        file.writeBytes(baos.toByteArray())
+        return Pair(file, Uri.fromFile(file))
+    }
+
+    @Test
+    fun importEpub_savesCoverPathAndOriginalEpubCopy() = runBlocking {
+        withTimeout(10_000L) {
+            val (file, uri) = createTestEpubFile(
+                fileName = "book_with_cover_cse.epub",
+                title = "Epub With Cover",
+                author = "Epub Author",
+                hasCover = true
+            )
+
+            val novel = novelRepository.importEpub(uri, "book_with_cover_cse.epub")
+            assertNotNull(novel)
+            assertEquals("Epub With Cover", novel.title)
+            assertEquals("Epub Author", novel.author)
+            assertTrue(novel.isEpub)
+
+            assertNotNull("coverUrl must be set", novel.coverUrl)
+            val expectedCover = storageResolver.getCoverFile(novel.id)
+            assertEquals(expectedCover.absolutePath, novel.coverUrl)
+            assertTrue("Cover file must exist on disk", expectedCover.exists())
+            assertEquals("${novel.id}.jpg", expectedCover.name)
+            assertFalse("Must not use timestamp cover naming", expectedCover.name.startsWith("cover_"))
+
+            val expectedOriginal = storageResolver.getOriginalEpubFile(novel.id)
+            assertTrue("Original epub file must exist on disk", expectedOriginal.exists())
+            assertEquals("${novel.id}.epub", expectedOriginal.name)
+            assertTrue("Original epub copy matches source file", expectedOriginal.readBytes().contentEquals(file.readBytes()))
+
+            val chapterFile = storageResolver.getEpubChapterFile(novel.id, "${novel.id}_ch_1")
+            assertTrue("EPUB chapter file must exist on disk", chapterFile.exists())
+        }
+    }
+
+    @Test
+    fun importEpub_dedupesOnSecondImport_andWritesNothing() = runBlocking {
+        withTimeout(10_000L) {
+            val (_, uri) = createTestEpubFile(
+                fileName = "dedupe_book_cse.epub",
+                title = "Dedupe Title",
+                author = "Dedupe Author",
+                hasCover = true
+            )
+
+            val novelFirst = novelRepository.importEpub(uri, "dedupe_book_cse.epub")
+            assertNotNull(novelFirst)
+
+            val coverFile = storageResolver.getCoverFile(novelFirst.id)
+            val originalFile = storageResolver.getOriginalEpubFile(novelFirst.id)
+            assertTrue(coverFile.exists())
+            assertTrue(originalFile.exists())
+
+            val coverModBefore = coverFile.lastModified()
+            val origModBefore = originalFile.lastModified()
+
+            val novelSecond = novelRepository.importEpub(uri, "dedupe_book_cse.epub")
+            assertEquals("Second import must return the existing novel", novelFirst.id, novelSecond.id)
+
+            assertEquals("Cover file must not be modified", coverModBefore, coverFile.lastModified())
+            assertEquals("Original epub file must not be modified", origModBefore, originalFile.lastModified())
+
+            val existingInRoom = database.novelDao().getNovelById(novelFirst.id)
+            assertNotNull(existingInRoom)
+            assertEquals(novelFirst.id, existingInRoom!!.id)
+        }
+    }
+
+    @Test
+    fun importEpub_cleanupFilesOnFailure() = runBlocking {
+        withTimeout(10_000L) {
+            val (_, uri) = createTestEpubFile(
+                fileName = "fail_test_cse.epub",
+                title = "Fail Book",
+                author = "Fail Author",
+                hasCover = true
+            )
+
+            database.close()
+
+            var caughtException = false
+            try {
+                novelRepository.importEpub(uri, "fail_test_cse.epub")
+            } catch (e: Throwable) {
+                caughtException = true
+            }
+            assertTrue("Exception must be rethrown on failure", caughtException)
+
+            val covers = storageResolver.getCoversDir().listFiles()?.filter { it.name.startsWith("epub_") } ?: emptyList()
+            val origs = storageResolver.getOriginalEpubsDir().listFiles()?.filter { it.name.startsWith("epub_") } ?: emptyList()
+            val epubs = storageResolver.getEpubsDir().listFiles()?.filter { it.name.startsWith("epub_") } ?: emptyList()
+
+            assertTrue("No leftover covers after failure", covers.isEmpty())
+            assertTrue("No leftover original epubs after failure", origs.isEmpty())
+            assertTrue("No leftover epubs folder after failure", epubs.isEmpty())
+
+            database = Room.inMemoryDatabaseBuilder(context, NovelDatabase::class.java).allowMainThreadQueries().build()
+            NovelDatabaseHolder.setInstanceForTesting(database)
+        }
     }
 }
