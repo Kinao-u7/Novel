@@ -124,6 +124,9 @@ interface ChapterDao {
     @Query("SELECT * FROM chapters WHERE novel_id = :novelId AND storage_tier = 'DOWNLOADED'")
     suspend fun getDownloadedChapters(novelId: String): List<ChapterEntity>
 
+    @Query("SELECT * FROM chapters WHERE storage_tier = 'DOWNLOADED'")
+    suspend fun getAllDownloadedChapters(): List<ChapterEntity>
+
     @Query("SELECT COUNT(*) FROM chapters WHERE novel_id = :novelId AND storage_tier = 'DOWNLOADED'")
     fun getDownloadedCountFlow(novelId: String): Flow<Int>
 

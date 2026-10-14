@@ -3,31 +3,15 @@ package com.example.data.repository
 import android.content.Context
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
-import com.example.data.epub.EpubParser
-import com.example.data.epub.ParsedEpub
 
 /**
- * Temporary storage adapter retained until Stage 4b/6.
+ * Temporary storage adapter retained until Stage 6 (Backup/Restore rewrite).
  *
- * All chapter storage, caching, and downloads have been migrated to ChapterStorage
- * and ChapterRepository. Only members required for EPUB parsing and SAF custom storage
- * backup mirroring remain.
+ * All chapter storage, caching, downloads, and EPUB operations have been migrated to
+ * ChapterStorage, ChapterRepository, and EpubParser. Only saveBackupToCustomStorage remains
+ * for BackupManager until Stage 6.
  */
 class StorageManager(private val context: Context) {
-
-    fun parseEpub(uri: Uri, fileName: String): ParsedEpub {
-        val inputStream = context.contentResolver.openInputStream(uri)
-            ?: throw IllegalArgumentException("Cannot open stream for URI")
-        return parseEpub(inputStream, fileName)
-    }
-
-    fun parseEpub(inputStream: java.io.InputStream, fileName: String): ParsedEpub {
-        return EpubParser.parseEpub(context, inputStream, fileName)
-    }
-
-    fun getSafeNovelId(novelId: String): String {
-        return novelId.replace("[^a-zA-Z0-9_.-]".toRegex(), "_")
-    }
 
     /**
      * Saves a backup JSON string into the "Backups" subfolder inside the user-configured SAF folder.

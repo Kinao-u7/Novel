@@ -1,6 +1,9 @@
 package com.example.data.repository
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import com.example.data.model.AppSettings
 import com.example.data.model.AppThemeMode
 import com.example.data.model.DownloadSettings
@@ -163,6 +166,31 @@ class SettingsRepository private constructor(
         val updated = _settings.value.copy(downloads = newSettings)
         _settings.value = updated
         scheduleDebouncedWrite()
+    }
+
+    /**
+     * Attempts to persist read/write permission for a custom SAF download directory.
+     * Checks DocumentFile.canWrite(). Returns true only when the permission was granted and verified writable.
+     */
+    fun persistFolderPermission(context: Context, uri: Uri): Boolean {
+        return Companion.persistFolderPermission(context, uri)
+    }
+
+    /**
+     * Saves the custom download location setting ONLY when persistFolderPermission returns true.
+     * Existing chapter rows and files remain untouched at their recorded locations (Spec 5).
+     */
+    suspend fun setCustomDownloadLocation(uri: Uri, displayName: String? = null): Boolean {
+        val ok = persistFolderPermission(appContext, uri)
+        if (ok) {
+            updateDownloadSettings { current ->
+                current.copy(
+                    customDownloadLocationUri = uri.toString(),
+                    customDownloadLocationDisplayName = displayName ?: uri.lastPathSegment
+                )
+            }
+        }
+        return ok
     }
 
     suspend fun updateNotificationSettings(transform: (NotificationSettings) -> NotificationSettings) {
@@ -380,6 +408,17 @@ class SettingsRepository private constructor(
          */
         fun createForTest(context: Context, dispatcher: kotlinx.coroutines.CoroutineDispatcher): SettingsRepository {
             return SettingsRepository(context, dispatcher)
+        }
+
+        fun persistFolderPermission(context: Context, uri: Uri): Boolean {
+            return try {
+                val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                val doc = DocumentFile.fromTreeUri(context, uri)
+                doc != null && doc.exists() && doc.canWrite()
+            } catch (e: Exception) {
+                false
+            }
         }
     }
 }

@@ -17,6 +17,7 @@ import com.example.data.source.webscrape.WebScrapeSource
 import com.example.data.source.webscrape.WtrLabExtractor
 import com.example.data.local.storage.ChapterStorage
 import com.example.data.local.storage.StorageResolver
+import com.example.data.local.storage.CacheReconciler
 import androidx.room.withTransaction
 import com.example.data.epub.EpubParser
 import com.example.data.epub.ParsedEpub
@@ -66,8 +67,9 @@ class NovelRepository(context: Context) {
 
     val settingsRepository = SettingsRepository.getInstance(appContext)
     val storageResolver = StorageResolver(appContext)
-    val chapterStorage = ChapterStorage(storageResolver)
-    val chapterRepository = ChapterRepository(chapterDao, novelDao, chapterStorage, storageResolver, settingsRepository)
+    val chapterStorage = ChapterStorage(storageResolver, appContext)
+    val chapterRepository = ChapterRepository(chapterDao, novelDao, chapterStorage, storageResolver, settingsRepository, notificationDao)
+    val cacheReconciler = CacheReconciler(chapterDao, storageResolver)
     internal val storageManager = StorageManager(appContext)
     internal val preferencesManager = PreferencesManager(appContext, settingsRepository)
     internal val downloadManager = DownloadManager(chapterRepository, settingsRepository)
@@ -173,12 +175,14 @@ class NovelRepository(context: Context) {
         }
         repoScope.launch(Dispatchers.IO) {
             try {
-                // Startup purge: runs once per app start in the background on Dispatchers.IO,
+                // Startup purge & cache reconciler: runs once per app start in the background on Dispatchers.IO,
                 // only after the library flow has emitted its first value.
                 libraryNovels.first()
                 purgeUnusedBrowseNovels()
+                cacheReconciler.reconcile()
             } catch (e: Exception) {
-                android.util.Log.e("NovelRepository", "Failed to purge unused browse novels", e)
+                if (e is CancellationException) throw e
+                android.util.Log.e("NovelRepository", "Failed to run startup reconciler or purge", e)
             }
         }
     }
