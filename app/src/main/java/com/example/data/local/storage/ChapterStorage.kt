@@ -126,8 +126,10 @@ class ChapterStorage(
         novelId: String,
         isEpub: Boolean = false,
         locations: Set<String> = setOf("INTERNAL")
-    ) = withContext(ioDispatcher) {
-        fileStore.removeNovelCompletely(novelId, isEpub, locations)
+    ): Unit {
+        withContext(ioDispatcher) {
+            fileStore.removeNovelCompletely(novelId, isEpub, locations)
+        }
     }
 
     suspend fun getCacheSizeBytes(): Long = withContext(ioDispatcher) {

@@ -143,7 +143,7 @@ class FakeChapterFileStore(
         return internalStore.clearCache()
     }
 
-    override suspend fun removeNovelCompletely(novelId: String, isEpub: Boolean, locations: Set<String>) {
+    override suspend fun removeNovelCompletely(novelId: String, isEpub: Boolean, locations: Set<String>): Unit {
         internalStore.removeNovelCompletely(novelId, isEpub, locations)
         for (loc in locations) {
             if (loc.startsWith("SAF:")) {

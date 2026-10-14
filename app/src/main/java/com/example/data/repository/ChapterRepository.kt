@@ -12,6 +12,7 @@ import com.example.data.model.Chapter
 import com.example.data.model.ChapterContent
 import com.example.data.model.Novel
 import com.example.data.source.SourceManager
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -83,6 +84,7 @@ class ChapterRepository(
         try {
             notificationDao?.insertAndTrim(
                 NotificationEntity(
+                    id = UUID.randomUUID().toString(),
                     title = "Download Storage Warning",
                     message = message,
                     type = "download",
