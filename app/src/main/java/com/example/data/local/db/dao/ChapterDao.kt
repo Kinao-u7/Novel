@@ -26,6 +26,9 @@ interface ChapterDao {
     @Query("SELECT * FROM chapters WHERE novel_id = :novelId AND id = :chapterId LIMIT 1")
     suspend fun getChapter(novelId: String, chapterId: String): ChapterEntity?
 
+    @Query("SELECT * FROM chapters WHERE novel_id = :novelId AND id = :chapterId LIMIT 1")
+    suspend fun getChapterById(novelId: String, chapterId: String): ChapterEntity?
+
     @Query("SELECT * FROM chapters WHERE novel_id = :novelId AND chapter_index = :index LIMIT 1")
     suspend fun getChapterByIndex(novelId: String, index: Int): ChapterEntity?
 

@@ -19,6 +19,10 @@ import com.example.data.local.storage.ChapterStorage
 import com.example.data.local.storage.StorageResolver
 import com.example.data.local.storage.CacheReconciler
 import androidx.room.withTransaction
+import com.example.data.download.DownloadEngine
+import com.example.data.download.DownloadQueueSummary
+import com.example.data.download.EnqueueResult
+import com.example.data.local.db.entity.DownloadQueueEntity
 import com.example.data.epub.EpubParser
 import com.example.data.epub.ParsedEpub
 import kotlinx.coroutines.CancellationException
@@ -57,22 +61,31 @@ class NovelRepository(context: Context) {
 
     private val appContext: Context = context.applicationContext ?: context
     private val database = NovelDatabaseHolder.getInstance(appContext)
-    private val novelDao = database.novelDao()
-    private val chapterDao = database.chapterDao()
-    private val bookmarkDao = database.bookmarkDao()
-    private val termReplacementDao = database.termReplacementDao()
-    private val customSourceDao = database.customSourceDao()
-    private val requestedSourceDao = database.requestedSourceDao()
-    private val notificationDao = database.notificationDao()
+    val novelDao = database.novelDao()
+    val chapterDao = database.chapterDao()
+    val bookmarkDao = database.bookmarkDao()
+    val termReplacementDao = database.termReplacementDao()
+    val customSourceDao = database.customSourceDao()
+    val requestedSourceDao = database.requestedSourceDao()
+    val notificationDao = database.notificationDao()
+    val downloadQueueDao = database.downloadQueueDao()
 
     val settingsRepository = SettingsRepository.getInstance(appContext)
     val storageResolver = StorageResolver(appContext)
     val chapterStorage = ChapterStorage(storageResolver, appContext)
     val chapterRepository = ChapterRepository(chapterDao, novelDao, chapterStorage, storageResolver, settingsRepository, notificationDao)
     val cacheReconciler = CacheReconciler(chapterDao, storageResolver)
+    val downloadEngine = DownloadEngine(
+        context = appContext,
+        downloadQueueDao = downloadQueueDao,
+        chapterDao = chapterDao,
+        novelDao = novelDao,
+        chapterRepository = chapterRepository,
+        settingsRepository = settingsRepository,
+        notificationDao = notificationDao
+    )
     internal val storageManager = StorageManager(appContext)
     internal val preferencesManager = PreferencesManager(appContext, settingsRepository)
-    internal val downloadManager = DownloadManager(chapterRepository, settingsRepository)
     internal val backupManager = BackupManager(this, preferencesManager)
 
     private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -184,6 +197,18 @@ class NovelRepository(context: Context) {
                 if (e is CancellationException) throw e
                 android.util.Log.e("NovelRepository", "Failed to run startup reconciler or purge", e)
             }
+        }
+        repoScope.launch(Dispatchers.IO) {
+            var lastWifiOnly: Boolean? = null
+            downloadSettings
+                .map { it.wifiOnly }
+                .distinctUntilChanged()
+                .collect { wifiOnly ->
+                    if (lastWifiOnly != null && lastWifiOnly != wifiOnly) {
+                        downloadEngine.scheduleWorker(replace = true)
+                    }
+                    lastWifiOnly = wifiOnly
+                }
         }
     }
 
@@ -379,11 +404,35 @@ class NovelRepository(context: Context) {
     suspend fun downloadChapter(novel: Novel, chapter: Chapter): Boolean =
         chapterRepository.downloadChapter(novel, chapter)
 
-    suspend fun downloadChaptersBatch(
-        novel: Novel,
-        chaptersToDownload: List<Chapter>,
-        onProgress: (Int, Int) -> Unit = { _, _ -> }
-    ) = downloadManager.downloadChaptersBatch(novel, chaptersToDownload, onProgress)
+    // --- DOWNLOAD ENGINE FUNCTIONS ---
+
+    val downloadQueueFlow: Flow<List<DownloadQueueEntity>> get() = downloadEngine.queueFlow
+    val downloadQueueSummaryFlow: Flow<DownloadQueueSummary> get() = downloadEngine.queueSummaryFlow
+
+    suspend fun enqueueChapters(novelId: String, chapterIds: List<String>): EnqueueResult =
+        downloadEngine.enqueueChapters(novelId, chapterIds)
+
+    suspend fun enqueue(novelId: String, chapterIds: List<String>): EnqueueResult =
+        downloadEngine.enqueueChapters(novelId, chapterIds)
+
+    suspend fun enqueueNovel(novelId: String): EnqueueResult =
+        downloadEngine.enqueueNovel(novelId)
+
+    suspend fun downloadNovel(novelId: String): EnqueueResult =
+        downloadEngine.enqueueNovel(novelId)
+
+    suspend fun autoDownloadNext(novelId: String, fromChapterIndex: Int, count: Int): EnqueueResult =
+        downloadEngine.autoDownloadNext(novelId, fromChapterIndex, count)
+
+    suspend fun pauseDownloadQueue() = downloadEngine.pauseQueue()
+    suspend fun resumeDownloadQueue() = downloadEngine.resumeQueue()
+    suspend fun cancelDownloadChapter(novelId: String, chapterId: String) =
+        downloadEngine.cancelChapter(novelId, chapterId)
+    suspend fun cancelNovelDownloads(novelId: String) =
+        downloadEngine.cancelNovel(novelId)
+    suspend fun cancelAllDownloads() = downloadEngine.cancelAll()
+    suspend fun retryFailedDownloads() = downloadEngine.retryFailed()
+    suspend fun clearCompletedDownloads() = downloadEngine.clearCompleted()
 
     suspend fun deleteDownloadedNovelChapters(novelId: String) =
         chapterRepository.deleteNovelDownloads(novelId)
@@ -813,5 +862,26 @@ class NovelRepository(context: Context) {
 
     suspend fun purgeUnusedBrowseNovels(): Int = withContext(Dispatchers.IO) {
         novelDao.purgeUnusedBrowseNovels()
+    }
+
+    companion object {
+        @Volatile
+        private var instance: NovelRepository? = null
+
+        fun getInstance(context: Context): NovelRepository {
+            return instance ?: synchronized(this) {
+                instance ?: NovelRepository(context.applicationContext ?: context).also { instance = it }
+            }
+        }
+
+        @androidx.annotation.VisibleForTesting
+        fun setInstanceForTesting(repo: NovelRepository?) {
+            instance = repo
+        }
+
+        @androidx.annotation.VisibleForTesting
+        fun resetInstanceForTesting() {
+            instance = null
+        }
     }
 }

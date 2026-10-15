@@ -1,0 +1,242 @@
+package com.example.data.download
+
+import android.content.Context
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import com.example.data.local.db.dao.ChapterDao
+import com.example.data.local.db.dao.DownloadQueueDao
+import com.example.data.local.db.dao.NotificationDao
+import com.example.data.local.db.dao.NovelDao
+import com.example.data.local.db.entity.DownloadQueueEntity
+import com.example.data.repository.ChapterRepository
+import com.example.data.repository.SettingsRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+
+data class EnqueueResult(
+    val enqueuedChapterIds: List<String>,
+    val skippedChapterIds: List<String>,
+    val skippedReasons: Map<String, String> = emptyMap()
+) {
+    val enqueuedCount: Int get() = enqueuedChapterIds.size
+    val skippedCount: Int get() = skippedChapterIds.size
+}
+
+data class DownloadQueueSummary(
+    val totalCount: Int = 0,
+    val queuedCount: Int = 0,
+    val downloadingCount: Int = 0,
+    val pausedCount: Int = 0,
+    val failedCount: Int = 0,
+    val completedCount: Int = 0
+)
+
+class DownloadEngine(
+    private val context: Context,
+    private val downloadQueueDao: DownloadQueueDao,
+    private val chapterDao: ChapterDao,
+    private val novelDao: NovelDao,
+    private val chapterRepository: ChapterRepository,
+    private val settingsRepository: SettingsRepository,
+    private val notificationDao: NotificationDao
+) {
+
+    companion object {
+        const val WORK_NAME = "novel_reader_download_queue"
+        const val TAG_DOWNLOAD = "novel_download_worker"
+    }
+
+    val queueFlow: Flow<List<DownloadQueueEntity>> = downloadQueueDao.getQueueFlow().distinctUntilChanged()
+
+    val queueSummaryFlow: Flow<DownloadQueueSummary> = queueFlow.map { list ->
+        var queued = 0
+        var downloading = 0
+        var paused = 0
+        var failed = 0
+        var completed = 0
+        for (item in list) {
+            when (item.status) {
+                "QUEUED" -> queued++
+                "DOWNLOADING" -> downloading++
+                "PAUSED" -> paused++
+                "FAILED" -> failed++
+                "COMPLETED" -> completed++
+            }
+        }
+        DownloadQueueSummary(
+            totalCount = list.size,
+            queuedCount = queued,
+            downloadingCount = downloading,
+            pausedCount = paused,
+            failedCount = failed,
+            completedCount = completed
+        )
+    }.distinctUntilChanged()
+
+    /**
+     * Enqueues chapters into Room download_queue table.
+     * Verifies that the novel and every chapter row exists in Room first;
+     * if missing, returns a structured result reporting which were skipped rather than inserting orphaned rows.
+     */
+    suspend fun enqueueChapters(novelId: String, chapterIds: List<String>): EnqueueResult = withContext(Dispatchers.IO) {
+        val novel = novelDao.getNovelById(novelId)
+        if (novel == null) {
+            val reasons = chapterIds.associateWith { "Novel not found in database: $novelId" }
+            return@withContext EnqueueResult(
+                enqueuedChapterIds = emptyList(),
+                skippedChapterIds = chapterIds,
+                skippedReasons = reasons
+            )
+        }
+
+        val enqueued = mutableListOf<String>()
+        val skipped = mutableListOf<String>()
+        val reasons = mutableMapOf<String, String>()
+
+        for (chapterId in chapterIds) {
+            val chapter = chapterDao.getChapterById(novelId, chapterId)
+            if (chapter == null) {
+                skipped.add(chapterId)
+                reasons[chapterId] = "Chapter not found in database: $chapterId"
+            } else {
+                val entity = DownloadQueueEntity(
+                    novelId = novelId,
+                    chapterId = chapterId,
+                    status = "QUEUED",
+                    queuedAt = System.currentTimeMillis()
+                )
+                val rowId = downloadQueueDao.insertIgnore(entity)
+                if (rowId != -1L) {
+                    enqueued.add(chapterId)
+                } else {
+                    // Already in queue
+                    enqueued.add(chapterId)
+                }
+            }
+        }
+
+        if (enqueued.isNotEmpty()) {
+            scheduleWorker()
+        }
+
+        EnqueueResult(
+            enqueuedChapterIds = enqueued,
+            skippedChapterIds = skipped,
+            skippedReasons = reasons
+        )
+    }
+
+    /**
+     * Enqueues all un-downloaded chapters for a novel (skips already DOWNLOADED or EPUB).
+     */
+    suspend fun enqueueNovel(novelId: String): EnqueueResult = withContext(Dispatchers.IO) {
+        val novel = novelDao.getNovelById(novelId) ?: return@withContext EnqueueResult(
+            enqueuedChapterIds = emptyList(),
+            skippedChapterIds = emptyList(),
+            skippedReasons = mapOf(novelId to "Novel not found: $novelId")
+        )
+        val allChapters = chapterDao.getChapters(novelId)
+        val queuedIds = downloadQueueDao.getQueuedChapterIds(novelId).toSet()
+        val eligible = allChapters.filter { chapter ->
+            chapter.storageTier != "DOWNLOADED" &&
+            chapter.storageTier != "EPUB" &&
+            !queuedIds.contains(chapter.id)
+        }
+        enqueueChapters(novelId, eligible.map { it.id })
+    }
+
+    /**
+     * Enqueues the next [count] chapters after [fromChapterIndex] that are not already DOWNLOADED or EPUB,
+     * and not already in the download queue.
+     */
+    suspend fun autoDownloadNext(novelId: String, fromChapterIndex: Int, count: Int): EnqueueResult = withContext(Dispatchers.IO) {
+        if (count <= 0) {
+            return@withContext EnqueueResult(emptyList(), emptyList())
+        }
+        val novel = novelDao.getNovelById(novelId) ?: return@withContext EnqueueResult(
+            enqueuedChapterIds = emptyList(),
+            skippedChapterIds = emptyList(),
+            skippedReasons = mapOf(novelId to "Novel not found: $novelId")
+        )
+        val allChapters = chapterDao.getChapters(novelId)
+        val queuedIds = downloadQueueDao.getQueuedChapterIds(novelId).toSet()
+
+        val eligible = allChapters.filter { chapter ->
+            chapter.chapterIndex > fromChapterIndex &&
+            chapter.storageTier != "DOWNLOADED" &&
+            chapter.storageTier != "EPUB" &&
+            !queuedIds.contains(chapter.id)
+        }.take(count)
+
+        if (eligible.isEmpty()) {
+            return@withContext EnqueueResult(emptyList(), emptyList())
+        }
+        enqueueChapters(novelId, eligible.map { it.id })
+    }
+
+    suspend fun pauseQueue() = withContext(Dispatchers.IO) {
+        downloadQueueDao.pauseQueue()
+        cancelWorker()
+    }
+
+    suspend fun resumeQueue() = withContext(Dispatchers.IO) {
+        downloadQueueDao.resumeQueue()
+        scheduleWorker()
+    }
+
+    suspend fun cancelChapter(novelId: String, chapterId: String) = withContext(Dispatchers.IO) {
+        downloadQueueDao.delete(novelId, chapterId)
+    }
+
+    suspend fun cancelNovel(novelId: String) = withContext(Dispatchers.IO) {
+        downloadQueueDao.deleteForNovel(novelId)
+    }
+
+    suspend fun cancelAll() = withContext(Dispatchers.IO) {
+        downloadQueueDao.clearQueue()
+        cancelWorker()
+    }
+
+    suspend fun retryFailed() = withContext(Dispatchers.IO) {
+        downloadQueueDao.retryFailed()
+        scheduleWorker()
+    }
+
+    suspend fun clearCompleted() = withContext(Dispatchers.IO) {
+        downloadQueueDao.clearCompleted()
+    }
+
+    fun scheduleWorker(replace: Boolean = false) {
+        val wifiOnly = settingsRepository.downloadSettings.value.wifiOnly
+        val networkType = if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(networkType)
+            .build()
+
+        val request = OneTimeWorkRequestBuilder<DownloadQueueWorker>()
+            .setConstraints(constraints)
+            .addTag(TAG_DOWNLOAD)
+            .build()
+
+        val policy = if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP
+        try {
+            WorkManager.getInstance(context).enqueueUniqueWork(WORK_NAME, policy, request)
+        } catch (e: Exception) {
+            android.util.Log.e("DownloadEngine", "Failed to schedule WorkManager", e)
+        }
+    }
+
+    fun cancelWorker() {
+        try {
+            WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
+        } catch (e: Exception) {
+            android.util.Log.e("DownloadEngine", "Failed to cancel worker", e)
+        }
+    }
+}

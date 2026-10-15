@@ -79,7 +79,27 @@ class ChapterRepository(
     private val _storageWarnings = MutableSharedFlow<String>(extraBufferCapacity = 64)
     val storageWarnings: SharedFlow<String> = _storageWarnings.asSharedFlow()
 
-    suspend fun emitStorageWarning(message: String) {
+    private var lastStorageWarningTimestamp: Long = 0L
+    private val storageWarningLock = Any()
+
+    fun resetStorageWarningRateLimit() {
+        synchronized(storageWarningLock) {
+            lastStorageWarningTimestamp = 0L
+        }
+    }
+
+    suspend fun emitStorageWarning(message: String, force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        val shouldEmit = synchronized(storageWarningLock) {
+            if (force || (now - lastStorageWarningTimestamp >= 60 * 60 * 1000L)) {
+                lastStorageWarningTimestamp = now
+                true
+            } else {
+                false
+            }
+        }
+        if (!shouldEmit) return
+
         _storageWarnings.emit(message)
         try {
             notificationDao?.insertAndTrim(
@@ -88,7 +108,7 @@ class ChapterRepository(
                     title = "Download Storage Warning",
                     message = message,
                     type = "download",
-                    timestamp = System.currentTimeMillis()
+                    timestamp = now
                 )
             )
         } catch (_: Exception) {}

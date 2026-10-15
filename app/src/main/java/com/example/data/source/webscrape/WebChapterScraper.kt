@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.webkit.CookieManager
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -13,16 +15,109 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
+import java.io.IOException
+import java.util.ArrayDeque
+import java.util.Collections
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.math.min
 
 object WebChapterScraper {
 
     private const val DEFAULT_USER_AGENT =
         "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
 
+    const val MAX_POOL_CAP = 2
+    @Volatile
+    private var maxPooledWebViews = 2
+
+    fun configurePoolCapacity(simultaneousDownloads: Int) {
+        maxPooledWebViews = min(simultaneousDownloads, MAX_POOL_CAP).coerceAtLeast(1)
+    }
+
+    private val webViewPool = ArrayDeque<WebView>()
+    private val activeWebViews = Collections.synchronizedSet(HashSet<WebView>())
+
+    private fun obtainWebView(context: Context): WebView {
+        synchronized(webViewPool) {
+            while (webViewPool.isNotEmpty()) {
+                val candidate = webViewPool.removeFirst()
+                try {
+                    candidate.stopLoading()
+                    activeWebViews.add(candidate)
+                    return candidate
+                } catch (_: Exception) {
+                    // Stale or invalid WebView instance
+                }
+            }
+        }
+        val created = WebView(context.applicationContext ?: context).apply {
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                databaseEnabled = true
+                userAgentString = DEFAULT_USER_AGENT
+                cacheMode = WebSettings.LOAD_DEFAULT
+                blockNetworkImage = true // Speeds up text extraction
+            }
+            CookieManager.getInstance().setAcceptCookie(true)
+        }
+        activeWebViews.add(created)
+        return created
+    }
+
+    private fun recycleWebView(webView: WebView?) {
+        if (webView == null) return
+        activeWebViews.remove(webView)
+        try {
+            webView.stopLoading()
+            webView.webViewClient = WebViewClient()
+            webView.loadUrl("about:blank")
+            synchronized(webViewPool) {
+                if (webViewPool.size < maxPooledWebViews) {
+                    webViewPool.addLast(webView)
+                    return
+                }
+            }
+            webView.destroy()
+        } catch (_: Exception) {
+            try {
+                webView.destroy()
+            } catch (_: Exception) {}
+        }
+    }
+
     /**
-     * Extracts chapter content from a webpage URL using a background WebView instance.
+     * Releases all cached and active WebViews, clearing with about:blank before destroy.
+     * Called when the download queue becomes empty, cancelled, or the worker finishes.
+     */
+    suspend fun releaseWebViews() = withContext(Dispatchers.Main) {
+        synchronized(webViewPool) {
+            while (webViewPool.isNotEmpty()) {
+                try {
+                    val wv = webViewPool.removeFirst()
+                    wv.stopLoading()
+                    wv.loadUrl("about:blank")
+                    wv.destroy()
+                } catch (_: Exception) {}
+            }
+        }
+        val remainingActive: List<WebView>
+        synchronized(activeWebViews) {
+            remainingActive = activeWebViews.toList()
+            activeWebViews.clear()
+        }
+        for (wv in remainingActive) {
+            try {
+                wv.stopLoading()
+                wv.loadUrl("about:blank")
+                wv.destroy()
+            } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * Extracts chapter content from a webpage URL using a pooled background WebView instance.
      * Executes entirely headless without visible UI.
      */
     suspend fun extractChapterText(
@@ -38,95 +133,124 @@ object WebChapterScraper {
                 val handler = Handler(Looper.getMainLooper())
 
                 try {
-                    webView = WebView(context.applicationContext).apply {
-                        settings.apply {
-                            javaScriptEnabled = true
-                            domStorageEnabled = true
-                            databaseEnabled = true
-                            userAgentString = DEFAULT_USER_AGENT
-                            cacheMode = WebSettings.LOAD_DEFAULT
-                            blockNetworkImage = true // Speeds up text extraction
+                    val wv = obtainWebView(context)
+                    webView = wv
+
+                    wv.webViewClient = object : WebViewClient() {
+                        private var hasExtracted = false
+
+                        override fun onReceivedError(
+                            view: WebView?,
+                            request: WebResourceRequest?,
+                            error: WebResourceError?
+                        ) {
+                            super.onReceivedError(view, request, error)
+                            if (request?.isForMainFrame == true) {
+                                if (!hasExtracted && continuation.isActive) {
+                                    hasExtracted = true
+                                    recycleWebView(wv)
+                                    val desc = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                        error?.description?.toString() ?: "Web loading error"
+                                    } else {
+                                        "Web loading error"
+                                    }
+                                    continuation.resumeWithException(IOException("Main frame load failed: $desc"))
+                                }
+                            }
                         }
 
-                        CookieManager.getInstance().setAcceptCookie(true)
-
-                        webViewClient = object : WebViewClient() {
-                            private var hasExtracted = false
-
-                            override fun onPageFinished(view: WebView?, finishedUrl: String?) {
-                                super.onPageFinished(view, finishedUrl)
-                                if (hasExtracted) return
-
-                                // Delay slightly for client-side JS rendering (Next.js / Vue / React)
-                                handler.postDelayed({
-                                    if (hasExtracted || !continuation.isActive) return@postDelayed
-                                    hasExtracted = true
-
-                                    view?.evaluateJavascript(WebScrapeScripts.CHAPTER_CONTENT_SCRAPE_JS) { rawJson ->
-                                        try {
-                                            if (rawJson.isNullOrBlank() || rawJson == "null") {
-                                                continuation.resumeWithException(
-                                                    IllegalStateException("No content returned from chapter page.")
-                                                )
-                                                return@evaluateJavascript
-                                            }
-
-                                            // evaluateJavascript wraps the string in quotes or JSON string
-                                            val unescapedJson = if (rawJson.startsWith("\"") && rawJson.endsWith("\"")) {
-                                                org.json.JSONTokener(rawJson).nextValue().toString()
-                                            } else {
-                                                rawJson
-                                            }
-
-                                            val json = JSONObject(unescapedJson)
-                                            val title = json.optString("title").ifBlank { titleFallback }
-                                            val pArr = json.optJSONArray("paragraphs")
-                                            val paragraphs = mutableListOf<String>()
-                                            if (pArr != null) {
-                                                for (i in 0 until pArr.length()) {
-                                                    val p = pArr.optString(i, "").trim()
-                                                    if (p.isNotBlank()) paragraphs.add(p)
-                                                }
-                                            }
-                                            val wordCount = json.optInt("wordCount", 0)
-
-                                            if (paragraphs.isEmpty() || wordCount < 30) {
-                                                continuation.resumeWithException(
-                                                    IllegalStateException(
-                                                        "Extracted chapter text was too short ($wordCount words). The site may require authentication or block automated extraction."
-                                                    )
-                                                )
-                                            } else {
-                                                continuation.resume(
-                                                    ChapterContent(
-                                                        chapterId = chapterId,
-                                                        novelId = novelId,
-                                                        title = title,
-                                                        paragraphs = paragraphs,
-                                                        isDownloaded = true
-                                                    )
-                                                )
-                                            }
-                                        } catch (e: Exception) {
-                                            continuation.resumeWithException(e)
-                                        }
-                                    }
-                                }, 800)
+                        @Suppress("DEPRECATION")
+                        override fun onReceivedError(
+                            view: WebView?,
+                            errorCode: Int,
+                            description: String?,
+                            failingUrl: String?
+                        ) {
+                            super.onReceivedError(view, errorCode, description, failingUrl)
+                            if (failingUrl == url && !hasExtracted && continuation.isActive) {
+                                hasExtracted = true
+                                recycleWebView(wv)
+                                continuation.resumeWithException(IOException("Main frame load failed: $description"))
                             }
+                        }
+
+                        override fun onPageFinished(view: WebView?, finishedUrl: String?) {
+                            super.onPageFinished(view, finishedUrl)
+                            if (hasExtracted) return
+
+                            // Delay slightly for client-side JS rendering (Next.js / Vue / React)
+                            handler.postDelayed({
+                                if (hasExtracted || !continuation.isActive) return@postDelayed
+                                hasExtracted = true
+
+                                view?.evaluateJavascript(WebScrapeScripts.CHAPTER_CONTENT_SCRAPE_JS) { rawJson ->
+                                    try {
+                                        if (rawJson.isNullOrBlank() || rawJson == "null") {
+                                            recycleWebView(wv)
+                                            continuation.resumeWithException(
+                                                IllegalStateException("No content returned from chapter page.")
+                                            )
+                                            return@evaluateJavascript
+                                        }
+
+                                        // evaluateJavascript wraps the string in quotes or JSON string
+                                        val unescapedJson = if (rawJson.startsWith("\"") && rawJson.endsWith("\"")) {
+                                            org.json.JSONTokener(rawJson).nextValue().toString()
+                                        } else {
+                                            rawJson
+                                        }
+
+                                        val json = JSONObject(unescapedJson)
+                                        val title = json.optString("title").ifBlank { titleFallback }
+                                        val pArr = json.optJSONArray("paragraphs")
+                                        val paragraphs = mutableListOf<String>()
+                                        if (pArr != null) {
+                                            for (i in 0 until pArr.length()) {
+                                                val p = pArr.optString(i, "").trim()
+                                                if (p.isNotBlank()) paragraphs.add(p)
+                                            }
+                                        }
+                                        val wordCount = json.optInt("wordCount", 0)
+
+                                        if (paragraphs.isEmpty() || wordCount < 30) {
+                                            recycleWebView(wv)
+                                            continuation.resumeWithException(
+                                                IllegalStateException(
+                                                    "Extracted chapter text was too short ($wordCount words). The site may require authentication or block automated extraction."
+                                                )
+                                            )
+                                        } else {
+                                            recycleWebView(wv)
+                                            continuation.resume(
+                                                ChapterContent(
+                                                    chapterId = chapterId,
+                                                    novelId = novelId,
+                                                    title = title,
+                                                    paragraphs = paragraphs,
+                                                    isDownloaded = true
+                                                )
+                                            )
+                                        }
+                                    } catch (e: Exception) {
+                                        recycleWebView(wv)
+                                        continuation.resumeWithException(e)
+                                    }
+                                }
+                            }, 800)
                         }
                     }
 
                     continuation.invokeOnCancellation {
                         try {
-                            webView?.stopLoading()
-                            webView?.destroy()
+                            recycleWebView(wv)
                         } catch (e: Exception) {
                             e.printStackTrace()
                         }
                     }
 
-                    webView.loadUrl(url)
+                    wv.loadUrl(url)
                 } catch (e: Exception) {
+                    recycleWebView(webView)
                     continuation.resumeWithException(e)
                 }
             }
