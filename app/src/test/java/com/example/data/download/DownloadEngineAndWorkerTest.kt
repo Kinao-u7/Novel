@@ -20,8 +20,8 @@ import com.example.data.local.db.entity.DownloadQueueEntity
 import com.example.data.local.db.entity.NovelEntity
 import com.example.data.model.Chapter
 import com.example.data.model.ChapterContent
+import com.example.data.local.db.toModel
 import com.example.data.model.Novel
-import com.example.data.model.toModel
 import com.example.data.repository.NovelRepository
 import com.example.data.source.NovelSource
 import com.example.data.source.SourceManager

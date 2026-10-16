@@ -13,7 +13,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import com.example.data.local.db.entity.NotificationEntity
-import com.example.data.model.toModel
+import com.example.data.local.db.toModel
 import com.example.data.source.webscrape.WebChapterScraper
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
