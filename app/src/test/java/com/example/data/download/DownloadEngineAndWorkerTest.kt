@@ -147,7 +147,7 @@ class DownloadEngineAndWorkerTest {
         database.close()
     }
 
-    private fun insertTestNovelAndChapters(novelId: String = "nov_1", chapterCount: Int = 3) {
+    private suspend fun insertTestNovelAndChapters(novelId: String = "nov_1", chapterCount: Int = 3) {
         val novel = NovelEntity(
             id = novelId,
             title = "Test Novel $novelId",
