@@ -33,8 +33,28 @@ interface DownloadQueueDao {
     """)
     suspend fun updateStatus(novelId: String, chapterId: String, status: String, errorMessage: String? = null): Int
 
-    @Query("SELECT chapter_id FROM download_queue WHERE novel_id = :novelId")
+    @Query("SELECT chapter_id FROM download_queue WHERE novel_id = :novelId AND status IN ('QUEUED', 'DOWNLOADING', 'PAUSED')")
     suspend fun getQueuedChapterIds(novelId: String): List<String>
+
+    @Query("""
+        UPDATE download_queue 
+        SET status = :status, error_message = :errorMessage 
+        WHERE novel_id = :novelId AND chapter_id = :chapterId AND status = 'DOWNLOADING'
+    """)
+    suspend fun updateStatusIfDownloading(novelId: String, chapterId: String, status: String, errorMessage: String? = null): Int
+
+    @Query("""
+        UPDATE download_queue 
+        SET status = :status, retry_count = :retryCount, error_message = :errorMessage 
+        WHERE novel_id = :novelId AND chapter_id = :chapterId AND status = 'DOWNLOADING'
+    """)
+    suspend fun updateStatusAndRetryIfDownloading(
+        novelId: String,
+        chapterId: String,
+        status: String,
+        retryCount: Int,
+        errorMessage: String? = null
+    ): Int
 
     @Query("SELECT * FROM download_queue WHERE status = 'QUEUED' ORDER BY queued_at ASC LIMIT :limit")
     suspend fun getNextQueuedBatch(limit: Int): List<DownloadQueueEntity>

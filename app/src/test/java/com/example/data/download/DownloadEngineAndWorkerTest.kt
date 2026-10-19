@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.work.Configuration
 import androidx.work.ListenableWorker
 import androidx.work.NetworkType
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.testing.WorkManagerTestInitHelper
@@ -797,6 +798,123 @@ class DownloadEngineAndWorkerTest {
             repository.chapterRepository.deleteNovelDownloads(novelId)
 
             assertEquals(0, downloadQueueDao.getTotalCount())
+        }
+    }
+
+    @Test
+    fun worker_timeLimitReached_leavesFollowUpEnqueuedUnderUniqueWorkName() = runTest {
+        withTimeout(10_000) {
+            val novelId = "nov_time_limit"
+            insertTestNovelAndChapters(novelId, 2)
+
+            downloadQueueDao.insertIgnore(DownloadQueueEntity(novelId, "ch_1", status = "QUEUED"))
+            downloadQueueDao.insertIgnore(DownloadQueueEntity(novelId, "ch_2", status = "QUEUED"))
+
+            DownloadQueueWorker.maxWorkerDurationOverrideMs = 0L
+            try {
+                val worker = TestListenableWorkerBuilder<DownloadQueueWorker>(context).build()
+                val result = worker.doWork()
+
+                assertTrue(result is ListenableWorker.Result.Success)
+
+                val workInfos = WorkManager.getInstance(context)
+                    .getWorkInfosForUniqueWork(DownloadEngine.WORK_NAME)
+                    .get()
+
+                assertTrue("Expected follow-up work scheduled", workInfos.isNotEmpty())
+                val followUpState = workInfos.first().state
+                assertTrue(
+                    "Work state should be ENQUEUED or RUNNING, was $followUpState",
+                    followUpState == WorkInfo.State.ENQUEUED || followUpState == WorkInfo.State.RUNNING
+                )
+            } finally {
+                DownloadQueueWorker.maxWorkerDurationOverrideMs = null
+            }
+        }
+    }
+
+    @Test
+    fun pausedRow_isNotOverwrittenByGuardedFailureUpdate() = runTest {
+        withTimeout(10_000) {
+            val novelId = "nov_paused_guard"
+            insertTestNovelAndChapters(novelId, 1)
+
+            downloadQueueDao.insertIgnore(
+                DownloadQueueEntity(
+                    novelId = novelId,
+                    chapterId = "ch_1",
+                    status = "PAUSED",
+                    retryCount = 0
+                )
+            )
+
+            // Attempt failure update with guard (WHERE status = 'DOWNLOADING')
+            val updatedRows = downloadQueueDao.updateStatusAndRetryIfDownloading(
+                novelId = novelId,
+                chapterId = "ch_1",
+                status = "FAILED",
+                retryCount = 3,
+                errorMessage = "Attempted overwrite"
+            )
+
+            assertEquals(0, updatedRows)
+            val item = downloadQueueDao.getItem(novelId, "ch_1")
+            assertEquals("PAUSED", item?.status)
+            assertEquals(0, item?.retryCount)
+            assertNull(item?.errorMessage)
+        }
+    }
+
+    @Test
+    fun enqueueNovel_requeuesFailedChapter_andDoesNotQueueDownloadedOrEpub() = runTest {
+        withTimeout(10_000) {
+            val novelId = "nov_enqueue_novel_filter"
+
+            val novel = NovelEntity(
+                id = novelId,
+                title = "Filter Test Novel",
+                author = "Author",
+                genresJson = "[]",
+                sourceId = "test_source",
+                inLibrary = true
+            )
+            database.novelDao().insertIgnore(novel)
+
+            val ch1 = ChapterEntity(novelId, "ch_1", "Ch 1", 1, storageTier = "DOWNLOADED")
+            val ch2 = ChapterEntity(novelId, "ch_2", "Ch 2", 2, storageTier = "EPUB")
+            val ch3 = ChapterEntity(novelId, "ch_3", "Ch 3", 3, storageTier = "NONE")
+            val ch4 = ChapterEntity(novelId, "ch_4", "Ch 4", 4, storageTier = "NONE")
+            database.chapterDao().insertIgnore(listOf(ch1, ch2, ch3, ch4))
+
+            // Pre-seed ch_3 as FAILED in download_queue
+            downloadQueueDao.insertIgnore(
+                DownloadQueueEntity(
+                    novelId = novelId,
+                    chapterId = "ch_3",
+                    status = "FAILED",
+                    retryCount = 3,
+                    errorMessage = "Failed previously"
+                )
+            )
+
+            val result = downloadEngine.enqueueNovel(novelId)
+
+            assertEquals(listOf("ch_3", "ch_4"), result.enqueuedChapterIds)
+            assertEquals(2, result.enqueuedCount)
+
+            // Verify ch_3 was requeued to QUEUED with reset retries and error
+            val item3 = downloadQueueDao.getItem(novelId, "ch_3")
+            assertEquals("QUEUED", item3?.status)
+            assertEquals(0, item3?.retryCount)
+            assertNull(item3?.errorMessage)
+
+            // Verify ch_4 was newly queued
+            val item4 = downloadQueueDao.getItem(novelId, "ch_4")
+            assertEquals("QUEUED", item4?.status)
+
+            // Verify ch_1 and ch_2 were never inserted into queue
+            assertNull(downloadQueueDao.getItem(novelId, "ch_1"))
+            assertNull(downloadQueueDao.getItem(novelId, "ch_2"))
         }
     }
 }

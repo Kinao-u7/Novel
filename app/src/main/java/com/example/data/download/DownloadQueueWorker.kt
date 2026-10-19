@@ -44,6 +44,10 @@ class DownloadQueueWorker(
         @androidx.annotation.VisibleForTesting
         @Volatile
         var throttleDelayOverrideMs: Long? = null
+
+        @androidx.annotation.VisibleForTesting
+        @Volatile
+        var maxWorkerDurationOverrideMs: Long? = null
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -57,6 +61,9 @@ class DownloadQueueWorker(
 
         // Reset rate-limit per worker run / batch so at most 1 warning and 1 notification per batch
         chapterRepository.resetStorageWarningRateLimit()
+
+        // Clear completed items from previous runs at start of each worker run
+        downloadQueueDao.clearCompleted()
 
         // Invariant: turn every DOWNLOADING row back to QUEUED on worker start so a killed worker never abandons work
         downloadQueueDao.resetDownloadingToQueued()
@@ -76,7 +83,8 @@ class DownloadQueueWorker(
         try {
             while (!isStopped) {
                 // Time limit: Stop after ~8 minutes of work and re-enqueue if queue still has QUEUED rows
-                if (System.currentTimeMillis() - startTime >= MAX_WORKER_DURATION_MS) {
+                val maxDuration = maxWorkerDurationOverrideMs ?: MAX_WORKER_DURATION_MS
+                if (System.currentTimeMillis() - startTime >= maxDuration) {
                     val remainingQueued = downloadQueueDao.countByStatus("QUEUED")
                     if (remainingQueued > 0) {
                         followUpScheduled = true
@@ -121,7 +129,7 @@ class DownloadQueueWorker(
                                 }
 
                                 if (chapterEntity.storageTier == "DOWNLOADED") {
-                                    downloadQueueDao.updateStatus(item.novelId, item.chapterId, "COMPLETED")
+                                    downloadQueueDao.updateStatusIfDownloading(item.novelId, item.chapterId, "COMPLETED")
                                     return@withPermit
                                 }
 
@@ -151,7 +159,7 @@ class DownloadQueueWorker(
                                 }
 
                                 if (success) {
-                                    downloadQueueDao.updateStatus(item.novelId, item.chapterId, "COMPLETED")
+                                    downloadQueueDao.updateStatusIfDownloading(item.novelId, item.chapterId, "COMPLETED")
                                     downloadedCountThisSession.incrementAndGet()
                                 } else {
                                     val nextRetry = item.retryCount + 1
@@ -159,7 +167,7 @@ class DownloadQueueWorker(
                                         // Exponential backoff
                                         val backoffMs = (1000L * (1 shl nextRetry)).coerceAtMost(16_000L)
                                         delay(backoffMs)
-                                        downloadQueueDao.updateStatusAndRetry(
+                                        downloadQueueDao.updateStatusAndRetryIfDownloading(
                                             novelId = item.novelId,
                                             chapterId = item.chapterId,
                                             status = "QUEUED",
@@ -167,7 +175,7 @@ class DownloadQueueWorker(
                                             errorMessage = "Download attempt $nextRetry failed"
                                         )
                                     } else {
-                                        downloadQueueDao.updateStatusAndRetry(
+                                        downloadQueueDao.updateStatusAndRetryIfDownloading(
                                             novelId = item.novelId,
                                             chapterId = item.chapterId,
                                             status = "FAILED",

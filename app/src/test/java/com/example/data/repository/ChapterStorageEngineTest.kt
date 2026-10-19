@@ -980,4 +980,92 @@ class ChapterStorageEngineTest {
             }
         }
     }
+
+    @Test
+    fun singleFlight_twoConcurrentCallsFetchOnce_thirdCallAfterCompletionFetchesAgain() = runTest {
+        withTimeout(10_000) {
+            val novelId = "nov_single_flight_3"
+            val chapterId = "ch_sf_3"
+
+            val novel = NovelEntity(
+                id = novelId,
+                title = "Single Flight Novel",
+                author = "Author",
+                genresJson = "[]",
+                sourceId = "sf_source",
+                inLibrary = true
+            )
+            val chapter = ChapterEntity(
+                novelId = novelId,
+                id = chapterId,
+                title = "Chapter SF",
+                chapterIndex = 1,
+                storageTier = "NONE",
+                storageLocation = "INTERNAL"
+            )
+            database.novelDao().insertIgnore(novel)
+            database.chapterDao().insertIgnore(chapter)
+
+            val fetchStarted = CompletableDeferred<Unit>()
+            val releaseFetch = CompletableDeferred<Unit>()
+            val fetchCount = AtomicInteger(0)
+
+            val gatingSource = object : NovelSource {
+                override val id = "sf_source"
+                override val name = "Gating Source"
+                override val language = "en"
+                override val version = "1.0"
+                override val description = "Source for single flight testing"
+                override val isLocal = false
+
+                override suspend fun getPopularNovels(page: Int) = emptyList<Novel>()
+                override suspend fun searchNovels(query: String, page: Int) = emptyList<Novel>()
+                override suspend fun getNovelDetails(novelId: String) = Novel(novelId, "Single Flight Novel", "Author", "Desc", id, name)
+                override suspend fun getChapterList(novelId: String) = emptyList<Chapter>()
+                override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent {
+                    val count = fetchCount.incrementAndGet()
+                    if (count == 1) {
+                        fetchStarted.complete(Unit)
+                        releaseFetch.await()
+                    }
+                    return ChapterContent(
+                        chapterId = chapterId,
+                        novelId = novelId,
+                        title = "Title $count",
+                        paragraphs = listOf("P1", "P2")
+                    )
+                }
+            }
+
+            SourceManager.registerSource(gatingSource)
+            try {
+                coroutineScope {
+                    val def1 = async(Dispatchers.IO) { chapterRepository.getChapterContent(novelId, chapterId) }
+                    val def2 = async(Dispatchers.IO) { chapterRepository.getChapterContent(novelId, chapterId) }
+
+                    fetchStarted.await()
+                    delay(50)
+                    releaseFetch.complete(Unit)
+
+                    val res1 = def1.await()
+                    val res2 = def2.await()
+
+                    assertEquals("Both concurrent calls get identical content", res1, res2)
+                    assertEquals("Two concurrent calls fetch exactly once", 1, fetchCount.get())
+                    assertTrue("inFlightFetches must be cleared after completion", chapterRepository.inFlightFetches.isEmpty())
+                }
+
+                // Delete cache file to force a cache miss on the third call
+                storageResolver.getCacheChapterFile(novelId, chapterId).delete()
+
+                val res3 = chapterRepository.getChapterContent(novelId, chapterId)
+                assertEquals("Title 2", res3.title)
+                assertEquals("Third call after completion fetches again from source", 2, fetchCount.get())
+                assertTrue("inFlightFetches is empty after third call completes", chapterRepository.inFlightFetches.isEmpty())
+            } finally {
+                releaseFetch.complete(Unit)
+                SourceManager.unregisterSource(gatingSource.id)
+            }
+        }
+    }
 }

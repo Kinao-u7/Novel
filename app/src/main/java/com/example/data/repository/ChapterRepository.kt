@@ -18,6 +18,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -146,140 +147,97 @@ class ChapterRepository(
      */
     suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent = withContext(ioDispatcher) {
         val chapterRow = chapterDao.getChapter(novelId, chapterId)
+            ?: throw ChapterRowMissing(novelId, chapterId)
 
-        if (chapterRow != null) {
-            when (chapterRow.storageTier) {
-                "EPUB" -> {
+        when (chapterRow.storageTier) {
+            "EPUB" -> {
+                val content = chapterStorage.read(
+                    novelId = novelId,
+                    chapterId = chapterId,
+                    tier = "EPUB",
+                    location = chapterRow.storageLocation
+                )
+                if (content != null) {
+                    return@withContext content
+                }
+                throw EpubFileMissing(novelId, chapterId)
+            }
+            "DOWNLOADED" -> {
+                try {
                     val content = chapterStorage.read(
                         novelId = novelId,
                         chapterId = chapterId,
-                        tier = "EPUB",
+                        tier = chapterRow.storageTier,
                         location = chapterRow.storageLocation
                     )
                     if (content != null) {
                         return@withContext content
                     }
-                    throw EpubFileMissing(novelId, chapterId)
-                }
-                "DOWNLOADED" -> {
-                    try {
-                        val content = chapterStorage.read(
-                            novelId = novelId,
-                            chapterId = chapterId,
-                            tier = chapterRow.storageTier,
-                            location = chapterRow.storageLocation
-                        )
-                        if (content != null) {
-                            return@withContext content
-                        }
-                        // File is really missing despite row recording it; fall through to miss handling
-                    } catch (e: StorageUnavailableException) {
-                        // Storage folder or permission is unavailable (e.g. missing SD card);
-                        // do NOT reset the tier (Spec 4).
-                        throw e
-                    }
-                }
-                "CACHE" -> {
-                    val content = chapterStorage.read(
-                        novelId = novelId,
-                        chapterId = chapterId,
-                        tier = "CACHE",
-                        location = chapterRow.storageLocation
-                    )
-                    if (content != null) {
-                        chapterDao.updateLastAccessed(novelId, chapterId, System.currentTimeMillis())
-                        return@withContext content.copy(isDownloaded = false)
-                    }
-                    // Cache file is missing; fall through to miss handling
+                    // File is really missing despite row recording it; fall through to miss handling
+                } catch (e: StorageUnavailableException) {
+                    // Storage folder or permission is unavailable (e.g. missing SD card);
+                    // do NOT reset the tier (Spec 4).
+                    throw e
                 }
             }
-        } else {
-            val novel = novelDao.getNovelById(novelId)
-            if (novel == null || novel.isEpub || novelId.startsWith("epub_")) {
-                throw ChapterRowMissing(novelId, chapterId)
+            "CACHE" -> {
+                val content = chapterStorage.read(
+                    novelId = novelId,
+                    chapterId = chapterId,
+                    tier = "CACHE",
+                    location = chapterRow.storageLocation
+                )
+                if (content != null) {
+                    chapterDao.updateLastAccessed(novelId, chapterId, System.currentTimeMillis())
+                    return@withContext content.copy(isDownloaded = false)
+                }
+                // Cache file is missing; fall through to miss handling
             }
         }
 
-        // Cache miss: single-flight deduplication of in-flight fetches
+        // Cache miss: single-flight deduplication using LAZY async + putIfAbsent
         val key = Pair(novelId, chapterId)
-        val deferred = synchronized(inFlightFetches) {
-            var fetchDeferred: Deferred<ChapterContent>? = null
-            val def = inFlightFetches.getOrPut(key) {
-                repositoryScope.async {
-                    try {
-                        // 1. Reset tier to NONE if previously recorded as having storage but file was missing
-                        val row = chapterDao.getChapter(novelId, chapterId)
-                        if (row != null && row.storageTier != "NONE") {
-                            chapterDao.updateStorageTier(
-                                novelId = novelId,
-                                id = chapterId,
-                                storageTier = "NONE",
-                                storageLocation = "INTERNAL",
-                                fileHash = "",
-                                lastAccessedAt = 0L
-                            )
-                        }
+        val candidate = repositoryScope.async(start = CoroutineStart.LAZY) {
+            val novel = novelDao.getNovelById(novelId) ?: throw ChapterRowMissing(novelId, chapterId)
+            val source = SourceManager.getSourceById(novel.sourceId) ?: SourceManager.getActiveSource()
 
-                        // 2. Fetch from source
-                        val novel = novelDao.getNovelById(novelId) ?: throw ChapterRowMissing(novelId, chapterId)
-                        val source = if (novel != null) {
-                            SourceManager.getSourceById(novel.sourceId) ?: SourceManager.getActiveSource()
-                        } else {
-                            SourceManager.getActiveSource()
-                        }
+            val rawContent = source.getChapterContent(novelId, chapterId)
+            val cleanContent = rawContent.copy(isDownloaded = false)
 
-                        val rawContent = source.getChapterContent(novelId, chapterId)
-                        val cleanContent = rawContent.copy(isDownloaded = false)
+            // Write to cache
+            chapterStorage.writeToCache(cleanContent)
 
-                        // 3. Write to cache
-                        chapterStorage.writeToCache(cleanContent)
+            // Successful fetch and cache write: update Room tier to CACHE together here
+            val now = System.currentTimeMillis()
+            val fileHash = storageResolver.sha256(chapterId)
+            chapterDao.updateStorageTier(
+                novelId = novelId,
+                id = chapterId,
+                storageTier = "CACHE",
+                storageLocation = "INTERNAL",
+                fileHash = fileHash,
+                lastAccessedAt = now
+            )
 
-                        // 4. Set tier CACHE and last_accessed_at in Room
-                        val now = System.currentTimeMillis()
-                        val fileHash = storageResolver.sha256(chapterId)
-                        if (row != null) {
-                            chapterDao.updateStorageTier(
-                                novelId = novelId,
-                                id = chapterId,
-                                storageTier = "CACHE",
-                                storageLocation = "INTERNAL",
-                                fileHash = fileHash,
-                                lastAccessedAt = now
-                            )
-                        } else {
-                            chapterDao.insertIgnore(
-                                ChapterEntity(
-                                    novelId = novelId,
-                                    id = chapterId,
-                                    title = cleanContent.title,
-                                    chapterIndex = 1,
-                                    storageTier = "CACHE",
-                                    storageLocation = "INTERNAL",
-                                    fileHash = fileHash,
-                                    lastAccessedAt = now
-                                )
-                            )
-                        }
-
-                        // 5. Run LRU eviction after write completes, outside any map or lock,
-                        // and never from inside code that something else is waiting on.
-                        repositoryScope.launch {
-                            try {
-                                runEviction()
-                            } catch (e: Exception) {
-                                if (e is CancellationException) throw e
-                            }
-                        }
-
-                        // Reading NEVER sets DOWNLOADED
-                        cleanContent
-                    } finally {
-                        fetchDeferred?.let { inFlightFetches.remove(key, it) }
-                    }
+            // Run LRU eviction after write completes, outside any map or lock
+            repositoryScope.launch {
+                try {
+                    runEviction()
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                 }
             }
-            fetchDeferred = def
-            def
+
+            cleanContent
+        }
+        candidate.invokeOnCompletion { inFlightFetches.remove(key, candidate) }
+        val existing = inFlightFetches.putIfAbsent(key, candidate)
+        val deferred = if (existing != null) {
+            candidate.cancel()
+            existing
+        } else {
+            candidate.start()
+            candidate
         }
 
         deferred.await()

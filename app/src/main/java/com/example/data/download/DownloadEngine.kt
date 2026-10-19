@@ -100,21 +100,34 @@ class DownloadEngine(
         val skipped = mutableListOf<String>()
         val reasons = mutableMapOf<String, String>()
 
-        val validChapterIds = mutableListOf<String>()
+        val activeQueuedIds = downloadQueueDao.getQueuedChapterIds(novelId).toSet()
+        val toQueue = mutableListOf<String>()
+
         for (chapterId in chapterIds) {
             val chapter = chapterDao.getChapterById(novelId, chapterId)
-            if (chapter == null) {
-                skipped.add(chapterId)
-                reasons[chapterId] = "Chapter not found in database: $chapterId"
-            } else {
-                validChapterIds.add(chapterId)
-                enqueued.add(chapterId)
+            when {
+                chapter == null -> {
+                    skipped.add(chapterId)
+                    reasons[chapterId] = "Chapter not found in database: $chapterId"
+                }
+                chapter.storageTier == "DOWNLOADED" || chapter.storageTier == "EPUB" -> {
+                    skipped.add(chapterId)
+                    reasons[chapterId] = "Chapter already stored as ${chapter.storageTier}: $chapterId"
+                }
+                activeQueuedIds.contains(chapterId) -> {
+                    skipped.add(chapterId)
+                    reasons[chapterId] = "Chapter is already in download queue: $chapterId"
+                }
+                else -> {
+                    toQueue.add(chapterId)
+                    enqueued.add(chapterId)
+                }
             }
         }
 
-        if (validChapterIds.isNotEmpty()) {
+        if (toQueue.isNotEmpty()) {
             val now = System.currentTimeMillis()
-            val entities = validChapterIds.map { id ->
+            val entities = toQueue.map { id ->
                 DownloadQueueEntity(
                     novelId = novelId,
                     chapterId = id,
@@ -125,7 +138,7 @@ class DownloadEngine(
             entities.chunked(500).forEach { chunk ->
                 downloadQueueDao.insertIgnoreAll(chunk)
             }
-            downloadQueueDao.bulkRequeue(novelId, validChapterIds, now)
+            downloadQueueDao.bulkRequeue(novelId, toQueue, now)
 
             scheduleWorker()
         }
