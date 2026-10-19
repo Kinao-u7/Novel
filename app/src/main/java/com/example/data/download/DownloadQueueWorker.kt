@@ -17,6 +17,7 @@ import com.example.data.local.db.toModel
 import com.example.data.source.webscrape.WebChapterScraper
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -25,6 +26,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
 
 class DownloadQueueWorker(
@@ -60,8 +62,9 @@ class DownloadQueueWorker(
         downloadQueueDao.resetDownloadingToQueued()
 
         val startTime = System.currentTimeMillis()
-        var downloadedCountThisSession = 0
-        var batchCounter = 0
+        val downloadedCountThisSession = AtomicInteger(0)
+        val batchCounter = AtomicInteger(0)
+        var followUpScheduled = false
 
         val initialQueuedCount = downloadQueueDao.countByStatus("QUEUED")
         if (initialQueuedCount == 0) {
@@ -76,7 +79,8 @@ class DownloadQueueWorker(
                 if (System.currentTimeMillis() - startTime >= MAX_WORKER_DURATION_MS) {
                     val remainingQueued = downloadQueueDao.countByStatus("QUEUED")
                     if (remainingQueued > 0) {
-                        repository.downloadEngine.scheduleWorker(replace = false)
+                        followUpScheduled = true
+                        repository.downloadEngine.scheduleWorker(appendOrReplace = true)
                     }
                     break
                 }
@@ -116,8 +120,15 @@ class DownloadQueueWorker(
                                     return@withPermit
                                 }
 
+                                if (chapterEntity.storageTier == "DOWNLOADED") {
+                                    downloadQueueDao.updateStatus(item.novelId, item.chapterId, "COMPLETED")
+                                    return@withPermit
+                                }
+
                                 // Apply request throttling with jitter at call site if enabled
-                                if (settings.throttlingEnabled && batchCounter > 0 && batchCounter % settings.throttleBatchSize == 0) {
+                                val throttleBatchSize = settings.throttleBatchSize.coerceAtLeast(1)
+                                val currentBatch = batchCounter.getAndIncrement()
+                                if (settings.throttlingEnabled && currentBatch > 0 && currentBatch % throttleBatchSize == 0) {
                                     val delayMs = throttleDelayOverrideMs ?: run {
                                         var computed = (settings.throttleDelaySeconds * 1000).toLong()
                                         if (settings.throttleRandomJitter) {
@@ -130,7 +141,6 @@ class DownloadQueueWorker(
                                         delay(delayMs)
                                     }
                                 }
-                                batchCounter++
 
                                 val success = try {
                                     chapterRepository.downloadChapter(novelEntity.toModel(), chapterEntity.toModel())
@@ -142,7 +152,7 @@ class DownloadQueueWorker(
 
                                 if (success) {
                                     downloadQueueDao.updateStatus(item.novelId, item.chapterId, "COMPLETED")
-                                    downloadedCountThisSession++
+                                    downloadedCountThisSession.incrementAndGet()
                                 } else {
                                     val nextRetry = item.retryCount + 1
                                     if (nextRetry < MAX_RETRY_COUNT) {
@@ -167,44 +177,52 @@ class DownloadQueueWorker(
                                     }
                                 }
 
-                                val totalInQueue = downloadQueueDao.getTotalCount()
-                                val completedInQueue = downloadQueueDao.countByStatus("COMPLETED")
-                                trySetForeground(progress = completedInQueue, total = totalInQueue, novelTitle = novelEntity.title)
+                                val completedThisRun = downloadedCountThisSession.get()
+                                val remaining = downloadQueueDao.countActiveRemaining()
+                                val totalForRun = completedThisRun + remaining
+                                trySetForeground(progress = completedThisRun, total = totalForRun, novelTitle = novelEntity.title)
                             }
                         }
                     }.awaitAll()
                 }
             }
         } finally {
-            // Lifecycle: release pooled WebViews when queue is finished or worker stops
-            try {
-                WebChapterScraper.releaseWebViews()
-            } catch (e: Exception) {
-                Log.w("DownloadQueueWorker", "Error releasing WebViews", e)
-            }
-
-            // Cancel ongoing progress notification
-            val notificationManager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            try {
-                notificationManager?.cancel(NOTIFICATION_ID)
-            } catch (_: Exception) {}
-
-            // Post completion notification if notifyOnDownload is enabled
-            val notifyOnDownload = settingsRepository.notificationSettings.value.notifyOnDownload
-            if (notifyOnDownload && downloadedCountThisSession > 0) {
-                DownloadNotificationHelper.postCompletionNotification(applicationContext, downloadedCountThisSession, notifyOnDownload = true)
+            withContext(NonCancellable) {
+                // Lifecycle: release pooled WebViews when queue is finished or worker stops
                 try {
-                    notificationDao.insertAndTrim(
-                        NotificationEntity(
-                            id = UUID.randomUUID().toString(),
-                            type = "DOWNLOAD_COMPLETE",
-                            title = "Downloads Complete",
-                            message = "Successfully downloaded $downloadedCountThisSession chapter${if (downloadedCountThisSession > 1) "s" else ""}.",
-                            timestamp = System.currentTimeMillis()
-                        )
-                    )
+                    WebChapterScraper.releaseWebViews()
                 } catch (e: Exception) {
-                    Log.w("DownloadQueueWorker", "Error inserting notification", e)
+                    if (e is CancellationException) throw e
+                    Log.w("DownloadQueueWorker", "Error releasing WebViews", e)
+                }
+
+                // Cancel ongoing progress notification
+                val notificationManager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                try {
+                    notificationManager?.cancel(NOTIFICATION_ID)
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                }
+
+                // Post completion notification only if notifyOnDownload is enabled, worker was not stopped, and follow-up was not scheduled
+                val notifyOnDownload = settingsRepository.notificationSettings.value.notifyOnDownload
+                val completed = downloadedCountThisSession.get()
+                if (!isStopped && !followUpScheduled && notifyOnDownload && completed > 0) {
+                    DownloadNotificationHelper.postCompletionNotification(applicationContext, completed, notifyOnDownload = true)
+                    try {
+                        notificationDao.insertAndTrim(
+                            NotificationEntity(
+                                id = UUID.randomUUID().toString(),
+                                type = "DOWNLOAD_COMPLETE",
+                                title = "Downloads Complete",
+                                message = "Successfully downloaded $completed chapter${if (completed > 1) "s" else ""}.",
+                                timestamp = System.currentTimeMillis()
+                            )
+                        )
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
+                        Log.w("DownloadQueueWorker", "Error inserting notification", e)
+                    }
                 }
             }
         }
@@ -216,6 +234,7 @@ class DownloadQueueWorker(
         try {
             setForeground(createForegroundInfo(progress, total, novelTitle))
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.w("DownloadQueueWorker", "Could not start foreground service, continuing in background", e)
         }
     }

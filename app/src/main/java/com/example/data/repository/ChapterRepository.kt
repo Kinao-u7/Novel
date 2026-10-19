@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import com.example.data.local.db.dao.ChapterDao
+import com.example.data.local.db.dao.DownloadQueueDao
 import com.example.data.local.db.dao.NotificationDao
 import com.example.data.local.db.dao.NovelDao
 import com.example.data.local.db.entity.ChapterEntity
@@ -30,6 +31,12 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
+class EpubFileMissing(val novelId: String, val chapterId: String) :
+    IllegalStateException("EPUB file missing for novel $novelId, chapter $chapterId")
+
+class ChapterRowMissing(val novelId: String, val chapterId: String) :
+    NoSuchElementException("Chapter row missing for novel $novelId, chapter $chapterId")
+
 /**
  * Modern repository managing chapter reading, caching, eviction, and offline downloads.
  *
@@ -50,6 +57,7 @@ class ChapterRepository(
     val chapterStorage: ChapterStorage,
     val storageResolver: StorageResolver,
     private val settingsRepository: SettingsRepository,
+    private val downloadQueueDao: DownloadQueueDao,
     private val notificationDao: NotificationDao? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
@@ -141,7 +149,19 @@ class ChapterRepository(
 
         if (chapterRow != null) {
             when (chapterRow.storageTier) {
-                "EPUB", "DOWNLOADED" -> {
+                "EPUB" -> {
+                    val content = chapterStorage.read(
+                        novelId = novelId,
+                        chapterId = chapterId,
+                        tier = "EPUB",
+                        location = chapterRow.storageLocation
+                    )
+                    if (content != null) {
+                        return@withContext content
+                    }
+                    throw EpubFileMissing(novelId, chapterId)
+                }
+                "DOWNLOADED" -> {
                     try {
                         val content = chapterStorage.read(
                             novelId = novelId,
@@ -173,12 +193,18 @@ class ChapterRepository(
                     // Cache file is missing; fall through to miss handling
                 }
             }
+        } else {
+            val novel = novelDao.getNovelById(novelId)
+            if (novel == null || novel.isEpub || novelId.startsWith("epub_")) {
+                throw ChapterRowMissing(novelId, chapterId)
+            }
         }
 
         // Cache miss: single-flight deduplication of in-flight fetches
         val key = Pair(novelId, chapterId)
         val deferred = synchronized(inFlightFetches) {
-            inFlightFetches.getOrPut(key) {
+            var fetchDeferred: Deferred<ChapterContent>? = null
+            val def = inFlightFetches.getOrPut(key) {
                 repositoryScope.async {
                     try {
                         // 1. Reset tier to NONE if previously recorded as having storage but file was missing
@@ -195,7 +221,7 @@ class ChapterRepository(
                         }
 
                         // 2. Fetch from source
-                        val novel = novelDao.getNovelById(novelId)
+                        val novel = novelDao.getNovelById(novelId) ?: throw ChapterRowMissing(novelId, chapterId)
                         val source = if (novel != null) {
                             SourceManager.getSourceById(novel.sourceId) ?: SourceManager.getActiveSource()
                         } else {
@@ -248,10 +274,12 @@ class ChapterRepository(
                         // Reading NEVER sets DOWNLOADED
                         cleanContent
                     } finally {
-                        inFlightFetches.remove(key)
+                        fetchDeferred?.let { inFlightFetches.remove(key, it) }
                     }
                 }
             }
+            fetchDeferred = def
+            def
         }
 
         deferred.await()
@@ -397,6 +425,7 @@ class ChapterRepository(
         chapterStorage.deleteDownloadsForNovel(novelId, locations)
         chapterStorage.deleteCacheForNovel(novelId)
         chapterDao.deleteNovelDownloads(novelId)
+        downloadQueueDao.deleteForNovel(novelId)
     }
 
     /**
@@ -409,6 +438,7 @@ class ChapterRepository(
         val allDownloaded = chapterDao.getAllDownloadedChapters()
         val locations = allDownloaded.map { it.storageLocation }.toSet()
         chapterStorage.deleteAllDownloads(locations)
+        downloadQueueDao.clearQueue()
         chapterDao.deleteAllDownloads()
     }
 
@@ -432,6 +462,7 @@ class ChapterRepository(
         val isEpub = novel?.isEpub == true || novelId.startsWith("epub_")
         val chapters = chapterDao.getChapters(novelId)
         val locations = chapters.map { it.storageLocation }.toSet()
+        downloadQueueDao.deleteForNovel(novelId)
         novelDao.deleteById(novelId)
         chapterStorage.removeNovelCompletely(novelId, isEpub = isEpub, locations = locations)
     }

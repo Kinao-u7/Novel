@@ -13,6 +13,7 @@ import com.example.data.local.db.dao.NovelDao
 import com.example.data.local.db.entity.DownloadQueueEntity
 import com.example.data.repository.ChapterRepository
 import com.example.data.repository.SettingsRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -99,29 +100,33 @@ class DownloadEngine(
         val skipped = mutableListOf<String>()
         val reasons = mutableMapOf<String, String>()
 
+        val validChapterIds = mutableListOf<String>()
         for (chapterId in chapterIds) {
             val chapter = chapterDao.getChapterById(novelId, chapterId)
             if (chapter == null) {
                 skipped.add(chapterId)
                 reasons[chapterId] = "Chapter not found in database: $chapterId"
             } else {
-                val entity = DownloadQueueEntity(
-                    novelId = novelId,
-                    chapterId = chapterId,
-                    status = "QUEUED",
-                    queuedAt = System.currentTimeMillis()
-                )
-                val rowId = downloadQueueDao.insertIgnore(entity)
-                if (rowId != -1L) {
-                    enqueued.add(chapterId)
-                } else {
-                    // Already in queue
-                    enqueued.add(chapterId)
-                }
+                validChapterIds.add(chapterId)
+                enqueued.add(chapterId)
             }
         }
 
-        if (enqueued.isNotEmpty()) {
+        if (validChapterIds.isNotEmpty()) {
+            val now = System.currentTimeMillis()
+            val entities = validChapterIds.map { id ->
+                DownloadQueueEntity(
+                    novelId = novelId,
+                    chapterId = id,
+                    status = "QUEUED",
+                    queuedAt = now
+                )
+            }
+            entities.chunked(500).forEach { chunk ->
+                downloadQueueDao.insertIgnoreAll(chunk)
+            }
+            downloadQueueDao.bulkRequeue(novelId, validChapterIds, now)
+
             scheduleWorker()
         }
 
@@ -212,7 +217,7 @@ class DownloadEngine(
         downloadQueueDao.clearCompleted()
     }
 
-    fun scheduleWorker(replace: Boolean = false) {
+    fun scheduleWorker(replace: Boolean = false, appendOrReplace: Boolean = false) {
         val wifiOnly = settingsRepository.downloadSettings.value.wifiOnly
         val networkType = if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
         val constraints = Constraints.Builder()
@@ -224,10 +229,15 @@ class DownloadEngine(
             .addTag(TAG_DOWNLOAD)
             .build()
 
-        val policy = if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP
+        val policy = when {
+            appendOrReplace -> ExistingWorkPolicy.APPEND_OR_REPLACE
+            replace -> ExistingWorkPolicy.REPLACE
+            else -> ExistingWorkPolicy.KEEP
+        }
         try {
             WorkManager.getInstance(context).enqueueUniqueWork(WORK_NAME, policy, request)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             android.util.Log.e("DownloadEngine", "Failed to schedule WorkManager", e)
         }
     }
@@ -236,6 +246,7 @@ class DownloadEngine(
         try {
             WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             android.util.Log.e("DownloadEngine", "Failed to cancel worker", e)
         }
     }

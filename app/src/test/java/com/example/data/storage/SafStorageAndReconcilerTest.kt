@@ -236,6 +236,7 @@ class SafStorageAndReconcilerTest {
             chapterStorage = chapterStorage,
             storageResolver = storageResolver,
             settingsRepository = settingsRepository,
+            downloadQueueDao = database.downloadQueueDao(),
             notificationDao = database.notificationDao(),
             ioDispatcher = Dispatchers.IO
         )

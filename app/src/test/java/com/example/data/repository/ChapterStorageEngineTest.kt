@@ -29,6 +29,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -37,6 +38,7 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -107,7 +109,8 @@ class ChapterStorageEngineTest {
             novelDao = database.novelDao(),
             chapterStorage = chapterStorage,
             storageResolver = storageResolver,
-            settingsRepository = settingsRepository
+            settingsRepository = settingsRepository,
+            downloadQueueDao = database.downloadQueueDao()
         )
         novelRepository = NovelRepository(context)
 
@@ -919,6 +922,62 @@ class ChapterStorageEngineTest {
 
             database = Room.inMemoryDatabaseBuilder(context, NovelDatabase::class.java).allowMainThreadQueries().build()
             NovelDatabaseHolder.setInstanceForTesting(database)
+        }
+    }
+
+    @Test
+    fun getChapterContent_epubMissingFile_throwsEpubFileMissing() = runTest {
+        withTimeout(10_000) {
+            database.novelDao().insertIgnore(
+                NovelEntity(
+                    id = "epub_novel_missing_file",
+                    title = "Epub Novel",
+                    author = "Author",
+                    genresJson = "[]",
+                    isEpub = true
+                )
+            )
+            database.chapterDao().insertIgnore(
+                ChapterEntity(
+                    novelId = "epub_novel_missing_file",
+                    id = "ch_epub_1",
+                    title = "Chapter 1",
+                    chapterIndex = 1,
+                    storageTier = "EPUB",
+                    storageLocation = "INTERNAL"
+                )
+            )
+
+            try {
+                chapterRepository.getChapterContent("epub_novel_missing_file", "ch_epub_1")
+                fail("Expected EpubFileMissing exception")
+            } catch (e: EpubFileMissing) {
+                assertEquals("epub_novel_missing_file", e.novelId)
+                assertEquals("ch_epub_1", e.chapterId)
+            }
+        }
+    }
+
+    @Test
+    fun getChapterContent_missingChapterRow_throwsChapterRowMissing() = runTest {
+        withTimeout(10_000) {
+            database.novelDao().insertIgnore(
+                NovelEntity(
+                    id = "epub_novel_missing_row",
+                    title = "Epub Novel",
+                    author = "Author",
+                    genresJson = "[]",
+                    isEpub = true
+                )
+            )
+
+            try {
+                chapterRepository.getChapterContent("epub_novel_missing_row", "ch_non_existent")
+                fail("Expected ChapterRowMissing exception")
+            } catch (e: ChapterRowMissing) {
+                assertEquals("epub_novel_missing_row", e.novelId)
+                assertEquals("ch_non_existent", e.chapterId)
+            }
         }
     }
 }

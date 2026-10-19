@@ -707,4 +707,96 @@ class DownloadEngineAndWorkerTest {
             assertTrue(item2?.errorMessage?.contains("Max retries") == true)
         }
     }
+
+    @Test
+    fun worker_skipsAlreadyDownloadedChapters_marksCompletedImmediately() = runTest {
+        withTimeout(10_000) {
+            val novelId = "nov_skip_downloaded"
+            insertTestNovelAndChapters(novelId, 2)
+
+            // Mark chapter 1 as already DOWNLOADED in database
+            chapterDao.updateStorageTier(
+                novelId = novelId,
+                id = "ch_1",
+                storageTier = "DOWNLOADED",
+                storageLocation = "INTERNAL",
+                fileHash = "hash1",
+                lastAccessedAt = System.currentTimeMillis()
+            )
+
+            downloadEngine.enqueueChapters(novelId, listOf("ch_1", "ch_2"))
+            fakeSource.callTimes.clear()
+
+            val worker = TestListenableWorkerBuilder<DownloadQueueWorker>(context).build()
+            val result = worker.doWork()
+
+            assertTrue(result is ListenableWorker.Result.Success)
+
+            // Chapter 1 is marked COMPLETED in queue without fetching
+            val item1 = downloadQueueDao.getItem(novelId, "ch_1")
+            val item2 = downloadQueueDao.getItem(novelId, "ch_2")
+            assertEquals("COMPLETED", item1?.status)
+            assertEquals("COMPLETED", item2?.status)
+
+            // Only chapter 2 was actually downloaded from source
+            assertEquals(1, fakeSource.callTimes.size)
+        }
+    }
+
+    @Test
+    fun engine_enqueueChapters_requeuesExistingFailedOrCompletedRows() = runTest {
+        withTimeout(10_000) {
+            val novelId = "nov_requeue_test"
+            insertTestNovelAndChapters(novelId, 3)
+
+            // Insert initial queue rows with FAILED and COMPLETED states
+            downloadQueueDao.insertIgnore(
+                DownloadQueueEntity(
+                    novelId = novelId,
+                    chapterId = "ch_1",
+                    status = "FAILED",
+                    retryCount = 3,
+                    errorMessage = "Previous failure"
+                )
+            )
+            downloadQueueDao.insertIgnore(
+                DownloadQueueEntity(
+                    novelId = novelId,
+                    chapterId = "ch_2",
+                    status = "COMPLETED"
+                )
+            )
+
+            // Enqueue chapters 1, 2, and 3
+            downloadEngine.enqueueChapters(novelId, listOf("ch_1", "ch_2", "ch_3"))
+
+            val item1 = downloadQueueDao.getItem(novelId, "ch_1")
+            val item2 = downloadQueueDao.getItem(novelId, "ch_2")
+            val item3 = downloadQueueDao.getItem(novelId, "ch_3")
+
+            assertEquals("QUEUED", item1?.status)
+            assertEquals(0, item1?.retryCount)
+            assertNull(item1?.errorMessage)
+
+            assertEquals("QUEUED", item2?.status)
+            assertEquals(0, item2?.retryCount)
+
+            assertEquals("QUEUED", item3?.status)
+        }
+    }
+
+    @Test
+    fun chapterRepository_deleteNovelDownloads_cleansDownloadQueue() = runTest {
+        withTimeout(10_000) {
+            val novelId = "nov_del_queue_clean"
+            insertTestNovelAndChapters(novelId, 2)
+
+            downloadEngine.enqueueChapters(novelId, listOf("ch_1", "ch_2"))
+            assertEquals(2, downloadQueueDao.getTotalCount())
+
+            repository.chapterRepository.deleteNovelDownloads(novelId)
+
+            assertEquals(0, downloadQueueDao.getTotalCount())
+        }
+    }
 }

@@ -73,7 +73,15 @@ class NovelRepository(context: Context) {
     val settingsRepository = SettingsRepository.getInstance(appContext)
     val storageResolver = StorageResolver(appContext)
     val chapterStorage = ChapterStorage(storageResolver, appContext)
-    val chapterRepository = ChapterRepository(chapterDao, novelDao, chapterStorage, storageResolver, settingsRepository, notificationDao)
+    val chapterRepository = ChapterRepository(
+        chapterDao = chapterDao,
+        novelDao = novelDao,
+        chapterStorage = chapterStorage,
+        storageResolver = storageResolver,
+        settingsRepository = settingsRepository,
+        downloadQueueDao = downloadQueueDao,
+        notificationDao = notificationDao
+    )
     val cacheReconciler = CacheReconciler(chapterDao, storageResolver)
     val downloadEngine = DownloadEngine(
         context = appContext,
