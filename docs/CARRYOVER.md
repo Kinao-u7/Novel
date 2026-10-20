@@ -14,7 +14,7 @@ Rule for every pass: fix only the items listed for that pass, follow `docs/ARCHI
 - **Auto-scroll (2.5):** needs a UI control. Use frame-based pixels per second (not 4px every 100ms). Pause on touch, while controls are shown and while TTS plays. Stop at chapter end, or advance if the user enabled it.
 - **Bookmarks (2.18):** save the current paragraph and character offset, an excerpt of the visible text and the chapter title. Entries in the bookmarks sheet are tappable and jump to the saved position.
 - **TTS (2.19):** read the same text that is displayed (term replacements applied), start from the visible position, and stop or advance on chapter change.
-- **Term replacements (2.20):** compile rules once per chapter, not once per paragraph. Support whole-word and case options. Support global and per-novel rules.
+- **Term replacements (2.20):** compile rules once per chapter, not once per paragraph. Support whole-word and case options. Support global and per-novel rules. Reader keeps the DAO replacement order, no re-sorting by length (S3).
 - **Dictionary (2.16):** remove the mock dictionary. Long-press must not block normal text selection.
 - **Performance (3.18):**
   - Paginate only in paged mode, off the main thread.
@@ -34,6 +34,7 @@ Rule for every pass: fix only the items listed for that pass, follow `docs/ARCHI
 - "Recently Read" must not include never-read novels. Add "Recently Added" (6.10).
 - Replace the nested `LazyRow` of genre tags in list items with a plain `Row` (3.19).
 - Add empty and no-results states.
+- Rating badge hidden when the rating is null or 0f (null/0f = unrated, never a fake default).
 
 ## 7b Detail screen and options sheet
 
@@ -45,10 +46,11 @@ Rule for every pass: fix only the items listed for that pass, follow `docs/ARCHI
 - Refresh must really re-scrape web novels (WTR-Lab API) and merge new chapters with the insert-ignore plus update strategy (2.17).
 - Options sheet (6.18, 6.19): confirm dialogs for Remove, Delete downloads and Clear history. Validate a blank title and the cover URL.
 - `resolveNovelWebUrl` (6.20) must return the novel page, not a chapter URL. For WTR-Lab build it from locale, raw id and slug.
-- Rating badge hidden when the rating is null.
+- Rating badge hidden when the rating is null or 0f (null/0f = unrated, never a fake default).
 
 ## 7c Browse (Discover)
 
+- Opening a novel from Browse persists it with in_library = false (upsertSafe) before refreshChapters; unused browse novels are purged.
 - Add Source (6.1): validate the URL (scheme and host), normalize it, and reject duplicates. `"https://"` alone must not be accepted.
 - Empty states (6.2): "No custom sources yet" only when there are none. Show a separate no-results state when search or a filter hides everything.
 - Filters (6.3): separate category from languages (a `languages` set per source). Do not use `contains`.

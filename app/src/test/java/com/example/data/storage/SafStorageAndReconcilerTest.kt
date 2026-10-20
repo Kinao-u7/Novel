@@ -681,4 +681,43 @@ class SafStorageAndReconcilerTest {
             assertFalse("persistFolderPermission returns false on un-grantable URI", canWrite)
         }
     }
+
+    /**
+     * Fake Boundary Note regarding concurrent SAF directory creation:
+     * In production with real Android DocumentsProvider, [SafChapterFileStore.getNovelFolder]
+     * guards directory creation with `synchronized(dirCreationLock)` to ensure concurrent writes
+     * produce exactly one "NovelReader/downloads/{novelId}" directory hierarchy without race
+     * conditions. In unit tests, [FakeChapterFileStore] operates over an in-memory ConcurrentHashMap
+     * of flat string keys ("$location|$novelId|$chapterId") without physical DocumentFile directories,
+     * so directory creation is serialized and verified at the [SafChapterFileStore] lock boundary.
+     */
+    @Test
+    fun concurrentSafWrites_produceConsistentStorageKeys_underSimulatedConcurrency() = runBlocking {
+        withTimeout(10_000L) {
+            val novel = insertTestNovel("novel_concurrent_saf")
+            val safLoc = "SAF:content://saf/tree/concurrent"
+            settingsRepository.updateDownloadSettings {
+                it.copy(customDownloadLocationUri = "content://saf/tree/concurrent")
+            }
+            fakeFileStore.isSafWritable = true
+            fakeFileStore.isSafReachable = true
+
+            val chapters = (1..10).map { idx ->
+                Chapter("ch_conc_$idx", novel.id, "Ch $idx", idx)
+            }
+
+            // Execute concurrent downloads to the same SAF location
+            kotlinx.coroutines.coroutineScope {
+                chapters.map { ch ->
+                    kotlinx.coroutines.async(Dispatchers.IO) {
+                        chapterRepository.downloadChapter(novel, ch)
+                    }
+                }.forEach { it.await() }
+            }
+
+            // All 10 chapters exist under the exact same location and novel ID prefix
+            val writtenKeys = fakeFileStore.safFiles.keys.filter { it.startsWith("$safLoc|${novel.id}|") }
+            assertEquals(10, writtenKeys.size)
+        }
+    }
 }

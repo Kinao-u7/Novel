@@ -23,3 +23,6 @@ interface NovelSource {
     suspend fun getChapterList(novelId: String): List<Chapter>
     suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent
 }
+
+class SourceUnavailable(val sourceId: String, cause: Throwable? = null) :
+    IllegalStateException("Source unavailable: $sourceId", cause)

@@ -350,7 +350,7 @@ class SafChapterFileStore(
         listing.remove(tempFileName)?.delete()
         novelDir.findFile(tempFileName)?.delete()
 
-        val tempDoc = novelDir.createFile("application/json", tempFileName)
+        val tempDoc = novelDir.createFile("application/octet-stream", tempFileName)
             ?: throw IOException("Failed to create SAF temp file: $tempFileName")
 
         try {

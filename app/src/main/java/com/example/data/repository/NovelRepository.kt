@@ -9,9 +9,11 @@ import com.example.data.local.db.normalizeSourceUrl
 import com.example.data.local.db.toEntity
 import com.example.data.local.db.toModel
 import com.example.data.local.db.entity.NotificationEntity
+import com.example.data.local.db.entity.NotificationTypes
 import com.example.data.local.db.entity.RequestedSourceEntity
 import com.example.data.model.*
 import com.example.data.source.SourceManager
+import com.example.data.source.SourceUnavailable
 import com.example.data.source.webscrape.ScrapedNovelData
 import com.example.data.source.webscrape.WebScrapeSource
 import com.example.data.source.webscrape.WtrLabExtractor
@@ -259,9 +261,11 @@ class NovelRepository(context: Context) {
         settingsRepository.setLibraryGridViewSync(isGrid)
     }
 
-    suspend fun addToLibrary(novel: Novel) = withContext(Dispatchers.IO) {
+    suspend fun addToLibrary(novel: Novel): String = withContext(Dispatchers.IO) {
         val entity = novel.toEntity().copy(inLibrary = true)
-        novelDao.upsertSafe(entity)
+        val canonicalId = novelDao.upsertSafe(entity)
+        novelDao.setInLibrary(canonicalId, true)
+        canonicalId
     }
 
     suspend fun removeFromLibrary(novelId: String) = withContext(Dispatchers.IO) {
@@ -388,11 +392,18 @@ class NovelRepository(context: Context) {
         }
 
         // 2. Fetch from source when Room has no chapters or forceRefresh requested
-        val source = SourceManager.getSourceById(novel.sourceId) ?: SourceManager.getActiveSource()
+        val source = SourceManager.getSourceById(novel.sourceId)
+            ?: throw SourceUnavailable(novel.sourceId)
         val rawChapters = try {
             source.getChapterList(novel.id)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            emptyList()
+            if (forceRefresh) {
+                throw e
+            } else {
+                return@withContext roomChapters.map { it.toModel() }
+            }
         }
 
         if (rawChapters.isNotEmpty()) {
@@ -529,10 +540,30 @@ class NovelRepository(context: Context) {
             }
 
             // Never block inside transaction; do not call nested transaction suspend functions
+            var canonicalNovel: Novel? = null
             database.withTransaction {
                 val rowId = novelDao.insertIgnore(novelEntity)
                 if (rowId == -1L) {
-                    novelDao.update(novelEntity)
+                    val existing = novelDao.getNovelBySourceAndRawId(novelEntity.sourceId, fileHash)
+                        ?: novelDao.getNovelById(novelEntity.id)
+                    if (existing != null) {
+                        if (existing.id != novelId) {
+                            for (file in writtenFiles) {
+                                try {
+                                    if (file.exists()) file.delete()
+                                } catch (_: Exception) {}
+                            }
+                            val epubDir = storageResolver.getNovelEpubDir(novelId)
+                            if (epubDir.exists() && epubDir.listFiles().isNullOrEmpty()) {
+                                try { epubDir.delete() } catch (_: Exception) {}
+                            }
+                        }
+                        novelDao.setInLibrary(existing.id, true)
+                        canonicalNovel = existing.toModel(
+                            downloadedCount = chapterDao.getDownloadedCount(existing.id)
+                        ).copy(inLibrary = true)
+                        return@withTransaction
+                    }
                 }
                 chapterDao.insertIgnore(chapterEntities)
                 for (ch in chapterEntities) {
@@ -545,9 +576,10 @@ class NovelRepository(context: Context) {
                         releaseDate = ch.releaseDate
                     )
                 }
+                canonicalNovel = novelEntity.toModel()
             }
 
-            novelEntity.toModel()
+            canonicalNovel ?: novelEntity.toModel()
         } catch (e: Throwable) {
             if (e is CancellationException) throw e
             for (file in writtenFiles) {
@@ -577,9 +609,10 @@ class NovelRepository(context: Context) {
         val cleanAuthor = WtrLabExtractor.cleanWtrLabTokens(customAuthor.ifBlank { "Unknown Author" })
         val cleanSynopsis = WtrLabExtractor.cleanWtrLabTokens(customSynopsis.ifBlank { "Web Novel" })
         val normalizedUrl = normalizeSourceUrl(scrapedData.sourceUrl)
+        val normalizedRawId = scrapedData.rawId?.trim()?.ifEmpty { null }
 
         // 4. Dedupe web novels by (source_id, raw_id), then by normalized source_url, and return existing novel
-        val existingNovel = (scrapedData.rawId?.let { novelDao.getNovelBySourceAndRawId(WebScrapeSource.SOURCE_ID, it) })
+        val existingNovel = (normalizedRawId?.let { novelDao.getNovelBySourceAndRawId(WebScrapeSource.SOURCE_ID, it) })
             ?: (normalizedUrl?.let { novelDao.getNovelBySourceUrl(it) })
 
         if (existingNovel != null) {
@@ -637,19 +670,22 @@ class NovelRepository(context: Context) {
             inLibrary = true,
             totalChapters = chapters.size,
             downloadedChaptersCount = 0,
-            rating = scrapedData.rating?.takeIf { it > 0f } ?: 4.8f,
+            rating = scrapedData.rating?.takeIf { it > 0f },
             lastReadTimestamp = 0L, // New novels keep last_read_timestamp = 0
-            rawId = scrapedData.rawId,
+            rawId = normalizedRawId,
             locale = scrapedData.locale,
             sourceUrl = normalizedUrl
         ).toEntity()
 
         // Insert novel and chapters using insert-ignore plus update
-        novelDao.upsertSafe(novelEntity)
-        val chapterEntities = chapters.map { it.toEntity(storageTier = "NONE", storageLocation = "INTERNAL") }
-        chapterDao.refreshChapters(novelId, chapterEntities)
+        val canonicalId = novelDao.upsertSafe(novelEntity)
+        novelDao.setInLibrary(canonicalId, true)
+        val chapterEntities = chapters.map {
+            it.copy(novelId = canonicalId).toEntity(storageTier = "NONE", storageLocation = "INTERNAL")
+        }
+        chapterDao.refreshChapters(canonicalId, chapterEntities)
 
-        novelEntity.toModel()
+        novelEntity.copy(id = canonicalId, inLibrary = true).toModel()
     }
 
     // --- BOOKMARKS ---
@@ -753,7 +789,7 @@ class NovelRepository(context: Context) {
         return notificationDao.getUnreadCountFlow().distinctUntilChanged()
     }
 
-    suspend fun postNotification(title: String, message: String, type: String = "info") = withContext(Dispatchers.IO) {
+    suspend fun postNotification(title: String, message: String, type: String = NotificationTypes.INFO) = withContext(Dispatchers.IO) {
         val entity = NotificationEntity(
             id = java.util.UUID.randomUUID().toString(),
             title = title.trim(),

@@ -156,16 +156,15 @@ val ALL_TOOLBAR_ACTIONS = listOf(
 
 fun applyTermReplacements(text: String, rules: List<TermReplacementRule>): String {
     val activeRules = rules.filter { it.isEnabled && it.original.isNotBlank() }
+        .sortedByDescending { it.original.length }
     if (activeRules.isEmpty() || text.isBlank()) return text
 
-    // Sort by descending original length to prioritize specific longer phrases
-    val sortedRules = activeRules.sortedByDescending { it.original.length }
-    val pattern = Regex(sortedRules.joinToString("|") { Regex.escape(it.original) })
+    val pattern = Regex(activeRules.joinToString("|") { Regex.escape(it.original) })
 
     return pattern.replace(text) { matchResult ->
         val matched = matchResult.value
-        val rule = sortedRules.firstOrNull { it.original.equals(matched, ignoreCase = false) }
-            ?: sortedRules.firstOrNull { it.original.equals(matched, ignoreCase = true) }
+        val rule = activeRules.firstOrNull { it.original.equals(matched, ignoreCase = false) }
+            ?: activeRules.firstOrNull { it.original.equals(matched, ignoreCase = true) }
         rule?.replacement ?: matched
     }
 }

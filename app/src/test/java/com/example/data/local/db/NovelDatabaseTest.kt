@@ -297,6 +297,86 @@ class NovelDatabaseTest {
         assertTrue(lruList.all { it.storageTier == "CACHE" })
     }
 
+    @Test
+    fun upsertSafe_keepsInLibrary_rating_andLastReadFields() = runBlocking {
+        val original = createTestNovel(
+            id = "novel_preserve",
+            title = "Original Title",
+            rating = 4.5f,
+            inLibrary = true
+        ).copy(
+            lastReadChapterId = "ch_5",
+            lastReadTimestamp = 9999L
+        )
+        novelDao.insertIgnore(original)
+
+        val updatedAttempt = createTestNovel(
+            id = "novel_preserve",
+            title = "New Remote Title",
+            rating = null,
+            inLibrary = false
+        ).copy(
+            lastReadChapterId = null,
+            lastReadTimestamp = 0L
+        )
+
+        val canonicalId = novelDao.upsertSafe(updatedAttempt)
+        assertEquals("novel_preserve", canonicalId)
+
+        val row = novelDao.getNovelById("novel_preserve")
+        assertNotNull(row)
+        // Source owned fields updated
+        assertEquals("New Remote Title", row?.title)
+        // User state preserved
+        assertEquals(true, row?.inLibrary)
+        assertEquals(4.5f, row?.rating)
+        assertEquals("ch_5", row?.lastReadChapterId)
+        assertEquals(9999L, row?.lastReadTimestamp)
+    }
+
+    @Test
+    fun upsertSafe_sameSourceAndRawIdWithDifferentId_returnsExistingId() = runBlocking {
+        val original = createTestNovel(
+            id = "novel_orig",
+            title = "Original Novel",
+            inLibrary = true
+        ).copy(
+            sourceId = "src_dedupe",
+            rawId = "raw_42"
+        )
+        novelDao.insertIgnore(original)
+
+        val duplicate = createTestNovel(
+            id = "novel_new",
+            title = "Duplicate With Different ID",
+            inLibrary = false
+        ).copy(
+            sourceId = "src_dedupe",
+            rawId = "raw_42"
+        )
+
+        val returnedId = novelDao.upsertSafe(duplicate)
+        assertEquals("Must return existing novel ID", "novel_orig", returnedId)
+
+        assertNotNull(novelDao.getNovelById("novel_orig"))
+        assertNull("Conflicting ID must not be inserted", novelDao.getNovelById("novel_new"))
+        assertEquals("Duplicate With Different ID", novelDao.getNovelById("novel_orig")?.title)
+    }
+
+    @Test
+    fun upsertSafe_blankRawId_storedAsNull() = runBlocking {
+        val novelWithBlankRaw = createTestNovel(
+            id = "novel_blank_raw",
+            title = "Blank Raw Novel"
+        ).copy(rawId = "   ")
+
+        novelDao.upsertSafe(novelWithBlankRaw)
+
+        val retrieved = novelDao.getNovelById("novel_blank_raw")
+        assertNotNull(retrieved)
+        assertNull("Blank rawId must be normalized to null", retrieved?.rawId)
+    }
+
     private fun createTestNovel(
         id: String,
         title: String,

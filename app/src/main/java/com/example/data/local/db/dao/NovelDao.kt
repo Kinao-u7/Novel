@@ -89,19 +89,21 @@ interface NovelDao {
 
     @Transaction
     suspend fun upsertSafe(novel: NovelEntity): String {
-        val existing = if (novel.rawId != null) {
-            getNovelBySourceAndRawId(novel.sourceId, novel.rawId) ?: getNovelById(novel.id)
+        val normalizedRawId = novel.rawId?.trim()?.ifEmpty { null }
+        val normalizedNovel = if (normalizedRawId != novel.rawId) novel.copy(rawId = normalizedRawId) else novel
+        val existing = if (normalizedRawId != null) {
+            getNovelBySourceAndRawId(novel.sourceId, normalizedRawId) ?: getNovelById(novel.id)
         } else {
             getNovelById(novel.id)
         }
 
         if (existing == null) {
-            val inserted = insertIgnore(novel)
+            val inserted = insertIgnore(normalizedNovel)
             if (inserted != -1L) {
                 return novel.id
             }
-            val conflictRow = if (novel.rawId != null) {
-                getNovelBySourceAndRawId(novel.sourceId, novel.rawId) ?: getNovelById(novel.id)
+            val conflictRow = if (normalizedRawId != null) {
+                getNovelBySourceAndRawId(novel.sourceId, normalizedRawId) ?: getNovelById(novel.id)
             } else {
                 getNovelById(novel.id)
             }
@@ -117,7 +119,7 @@ interface NovelDao {
                 totalChapters = novel.totalChapters,
                 slug = novel.slug,
                 locale = novel.locale,
-                newRawId = if (conflictRow?.rawId == null) novel.rawId else null
+                newRawId = if (conflictRow?.rawId == null) normalizedRawId else null
             )
             return targetId
         } else {
@@ -132,7 +134,7 @@ interface NovelDao {
                 totalChapters = novel.totalChapters,
                 slug = novel.slug,
                 locale = novel.locale,
-                newRawId = if (existing.rawId == null) novel.rawId else null
+                newRawId = if (existing.rawId == null) normalizedRawId else null
             )
             return existing.id
         }

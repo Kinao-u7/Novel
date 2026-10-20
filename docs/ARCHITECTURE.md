@@ -69,7 +69,7 @@ Composite PK `(novel_id, chapter_id)`, FK `novel_id` cascade. `status` (`QUEUED`
 ### Room configuration
 `exportSchema = true` with `room.schemaLocation`. `fallbackToDestructiveMigration()` is development only: remove it and add real migrations before any release. The database is built lazily; nothing opens it in `Application.onCreate`.
 
-Browse novels: a novel opened from Browse is persisted with `in_library = 0`. On startup, in the background, purge `in_library = 0` rows that have no read state, bookmarks or downloads.
+Browse novels: a novel opened from Browse is persisted with `in_library = 0`. Opening a novel from Browse persists it with in_library = false (upsertSafe) before refreshChapters; unused browse novels are purged. On startup, in the background, purge `in_library = 0` rows that have no read state, bookmarks or downloads.
 
 ## 4. File layout (under `filesDir`)
 

@@ -1,5 +1,6 @@
 package com.example.data.model
 
+import com.example.data.local.db.entity.NotificationTypes
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -245,7 +246,7 @@ data class AppNotificationItem(
     val title: String,
     val message: String,
     val timestamp: Long = System.currentTimeMillis(),
-    val type: String = "info" // "download", "update", "system"
+    val type: String = NotificationTypes.INFO
 )
 
 data class Novel(
@@ -265,7 +266,7 @@ data class Novel(
     val lastReadScrollPosition: Int = 0, // paragraph or scroll offset
     val totalChapters: Int = 0,
     val downloadedChaptersCount: Int = 0,
-    val rating: Float = 4.8f,
+    val rating: Float? = null,
     val lastReadTimestamp: Long = 0L,
     val isEpub: Boolean = false,
     val rawId: String? = null,

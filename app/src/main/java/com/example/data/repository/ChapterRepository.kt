@@ -14,6 +14,7 @@ import com.example.data.model.Chapter
 import com.example.data.model.ChapterContent
 import com.example.data.model.Novel
 import com.example.data.source.SourceManager
+import com.example.data.source.SourceUnavailable
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
@@ -152,41 +153,28 @@ class ChapterRepository(
 
         when (chapterRow.storageTier) {
             "EPUB" -> {
-                val content = try {
-                    chapterStorage.read(
-                        novelId = novelId,
-                        chapterId = chapterId,
-                        tier = "EPUB",
-                        location = chapterRow.storageLocation
-                    )
-                } catch (e: ChapterReadException) {
-                    throw e
-                }
+                val content = chapterStorage.read(
+                    novelId = novelId,
+                    chapterId = chapterId,
+                    tier = "EPUB",
+                    location = chapterRow.storageLocation
+                )
                 if (content != null) {
                     return@withContext content
                 }
                 throw EpubFileMissing(novelId, chapterId)
             }
             "DOWNLOADED" -> {
-                try {
-                    val content = chapterStorage.read(
-                        novelId = novelId,
-                        chapterId = chapterId,
-                        tier = chapterRow.storageTier,
-                        location = chapterRow.storageLocation
-                    )
-                    if (content != null) {
-                        return@withContext content
-                    }
-                    // File is really missing despite row recording it; fall through to miss handling
-                } catch (e: StorageUnavailableException) {
-                    // Storage folder or permission is unavailable (e.g. missing SD card);
-                    // do NOT reset the tier (Spec 4).
-                    throw e
-                } catch (e: ChapterReadException) {
-                    // IO/read error: rethrow without changing the tier (H6)
-                    throw e
+                val content = chapterStorage.read(
+                    novelId = novelId,
+                    chapterId = chapterId,
+                    tier = chapterRow.storageTier,
+                    location = chapterRow.storageLocation
+                )
+                if (content != null) {
+                    return@withContext content
                 }
+                // File is really missing despite row recording it; fall through to miss handling
             }
             "CACHE" -> {
                 val content = try {
@@ -197,7 +185,7 @@ class ChapterRepository(
                         location = chapterRow.storageLocation
                     )
                 } catch (e: ChapterReadException) {
-                    throw e
+                    null // Cache is disposable; read errors fall through to refetch
                 }
                 if (content != null) {
                     chapterDao.updateLastAccessed(novelId, chapterId, System.currentTimeMillis())
@@ -211,7 +199,8 @@ class ChapterRepository(
         val key = Pair(novelId, chapterId)
         val candidate = repositoryScope.async(start = CoroutineStart.LAZY) {
             val novel = novelDao.getNovelById(novelId) ?: throw ChapterRowMissing(novelId, chapterId)
-            val source = SourceManager.getSourceById(novel.sourceId) ?: SourceManager.getActiveSource()
+            val source = SourceManager.getSourceById(novel.sourceId)
+                ?: throw SourceUnavailable(novel.sourceId)
 
             val rawContent = source.getChapterContent(novelId, chapterId)
             val cleanContent = rawContent.copy(isDownloaded = false)
@@ -344,7 +333,8 @@ class ChapterRepository(
         }
 
         // Not cached: fetch from remote source (NO LOCK HELD)
-        val source = SourceManager.getSourceById(novel.sourceId) ?: SourceManager.getActiveSource()
+        val source = SourceManager.getSourceById(novel.sourceId)
+            ?: throw SourceUnavailable(novel.sourceId)
         val content = try {
             source.getChapterContent(novel.id, chapter.id)
         } catch (e: Exception) {

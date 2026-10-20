@@ -38,7 +38,11 @@ class BackupManager(
                     put("lastReadScrollPosition", novel.lastReadScrollPosition)
                     put("totalChapters", novel.totalChapters)
                     put("downloadedChaptersCount", novel.downloadedChaptersCount)
-                    put("rating", novel.rating.toDouble())
+                    if (novel.rating != null) {
+                        put("rating", novel.rating.toDouble())
+                    } else {
+                        put("rating", JSONObject.NULL)
+                    }
                     put("lastReadTimestamp", novel.lastReadTimestamp)
                     put("isEpub", novel.isEpub)
                     put("rawId", novel.rawId)
@@ -204,7 +208,7 @@ class BackupManager(
                             lastReadScrollPosition = obj.optInt("lastReadScrollPosition", 0),
                             totalChapters = obj.optInt("totalChapters", 0),
                             downloadedChaptersCount = obj.optInt("downloadedChaptersCount", 0),
-                            rating = obj.optDouble("rating", 4.8).toFloat(),
+                            rating = if (obj.has("rating") && !obj.isNull("rating")) obj.getDouble("rating").toFloat() else null,
                             lastReadTimestamp = obj.optLong("lastReadTimestamp", 0L),
                             isEpub = obj.optBoolean("isEpub", false),
                             rawId = if (obj.has("rawId") && !obj.isNull("rawId")) obj.getString("rawId") else null,

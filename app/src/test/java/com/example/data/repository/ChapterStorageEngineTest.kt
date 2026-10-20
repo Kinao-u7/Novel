@@ -8,6 +8,7 @@ import com.example.data.local.db.NovelDatabase
 import com.example.data.local.db.NovelDatabaseHolder
 import com.example.data.local.db.entity.ChapterEntity
 import com.example.data.local.db.entity.NovelEntity
+import com.example.data.local.storage.ChapterReadException
 import com.example.data.local.storage.ChapterStorage
 import com.example.data.local.storage.StorageResolver
 import com.example.data.model.Chapter
@@ -566,8 +567,7 @@ class ChapterStorageEngineTest {
 
             SourceManager.registerSource(slowSource)
             try {
-                val updatedNovel = database.novelDao().getNovelById("novel_parallel")!!.copy(sourceId = slowSource.id)
-                database.novelDao().update(updatedNovel)
+                database.openHelper.writableDatabase.execSQL("UPDATE novels SET source_id = '${slowSource.id}' WHERE id = 'novel_parallel'")
 
                 try {
                     coroutineScope {
@@ -660,8 +660,7 @@ class ChapterStorageEngineTest {
 
             SourceManager.registerSource(failSource)
             try {
-                val updatedNovel = database.novelDao().getNovelById("novel_fail_retry")!!.copy(sourceId = failSource.id)
-                database.novelDao().update(updatedNovel)
+                database.openHelper.writableDatabase.execSQL("UPDATE novels SET source_id = '${failSource.id}' WHERE id = 'novel_fail_retry'")
 
                 try {
                     supervisorScope {
@@ -1066,6 +1065,97 @@ class ChapterStorageEngineTest {
                 releaseFetch.complete(Unit)
                 SourceManager.unregisterSource(gatingSource.id)
             }
+        }
+    }
+
+    @Test
+    fun unreadableDownloadedFile_throwsChapterReadException_andKeepsTier() = runBlocking {
+        insertTestNovel("novel_unreadable_dl")
+        val novelId = "novel_unreadable_dl"
+        val chapterId = "ch_unreadable_dl"
+        database.chapterDao().insertIgnore(
+            ChapterEntity(
+                novelId = novelId,
+                id = chapterId,
+                title = "Chapter DL",
+                chapterIndex = 1,
+                storageTier = "DOWNLOADED",
+                storageLocation = "INTERNAL"
+            )
+        )
+        val file = storageResolver.getDownloadChapterFile(novelId, chapterId)
+        file.parentFile?.mkdirs()
+        file.writeText("{\"title\":\"DL\"}")
+        file.setReadable(false)
+        try {
+            try {
+                chapterRepository.getChapterContent(novelId, chapterId)
+                fail("Expected ChapterReadException for unreadable downloaded file")
+            } catch (e: ChapterReadException) {
+                assertEquals(novelId, e.novelId)
+                assertEquals(chapterId, e.chapterId)
+            }
+            val row = database.chapterDao().getChapter(novelId, chapterId)
+            assertNotNull(row)
+            assertEquals("DOWNLOADED", row?.storageTier)
+        } finally {
+            file.setReadable(true)
+        }
+    }
+
+    @Test
+    fun unparseableFile_isDeleted_andFallsBackToFetch() = runBlocking {
+        insertTestNovel("novel_corrupt")
+        val novelId = "novel_corrupt"
+        val chapterId = "ch_corrupt"
+        database.chapterDao().insertIgnore(
+            ChapterEntity(
+                novelId = novelId,
+                id = chapterId,
+                title = "Chapter Corrupt",
+                chapterIndex = 1,
+                storageTier = "DOWNLOADED",
+                storageLocation = "INTERNAL"
+            )
+        )
+        val file = storageResolver.getDownloadChapterFile(novelId, chapterId)
+        file.parentFile?.mkdirs()
+        file.writeText("{corrupt not json content")
+        assertTrue(file.exists())
+
+        // Reading unparseable file deletes the corrupt file and falls through to fetch from source into cache
+        val content = chapterRepository.getChapterContent(novelId, chapterId)
+        assertNotNull(content)
+        assertEquals("Title for ch_corrupt", content.title)
+        assertFalse("Corrupted file must be deleted", file.exists())
+    }
+
+    @Test
+    fun unreadableCacheFile_fallsThroughToRefetch() = runBlocking {
+        insertTestNovel("novel_unreadable_cache")
+        val novelId = "novel_unreadable_cache"
+        val chapterId = "ch_unreadable_cache"
+        database.chapterDao().insertIgnore(
+            ChapterEntity(
+                novelId = novelId,
+                id = chapterId,
+                title = "Chapter Cache",
+                chapterIndex = 1,
+                storageTier = "CACHE",
+                storageLocation = "INTERNAL"
+            )
+        )
+        val file = storageResolver.getCacheChapterFile(novelId, chapterId)
+        file.parentFile?.mkdirs()
+        file.writeText("{\"title\":\"Old Cache\"}")
+        file.setReadable(false)
+        try {
+            // CACHE read errors fall through to refetch instead of throwing ChapterReadException
+            val content = chapterRepository.getChapterContent(novelId, chapterId)
+            assertNotNull(content)
+            assertEquals("Title for ch_unreadable_cache", content.title)
+        } finally {
+            file.setReadable(true)
         }
     }
 }

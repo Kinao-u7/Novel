@@ -13,6 +13,7 @@ import com.example.data.local.db.NovelDatabaseHolder
 import com.example.data.local.db.entity.BookmarkEntity
 import com.example.data.local.db.entity.ChapterEntity
 import com.example.data.local.db.entity.NotificationEntity
+import com.example.data.local.db.entity.NotificationTypes
 import com.example.data.local.db.toEntity
 import com.example.data.model.AppNotificationItem
 import com.example.data.model.Bookmark
@@ -24,6 +25,7 @@ import com.example.data.model.Novel
 import com.example.data.model.TermReplacementRule
 import com.example.data.source.NovelSource
 import com.example.data.source.SourceManager
+import com.example.data.source.SourceUnavailable
 import com.example.data.source.webscrape.ScrapedChapter
 import com.example.data.source.webscrape.ScrapedNovelData
 import kotlinx.coroutines.flow.first
@@ -83,7 +85,7 @@ class NovelRepositoryTest {
         lastReadScrollPosition: Int = 0,
         totalChapters: Int = 10,
         downloadedChaptersCount: Int = 0,
-        rating: Float = 4.5f,
+        rating: Float? = 4.5f,
         lastReadTimestamp: Long = 0L,
         isEpub: Boolean = false,
         rawId: String? = null,
@@ -863,7 +865,7 @@ class NovelRepositoryTest {
                     id = "bulk_notif_$i",
                     title = "Title $i",
                     message = "Message $i",
-                    type = "info",
+                    type = NotificationTypes.INFO,
                     timestamp = 1000L + i,
                     isRead = false
                 )
@@ -1249,6 +1251,65 @@ class NovelRepositoryTest {
             assertFalse("Original epub file must be deleted", origFile.exists())
             assertFalse("Epub dir must be deleted", epubDir.exists())
             assertNull("Novel must be deleted from Room", database.novelDao().getNovelById(novel.id))
+        }
+    }
+
+    @Test
+    fun addToLibrary_onExistingBrowseNovel_setsInLibraryTrue_andReturnsCanonicalId() = runBlocking {
+        withTimeout(10_000L) {
+            val browseNovel = testNovel(
+                id = "novel_browse_to_lib",
+                title = "Browse Novel",
+                inLibrary = false
+            )
+            // Persist as a browse novel (inLibrary = false)
+            database.novelDao().insertIgnore(browseNovel.toEntity())
+            assertEquals(false, database.novelDao().getNovelById("novel_browse_to_lib")?.inLibrary)
+
+            val canonicalId = repository.addToLibrary(browseNovel)
+            assertEquals("novel_browse_to_lib", canonicalId)
+
+            val inDb = database.novelDao().getNovelById("novel_browse_to_lib")
+            assertNotNull(inDb)
+            assertEquals(true, inDb?.inLibrary)
+        }
+    }
+
+    @Test
+    fun importEpub_conflictBranch_returnsExistingNovel() = runBlocking {
+        withTimeout(10_000L) {
+            val (_, uri) = createTestEpubFile(
+                fileName = "conflict_branch.epub",
+                title = "Conflict Title",
+                author = "Conflict Author",
+                hasCover = true
+            )
+
+            val first = repository.importEpub(uri, "conflict_branch.epub")
+            val second = repository.importEpub(uri, "conflict_branch.epub")
+
+            assertEquals("Conflict branch must return existing novel", first.id, second.id)
+            val inDb = database.novelDao().getNovelById(first.id)
+            assertNotNull(inDb)
+            assertEquals(true, inDb?.inLibrary)
+        }
+    }
+
+    @Test
+    fun getChapterList_withUnknownSourceId_throwsSourceUnavailable() = runBlocking {
+        withTimeout(10_000L) {
+            val unknownNovel = testNovel(
+                id = "novel_unknown_source",
+                title = "Unknown Source Novel",
+                sourceId = "completely_unknown_source"
+            )
+
+            try {
+                repository.getChapterList(unknownNovel, forceRefresh = true)
+                fail("Expected SourceUnavailable when source is unknown")
+            } catch (e: SourceUnavailable) {
+                assertEquals("completely_unknown_source", e.sourceId)
+            }
         }
     }
 }
