@@ -23,5 +23,7 @@ data class TermReplacementEntity(
     @ColumnInfo(name = "match_case")
     val matchCase: Boolean = false,
     @ColumnInfo(name = "is_enabled")
-    val isEnabled: Boolean = true
+    val isEnabled: Boolean = true,
+    @ColumnInfo(name = "sort_order", defaultValue = "0")
+    val sortOrder: Int = 0
 )

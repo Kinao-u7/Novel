@@ -9,7 +9,7 @@ import androidx.room.PrimaryKey
     tableName = "novels",
     indices = [
         Index(value = ["in_library"]),
-        Index(value = ["source_id", "raw_id"]),
+        Index(value = ["source_id", "raw_id"], unique = true),
         Index(value = ["source_url"])
     ]
 )

@@ -13,6 +13,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import com.example.data.local.db.entity.NotificationEntity
+import com.example.data.local.db.entity.NotificationTypes
 import com.example.data.local.db.toModel
 import com.example.data.source.webscrape.WebChapterScraper
 import kotlinx.coroutines.CancellationException
@@ -221,7 +222,7 @@ class DownloadQueueWorker(
                         notificationDao.insertAndTrim(
                             NotificationEntity(
                                 id = UUID.randomUUID().toString(),
-                                type = "DOWNLOAD_COMPLETE",
+                                type = NotificationTypes.DOWNLOAD,
                                 title = "Downloads Complete",
                                 message = "Successfully downloaded $completed chapter${if (completed > 1) "s" else ""}.",
                                 timestamp = System.currentTimeMillis()

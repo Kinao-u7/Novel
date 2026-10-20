@@ -12,16 +12,16 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface TermReplacementDao {
 
-    @Query("SELECT * FROM term_replacements WHERE novel_id IS NULL AND is_enabled = 1")
+    @Query("SELECT * FROM term_replacements WHERE novel_id IS NULL AND is_enabled = 1 ORDER BY (novel_id IS NULL) ASC, sort_order ASC, id ASC")
     fun getGlobalReplacementsFlow(): Flow<List<TermReplacementEntity>>
 
-    @Query("SELECT * FROM term_replacements WHERE (novel_id = :novelId OR novel_id IS NULL) AND is_enabled = 1")
+    @Query("SELECT * FROM term_replacements WHERE (novel_id = :novelId OR novel_id IS NULL) AND is_enabled = 1 ORDER BY (novel_id IS NULL) ASC, sort_order ASC, id ASC")
     fun getReplacementsForNovelFlow(novelId: String): Flow<List<TermReplacementEntity>>
 
-    @Query("SELECT * FROM term_replacements WHERE (novel_id = :novelId OR novel_id IS NULL) AND is_enabled = 1")
+    @Query("SELECT * FROM term_replacements WHERE (novel_id = :novelId OR novel_id IS NULL) AND is_enabled = 1 ORDER BY (novel_id IS NULL) ASC, sort_order ASC, id ASC")
     suspend fun getReplacementsForNovel(novelId: String): List<TermReplacementEntity>
 
-    @Query("SELECT * FROM term_replacements")
+    @Query("SELECT * FROM term_replacements ORDER BY (novel_id IS NULL) ASC, sort_order ASC, id ASC")
     fun getAllReplacementsFlow(): Flow<List<TermReplacementEntity>>
 
     @Query("SELECT * FROM term_replacements WHERE id = :id LIMIT 1")

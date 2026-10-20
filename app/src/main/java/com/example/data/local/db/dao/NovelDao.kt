@@ -59,14 +59,82 @@ interface NovelDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(novel: NovelEntity): Long
 
-    @Update
-    suspend fun update(novel: NovelEntity): Int
+    @Query("""
+        UPDATE novels
+        SET title = :title,
+            author = :author,
+            description = :description,
+            cover_url = CASE WHEN :coverUrl IS NOT NULL THEN :coverUrl ELSE cover_url END,
+            status = :status,
+            genres_json = :genresJson,
+            total_chapters = :totalChapters,
+            slug = :slug,
+            locale = :locale,
+            raw_id = CASE WHEN raw_id IS NULL AND :newRawId IS NOT NULL THEN :newRawId ELSE raw_id END
+        WHERE id = :id
+    """)
+    suspend fun updateSourceOwnedFields(
+        id: String,
+        title: String,
+        author: String,
+        description: String,
+        coverUrl: String?,
+        status: String,
+        genresJson: String,
+        totalChapters: Int,
+        slug: String?,
+        locale: String?,
+        newRawId: String?
+    ): Int
 
     @Transaction
-    suspend fun upsertSafe(novel: NovelEntity) {
-        val rowId = insertIgnore(novel)
-        if (rowId == -1L) {
-            update(novel)
+    suspend fun upsertSafe(novel: NovelEntity): String {
+        val existing = if (novel.rawId != null) {
+            getNovelBySourceAndRawId(novel.sourceId, novel.rawId) ?: getNovelById(novel.id)
+        } else {
+            getNovelById(novel.id)
+        }
+
+        if (existing == null) {
+            val inserted = insertIgnore(novel)
+            if (inserted != -1L) {
+                return novel.id
+            }
+            val conflictRow = if (novel.rawId != null) {
+                getNovelBySourceAndRawId(novel.sourceId, novel.rawId) ?: getNovelById(novel.id)
+            } else {
+                getNovelById(novel.id)
+            }
+            val targetId = conflictRow?.id ?: novel.id
+            updateSourceOwnedFields(
+                id = targetId,
+                title = novel.title,
+                author = novel.author,
+                description = novel.description,
+                coverUrl = novel.coverUrl,
+                status = novel.status,
+                genresJson = novel.genresJson,
+                totalChapters = novel.totalChapters,
+                slug = novel.slug,
+                locale = novel.locale,
+                newRawId = if (conflictRow?.rawId == null) novel.rawId else null
+            )
+            return targetId
+        } else {
+            updateSourceOwnedFields(
+                id = existing.id,
+                title = novel.title,
+                author = novel.author,
+                description = novel.description,
+                coverUrl = novel.coverUrl,
+                status = novel.status,
+                genresJson = novel.genresJson,
+                totalChapters = novel.totalChapters,
+                slug = novel.slug,
+                locale = novel.locale,
+                newRawId = if (existing.rawId == null) novel.rawId else null
+            )
+            return existing.id
         }
     }
 

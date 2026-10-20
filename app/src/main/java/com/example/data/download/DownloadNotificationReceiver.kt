@@ -13,10 +13,10 @@ const val ACTION_CANCEL_DOWNLOADS = "com.example.data.download.ACTION_CANCEL_DOW
 class DownloadNotificationReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         val action = intent?.action ?: return
-        val repository = DownloadEngineProvider.getRepository(context)
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                val repository = DownloadEngineProvider.getRepository(context)
                 when (action) {
                     ACTION_PAUSE_DOWNLOADS -> repository.downloadEngine.pauseQueue()
                     ACTION_CANCEL_DOWNLOADS -> repository.downloadEngine.cancelAll()

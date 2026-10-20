@@ -6,6 +6,10 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
+
+class ChapterReadException(val novelId: String, val chapterId: String, cause: Throwable) :
+    IOException("Failed to read chapter file for novel $novelId, chapter $chapterId", cause)
 
 /**
  * Storage facade for chapter content files.
@@ -49,6 +53,9 @@ class ChapterStorage(
         )
     )
 
+    val isCalculatingDownloadsSize: Boolean
+        get() = (fileStore as? DefaultChapterFileStore)?.safStore?.isCalculatingDownloadsSize ?: false
+
     suspend fun read(
         novelId: String,
         chapterId: String,
@@ -58,23 +65,17 @@ class ChapterStorage(
         fileStore.read(novelId, chapterId, tier, location)
     }
 
-    suspend fun isCached(novelId: String, chapterId: String): Boolean = withContext(ioDispatcher) {
-        val file = resolver.getCacheChapterFile(novelId, chapterId)
-        file.exists() && file.isFile && file.length() > 0L
-    }
-
-    suspend fun isDownloaded(novelId: String, chapterId: String): Boolean = withContext(ioDispatcher) {
-        val file = resolver.getDownloadChapterFile(novelId, chapterId)
-        file.exists() && file.isFile && file.length() > 0L
-    }
-
     suspend fun writeToCache(content: ChapterContent): File = withContext(ioDispatcher) {
         fileStore.writeCache(content) ?: resolver.getCacheChapterFile(content.novelId, content.chapterId)
     }
 
-    suspend fun writeToDownloads(content: ChapterContent, location: String = "INTERNAL"): File = withContext(ioDispatcher) {
+    suspend fun writeToDownloads(content: ChapterContent, location: String = "INTERNAL"): File? = withContext(ioDispatcher) {
         fileStore.writeDownload(content, location)
-        resolver.getDownloadChapterFile(content.novelId, content.chapterId)
+        if (location.startsWith("SAF:")) {
+            null
+        } else {
+            resolver.getDownloadChapterFile(content.novelId, content.chapterId)
+        }
     }
 
     suspend fun writeToEpub(content: ChapterContent): File = withContext(ioDispatcher) {

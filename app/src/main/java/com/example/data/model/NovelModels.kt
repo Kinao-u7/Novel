@@ -93,7 +93,8 @@ data class TermReplacementRule(
     val id: String = java.util.UUID.randomUUID().toString(),
     val original: String,
     val replacement: String,
-    val isEnabled: Boolean = true
+    val isEnabled: Boolean = true,
+    val sortOrder: Int = 0
 )
 
 @Serializable

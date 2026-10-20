@@ -267,7 +267,8 @@ fun TermReplacementEntity.toModel(): TermReplacementRule {
         id = id,
         original = pattern,
         replacement = replacement,
-        isEnabled = isEnabled
+        isEnabled = isEnabled,
+        sortOrder = sortOrder
     )
 }
 
@@ -283,7 +284,8 @@ fun TermReplacementRule.toEntity(
         replacement = replacement,
         isRegex = isRegex,
         matchCase = matchCase,
-        isEnabled = isEnabled
+        isEnabled = isEnabled,
+        sortOrder = sortOrder
     )
 }
 

@@ -4,8 +4,9 @@ import com.example.data.local.db.dao.ChapterDao
 import com.example.data.local.db.dao.DownloadQueueDao
 import com.example.data.local.db.dao.NotificationDao
 import com.example.data.local.db.dao.NovelDao
-import com.example.data.local.db.entity.ChapterEntity
 import com.example.data.local.db.entity.NotificationEntity
+import com.example.data.local.db.entity.NotificationTypes
+import com.example.data.local.storage.ChapterReadException
 import com.example.data.local.storage.ChapterStorage
 import com.example.data.local.storage.StorageResolver
 import com.example.data.local.storage.StorageUnavailableException
@@ -116,7 +117,7 @@ class ChapterRepository(
                     id = UUID.randomUUID().toString(),
                     title = "Download Storage Warning",
                     message = message,
-                    type = "download",
+                    type = NotificationTypes.DOWNLOAD,
                     timestamp = now
                 )
             )
@@ -151,12 +152,16 @@ class ChapterRepository(
 
         when (chapterRow.storageTier) {
             "EPUB" -> {
-                val content = chapterStorage.read(
-                    novelId = novelId,
-                    chapterId = chapterId,
-                    tier = "EPUB",
-                    location = chapterRow.storageLocation
-                )
+                val content = try {
+                    chapterStorage.read(
+                        novelId = novelId,
+                        chapterId = chapterId,
+                        tier = "EPUB",
+                        location = chapterRow.storageLocation
+                    )
+                } catch (e: ChapterReadException) {
+                    throw e
+                }
                 if (content != null) {
                     return@withContext content
                 }
@@ -178,15 +183,22 @@ class ChapterRepository(
                     // Storage folder or permission is unavailable (e.g. missing SD card);
                     // do NOT reset the tier (Spec 4).
                     throw e
+                } catch (e: ChapterReadException) {
+                    // IO/read error: rethrow without changing the tier (H6)
+                    throw e
                 }
             }
             "CACHE" -> {
-                val content = chapterStorage.read(
-                    novelId = novelId,
-                    chapterId = chapterId,
-                    tier = "CACHE",
-                    location = chapterRow.storageLocation
-                )
+                val content = try {
+                    chapterStorage.read(
+                        novelId = novelId,
+                        chapterId = chapterId,
+                        tier = "CACHE",
+                        location = chapterRow.storageLocation
+                    )
+                } catch (e: ChapterReadException) {
+                    throw e
+                }
                 if (content != null) {
                     chapterDao.updateLastAccessed(novelId, chapterId, System.currentTimeMillis())
                     return@withContext content.copy(isDownloaded = false)
@@ -430,4 +442,14 @@ class ChapterRepository(
     suspend fun getDownloadsSizeBytes(): Long = chapterStorage.getDownloadsSizeBytes()
 
     suspend fun getEpubsSizeBytes(): Long = chapterStorage.getEpubsSizeBytes()
+
+    suspend fun isDownloaded(novelId: String, chapterId: String): Boolean = withContext(ioDispatcher) {
+        val tier = chapterDao.getChapter(novelId, chapterId)?.storageTier
+        tier == "DOWNLOADED" || tier == "EPUB"
+    }
+
+    suspend fun isCached(novelId: String, chapterId: String): Boolean = withContext(ioDispatcher) {
+        val tier = chapterDao.getChapter(novelId, chapterId)?.storageTier
+        tier == "CACHE"
+    }
 }

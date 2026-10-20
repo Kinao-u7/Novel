@@ -18,7 +18,8 @@ import androidx.room.Index
     ],
     indices = [
         Index(value = ["novel_id", "chapter_index"]),
-        Index(value = ["storage_tier", "last_accessed_at"])
+        Index(value = ["storage_tier", "last_accessed_at"]),
+        Index(value = ["is_read", "novel_id"])
     ]
 )
 data class ChapterEntity(

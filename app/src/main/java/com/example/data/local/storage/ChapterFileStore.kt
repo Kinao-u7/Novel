@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import com.example.data.model.ChapterContent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -14,6 +15,7 @@ import java.io.File
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Thrown when a storage location (such as an unmounted SD card or revoked SAF folder)
@@ -62,10 +64,16 @@ class InternalChapterFileStore(
         if (!file.exists() || !file.isFile || file.length() == 0L) {
             return@withContext null
         }
+        val text = try {
+            file.readText(Charsets.UTF_8)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            throw ChapterReadException(novelId, chapterId, e)
+        }
         try {
-            val text = file.readText(Charsets.UTF_8)
             deserialize(text, isDownloaded = (tier == "DOWNLOADED" || tier == "EPUB"))
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             file.delete()
             null
         }
@@ -297,12 +305,23 @@ class SafChapterFileStore(
         val fileName = resolver.sha256FileName(chapterId)
         val docFile = listing[fileName] ?: return@withContext null // File missing in reachable folder
 
-        try {
-            val text = context.contentResolver.openInputStream(docFile.uri)?.use { stream ->
+        if (!docFile.exists() || docFile.length() == 0L || docFile.name.orEmpty().endsWith(".tmp")) {
+            return@withContext null
+        }
+
+        val text = try {
+            context.contentResolver.openInputStream(docFile.uri)?.use { stream ->
                 stream.bufferedReader(Charsets.UTF_8).readText()
             } ?: return@withContext null
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            throw ChapterReadException(novelId, chapterId, e)
+        }
+
+        try {
             InternalChapterFileStore.deserialize(text, isDownloaded = true)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             // Corrupt file in reachable folder: remove from listing and delete
             try { docFile.delete() } catch (_: Exception) {}
             listing.remove(fileName)
@@ -322,20 +341,49 @@ class SafChapterFileStore(
 
         val listing = getNovelListing(treeUriStr, content.novelId, novelDir)
         val fileName = resolver.sha256FileName(content.chapterId)
-
-        var docFile = listing[fileName]
-        if (docFile == null || !docFile.exists()) {
-            docFile = novelDir.createFile("application/json", fileName)
-                ?: throw IOException("Failed to create SAF document file: $fileName")
-            listing[fileName] = docFile
-        }
+        val tempFileName = "$fileName.tmp"
 
         val jsonString = InternalChapterFileStore.serialize(content.copy(isDownloaded = true))
-        context.contentResolver.openOutputStream(docFile.uri)?.use { os ->
-            os.write(jsonString.toByteArray(Charsets.UTF_8))
-        } ?: throw IOException("Failed to open output stream for SAF file: $fileName")
+        val bytes = jsonString.toByteArray(Charsets.UTF_8)
 
-        true
+        // Delete any leftover temp file first
+        listing.remove(tempFileName)?.delete()
+        novelDir.findFile(tempFileName)?.delete()
+
+        val tempDoc = novelDir.createFile("application/json", tempFileName)
+            ?: throw IOException("Failed to create SAF temp file: $tempFileName")
+
+        try {
+            context.contentResolver.openOutputStream(tempDoc.uri, "wt")?.use { os ->
+                os.write(bytes)
+                os.flush()
+            } ?: throw IOException("Failed to open output stream for SAF temp file: $tempFileName")
+
+            // Delete old target if present
+            val oldTarget = listing.remove(fileName) ?: novelDir.findFile(fileName)
+            oldTarget?.delete()
+
+            // Attempt rename
+            val renamed = tempDoc.renameTo(fileName)
+            if (renamed) {
+                listing[fileName] = tempDoc
+            } else {
+                // If renameTo fails, write directly to target with "wt" and delete temp file
+                val directDoc = novelDir.createFile("application/json", fileName)
+                    ?: throw IOException("Failed to create direct SAF file: $fileName")
+                context.contentResolver.openOutputStream(directDoc.uri, "wt")?.use { os ->
+                    os.write(bytes)
+                    os.flush()
+                } ?: throw IOException("Failed to write directly to SAF target file: $fileName")
+                listing[fileName] = directDoc
+                tempDoc.delete()
+            }
+            true
+        } catch (e: Exception) {
+            tempDoc.delete()
+            if (e is CancellationException) throw e
+            throw e
+        }
     }
 
     override suspend fun writeEpub(content: ChapterContent): File? = null
@@ -412,9 +460,47 @@ class SafChapterFileStore(
         }
     }
 
+    private var cachedSafDownloadsSize: Long = 0L
+    private var lastSizeCalculationTimestamp: Long = 0L
+    private val isCalculatingSize = AtomicBoolean(false)
+    private val dirCreationLock = Any()
+
+    val isCalculatingDownloadsSize: Boolean get() = isCalculatingSize.get()
+
     override suspend fun getCacheSizeBytes(): Long = 0L
 
-    override suspend fun getDownloadsSizeBytes(): Long = 0L
+    override suspend fun getDownloadsSizeBytes(): Long = withContext(ioDispatcher) {
+        val now = System.currentTimeMillis()
+        if (lastSizeCalculationTimestamp > 0L && (now - lastSizeCalculationTimestamp < 60_000L)) {
+            return@withContext cachedSafDownloadsSize
+        }
+        isCalculatingSize.set(true)
+        try {
+            var total = 0L
+            for (treeUriStr in treeRoots.keys) {
+                try {
+                    val uri = Uri.parse(treeUriStr)
+                    val root = getRootDoc(treeUriStr, uri) ?: continue
+                    val novelReaderDir = root.findFile("NovelReader") ?: continue
+                    val downloadsDir = novelReaderDir.findFile("downloads") ?: continue
+                    for (novelDir in downloadsDir.listFiles()) {
+                        if (novelDir.isDirectory) {
+                            for (file in novelDir.listFiles()) {
+                                if (file.isFile && !file.name.orEmpty().endsWith(".tmp")) {
+                                    total += file.length()
+                                }
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+            cachedSafDownloadsSize = total
+            lastSizeCalculationTimestamp = System.currentTimeMillis()
+            total
+        } finally {
+            isCalculatingSize.set(false)
+        }
+    }
 
     override suspend fun getEpubsSizeBytes(): Long = 0L
 
@@ -424,7 +510,7 @@ class SafChapterFileStore(
         }
     }
 
-    private fun getNovelFolder(treeUriStr: String, novelId: String, createIfMissing: Boolean): DocumentFile? {
+    private fun getNovelFolder(treeUriStr: String, novelId: String, createIfMissing: Boolean): DocumentFile? = synchronized(dirCreationLock) {
         val cacheKey = "$treeUriStr|$novelId"
         novelFolders[cacheKey]?.let {
             if (it.exists()) return it else novelFolders.remove(cacheKey)
@@ -453,7 +539,7 @@ class SafChapterFileStore(
         }
 
         novelFolders[cacheKey] = novelDir
-        return novelDir
+        novelDir
     }
 
     private fun getNovelListing(treeUriStr: String, novelId: String, novelDir: DocumentFile): ConcurrentHashMap<String, DocumentFile> {
@@ -556,7 +642,8 @@ class DefaultChapterFileStore(
 
     override suspend fun getCacheSizeBytes(): Long = internalStore.getCacheSizeBytes()
 
-    override suspend fun getDownloadsSizeBytes(): Long = internalStore.getDownloadsSizeBytes()
+    override suspend fun getDownloadsSizeBytes(): Long =
+        internalStore.getDownloadsSizeBytes() + safStore.getDownloadsSizeBytes()
 
     override suspend fun getEpubsSizeBytes(): Long = internalStore.getEpubsSizeBytes()
 

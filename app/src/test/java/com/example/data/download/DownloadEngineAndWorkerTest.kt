@@ -4,8 +4,10 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.Configuration
+import androidx.work.ExistingWorkPolicy
 import androidx.work.ListenableWorker
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.testing.TestListenableWorkerBuilder
@@ -812,6 +814,17 @@ class DownloadEngineAndWorkerTest {
 
             DownloadQueueWorker.maxWorkerDurationOverrideMs = 0L
             try {
+                // Pre-enqueue existing unique work under WORK_NAME so KEEP would drop the follow-up
+                val initialRequest = OneTimeWorkRequestBuilder<DownloadQueueWorker>()
+                    .addTag(DownloadEngine.TAG_DOWNLOAD)
+                    .build()
+                WorkManager.getInstance(context).enqueueUniqueWork(
+                    DownloadEngine.WORK_NAME,
+                    ExistingWorkPolicy.REPLACE,
+                    initialRequest
+                )
+                WorkManagerTestInitHelper.getTestDriver(context)?.setAllConstraintsMet(initialRequest.id)
+
                 val worker = TestListenableWorkerBuilder<DownloadQueueWorker>(context).build()
                 val result = worker.doWork()
 
@@ -821,11 +834,15 @@ class DownloadEngineAndWorkerTest {
                     .getWorkInfosForUniqueWork(DownloadEngine.WORK_NAME)
                     .get()
 
-                assertTrue("Expected follow-up work scheduled", workInfos.isNotEmpty())
-                val followUpState = workInfos.first().state
+                // With APPEND_OR_REPLACE, the follow-up work is chained/appended.
+                // With KEEP, WorkManager would retain only initialRequest and drop the follow-up.
+                assertTrue("Expected follow-up work to be added (total work infos >= 2)", workInfos.size >= 2)
+                val followUp = workInfos.firstOrNull { it.id != initialRequest.id }
+                assertNotNull("Chained follow-up work request must exist", followUp)
+                val followUpState = followUp!!.state
                 assertTrue(
-                    "Work state should be ENQUEUED or RUNNING, was $followUpState",
-                    followUpState == WorkInfo.State.ENQUEUED || followUpState == WorkInfo.State.RUNNING
+                    "Follow-up work should be ENQUEUED or BLOCKED, was $followUpState",
+                    followUpState == WorkInfo.State.ENQUEUED || followUpState == WorkInfo.State.BLOCKED
                 )
             } finally {
                 DownloadQueueWorker.maxWorkerDurationOverrideMs = null
