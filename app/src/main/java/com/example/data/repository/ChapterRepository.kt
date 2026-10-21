@@ -5,7 +5,7 @@ import com.example.data.local.db.dao.DownloadQueueDao
 import com.example.data.local.db.dao.NotificationDao
 import com.example.data.local.db.dao.NovelDao
 import com.example.data.local.db.entity.NotificationEntity
-import com.example.data.local.db.entity.NotificationTypes
+import com.example.data.model.NotificationTypes
 import com.example.data.local.storage.ChapterReadException
 import com.example.data.local.storage.ChapterStorage
 import com.example.data.local.storage.StorageResolver

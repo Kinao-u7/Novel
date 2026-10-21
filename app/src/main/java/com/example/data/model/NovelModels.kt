@@ -1,6 +1,5 @@
 package com.example.data.model
 
-import com.example.data.local.db.entity.NotificationTypes
 import kotlinx.serialization.Serializable
 
 @Serializable

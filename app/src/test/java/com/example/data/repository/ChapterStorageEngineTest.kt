@@ -8,8 +8,10 @@ import com.example.data.local.db.NovelDatabase
 import com.example.data.local.db.NovelDatabaseHolder
 import com.example.data.local.db.entity.ChapterEntity
 import com.example.data.local.db.entity.NovelEntity
+import com.example.data.local.storage.ChapterFileStore
 import com.example.data.local.storage.ChapterReadException
 import com.example.data.local.storage.ChapterStorage
+import com.example.data.local.storage.InternalChapterFileStore
 import com.example.data.local.storage.StorageResolver
 import com.example.data.model.Chapter
 import com.example.data.model.ChapterContent
@@ -61,6 +63,20 @@ class ChapterStorageEngineTest {
     private lateinit var chapterRepository: ChapterRepository
     private lateinit var novelRepository: NovelRepository
     private lateinit var fakeSource: FakeChapterSource
+    private lateinit var failingFileStore: FakeFailingFileStore
+
+    class FakeFailingFileStore(
+        private val delegate: ChapterFileStore
+    ) : ChapterFileStore by delegate {
+        var failOnRead: Boolean = false
+
+        override suspend fun read(novelId: String, chapterId: String, tier: String, location: String): ChapterContent? {
+            if (failOnRead) {
+                throw ChapterReadException(novelId, chapterId, IOException("Simulated unreadable file"))
+            }
+            return delegate.read(novelId, chapterId, tier, location)
+        }
+    }
 
     class FakeChapterSource(override val id: String = "fake_test_src") : NovelSource {
         override val name = "Fake Test Source"
@@ -103,7 +119,9 @@ class ChapterStorageEngineTest {
         NovelDatabaseHolder.setInstanceForTesting(database)
 
         storageResolver = StorageResolver(tempFolder.root)
-        chapterStorage = ChapterStorage(storageResolver)
+        val internalStore = InternalChapterFileStore(storageResolver, Dispatchers.IO)
+        failingFileStore = FakeFailingFileStore(internalStore)
+        chapterStorage = ChapterStorage(storageResolver, Dispatchers.IO, failingFileStore)
         settingsRepository = SettingsRepository.getInstance(context)
         chapterRepository = ChapterRepository(
             chapterDao = database.chapterDao(),
@@ -1086,7 +1104,7 @@ class ChapterStorageEngineTest {
         val file = storageResolver.getDownloadChapterFile(novelId, chapterId)
         file.parentFile?.mkdirs()
         file.writeText("{\"title\":\"DL\"}")
-        file.setReadable(false)
+        failingFileStore.failOnRead = true
         try {
             try {
                 chapterRepository.getChapterContent(novelId, chapterId)
@@ -1099,7 +1117,7 @@ class ChapterStorageEngineTest {
             assertNotNull(row)
             assertEquals("DOWNLOADED", row?.storageTier)
         } finally {
-            file.setReadable(true)
+            failingFileStore.failOnRead = false
         }
     }
 
@@ -1148,14 +1166,49 @@ class ChapterStorageEngineTest {
         val file = storageResolver.getCacheChapterFile(novelId, chapterId)
         file.parentFile?.mkdirs()
         file.writeText("{\"title\":\"Old Cache\"}")
-        file.setReadable(false)
+        failingFileStore.failOnRead = true
         try {
             // CACHE read errors fall through to refetch instead of throwing ChapterReadException
             val content = chapterRepository.getChapterContent(novelId, chapterId)
             assertNotNull(content)
             assertEquals("Title for ch_unreadable_cache", content.title)
         } finally {
-            file.setReadable(true)
+            failingFileStore.failOnRead = false
+        }
+    }
+
+    @Test
+    fun unreadableEpubFile_throwsChapterReadException_andKeepsTier() = runBlocking {
+        insertTestNovel("novel_unreadable_epub", isEpub = true)
+        val novelId = "novel_unreadable_epub"
+        val chapterId = "ch_unreadable_epub"
+        database.chapterDao().insertIgnore(
+            ChapterEntity(
+                novelId = novelId,
+                id = chapterId,
+                title = "Chapter EPUB",
+                chapterIndex = 1,
+                storageTier = "EPUB",
+                storageLocation = "INTERNAL"
+            )
+        )
+        val file = storageResolver.getEpubChapterFile(novelId, chapterId)
+        file.parentFile?.mkdirs()
+        file.writeText("{\"title\":\"EPUB\"}")
+        failingFileStore.failOnRead = true
+        try {
+            try {
+                chapterRepository.getChapterContent(novelId, chapterId)
+                fail("Expected ChapterReadException for unreadable epub file")
+            } catch (e: ChapterReadException) {
+                assertEquals(novelId, e.novelId)
+                assertEquals(chapterId, e.chapterId)
+            }
+            val row = database.chapterDao().getChapter(novelId, chapterId)
+            assertNotNull(row)
+            assertEquals("EPUB", row?.storageTier)
+        } finally {
+            failingFileStore.failOnRead = false
         }
     }
 }

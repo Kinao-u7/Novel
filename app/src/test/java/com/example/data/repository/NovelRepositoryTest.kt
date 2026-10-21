@@ -13,7 +13,7 @@ import com.example.data.local.db.NovelDatabaseHolder
 import com.example.data.local.db.entity.BookmarkEntity
 import com.example.data.local.db.entity.ChapterEntity
 import com.example.data.local.db.entity.NotificationEntity
-import com.example.data.local.db.entity.NotificationTypes
+import com.example.data.model.NotificationTypes
 import com.example.data.local.db.toEntity
 import com.example.data.model.AppNotificationItem
 import com.example.data.model.Bookmark
@@ -1276,7 +1276,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun importEpub_conflictBranch_returnsExistingNovel() = runBlocking {
+    fun importEpub_hashPrecheck_returnsExistingNovel() = runBlocking {
         withTimeout(10_000L) {
             val (_, uri) = createTestEpubFile(
                 fileName = "conflict_branch.epub",
@@ -1288,7 +1288,7 @@ class NovelRepositoryTest {
             val first = repository.importEpub(uri, "conflict_branch.epub")
             val second = repository.importEpub(uri, "conflict_branch.epub")
 
-            assertEquals("Conflict branch must return existing novel", first.id, second.id)
+            assertEquals("Hash pre-check must return existing novel", first.id, second.id)
             val inDb = database.novelDao().getNovelById(first.id)
             assertNotNull(inDb)
             assertEquals(true, inDb?.inLibrary)
@@ -1310,6 +1310,42 @@ class NovelRepositoryTest {
             } catch (e: SourceUnavailable) {
                 assertEquals("completely_unknown_source", e.sourceId)
             }
+        }
+    }
+
+    @Test
+    fun getChapterList_noRoomChaptersAndFailingSource_throwsException() = runBlocking {
+        val failingSource = object : NovelSource {
+            override val id = "failing_test_source"
+            override val name = "Failing Source"
+            override val language = "en"
+            override val version = "1.0"
+            override val description = "Failing source for error rethrow test"
+            override val isLocal = false
+
+            override suspend fun getPopularNovels(page: Int): List<Novel> = emptyList()
+            override suspend fun searchNovels(query: String, page: Int): List<Novel> = emptyList()
+            override suspend fun getNovelDetails(novelId: String): Novel = testNovel(id = novelId, sourceId = id)
+            override suspend fun getChapterList(novelId: String): List<Chapter> {
+                throw java.io.IOException("Remote source error fetching chapters")
+            }
+            override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent {
+                throw java.io.IOException("Remote source error fetching content")
+            }
+        }
+
+        SourceManager.registerSource(failingSource)
+        try {
+            val novel = testNovel(id = "novel_failing_source", sourceId = "failing_test_source")
+            // No chapters exist in Room; forceRefresh = false
+            try {
+                repository.getChapterList(novel, forceRefresh = false)
+                fail("Expected IOException when Room has no chapters and source fetch fails")
+            } catch (e: java.io.IOException) {
+                assertEquals("Remote source error fetching chapters", e.message)
+            }
+        } finally {
+            SourceManager.unregisterSource(failingSource.id)
         }
     }
 }

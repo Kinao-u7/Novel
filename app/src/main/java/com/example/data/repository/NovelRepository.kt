@@ -9,7 +9,6 @@ import com.example.data.local.db.normalizeSourceUrl
 import com.example.data.local.db.toEntity
 import com.example.data.local.db.toModel
 import com.example.data.local.db.entity.NotificationEntity
-import com.example.data.local.db.entity.NotificationTypes
 import com.example.data.local.db.entity.RequestedSourceEntity
 import com.example.data.model.*
 import com.example.data.source.SourceManager
@@ -399,11 +398,7 @@ class NovelRepository(context: Context) {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (forceRefresh) {
-                throw e
-            } else {
-                return@withContext roomChapters.map { it.toModel() }
-            }
+            throw e
         }
 
         if (rawChapters.isNotEmpty()) {

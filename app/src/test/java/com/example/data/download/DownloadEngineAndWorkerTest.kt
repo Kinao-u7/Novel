@@ -20,8 +20,8 @@ import com.example.data.local.db.dao.NotificationDao
 import com.example.data.local.db.dao.NovelDao
 import com.example.data.local.db.entity.ChapterEntity
 import com.example.data.local.db.entity.DownloadQueueEntity
-import com.example.data.local.db.entity.NotificationTypes
 import com.example.data.local.db.entity.NovelEntity
+import com.example.data.model.NotificationTypes
 import com.example.data.model.Chapter
 import com.example.data.model.ChapterContent
 import com.example.data.local.db.toModel

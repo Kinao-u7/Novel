@@ -4,12 +4,7 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
-
-object NotificationTypes {
-    const val INFO = "info"
-    const val DOWNLOAD = "download"
-    const val UPDATE = "update"
-}
+import com.example.data.model.NotificationTypes
 
 @Entity(
     tableName = "notifications",
