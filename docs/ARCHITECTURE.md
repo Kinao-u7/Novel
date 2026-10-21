@@ -165,6 +165,10 @@ Every stage ends with: the app compiling and launching, tests passing, and a sum
    it. Notification types come from the NotificationTypes constants (data.model).
 - **q.** An unknown source throws SourceUnavailable (no active-source fallback).
    getChapterList always rethrows CancellationException and other fetch errors.
+- **r.** novels.rating NULL = unrated; the domain model uses Float?; the UI hides null (and 0f).
+- **s.** Current package layout differs from section 2: data/download/ (not download/),
+   data/source/ (not data/remote/source/), BackupManager and SettingsRepository live
+   under data/repository/. Reconcile in Stage 7h or update section 2.
 
 ## 14. Rules
 

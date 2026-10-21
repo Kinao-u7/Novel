@@ -393,13 +393,7 @@ class NovelRepository(context: Context) {
         // 2. Fetch from source when Room has no chapters or forceRefresh requested
         val source = SourceManager.getSourceById(novel.sourceId)
             ?: throw SourceUnavailable(novel.sourceId)
-        val rawChapters = try {
-            source.getChapterList(novel.id)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            throw e
-        }
+        val rawChapters = source.getChapterList(novel.id)
 
         if (rawChapters.isNotEmpty()) {
             // Persist in Room using insert-ignore plus updateMetadata (refreshChapters transaction)
