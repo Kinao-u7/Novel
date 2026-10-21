@@ -148,6 +148,23 @@ Every stage ends with: the app compiling and launching, tests passing, and a sum
 - **i.** Stage 7 follows `docs/CARRYOVER.md`.
 - **j.** Robolectric test configuration (section 11).
 - **k.** The old UI has been moved to `legacy/ui` (reference only, not compiled); new UI screens and ViewModels are rewritten from scratch in subsequent stages. Tests are the verification until then.
+- **l.** Indexes: novels UNIQUE (source_id, raw_id) (NULL allowed; a blank raw_id is
+   normalized to null); chapters (is_read, novel_id). term_replacements.sort_order INT
+   default 0; queries ORDER BY (novel_id IS NULL), sort_order, id; the reader keeps the
+   DAO order.
+- **m.** Read miss: a DOWNLOADED or CACHE tier is reset only together with a successful
+   refetch. A read IOException throws ChapterReadException and never changes the tier
+   (an unreadable CACHE file falls through to a refetch). A file is deleted only when its
+   content is unparseable. EPUB rows are never reset (EpubFileMissing).
+- **n.** Queue: only QUEUED/DOWNLOADING/PAUSED block enqueueing; COMPLETED rows are cleared at
+   each worker run and when downloads are deleted; worker status writes are guarded by
+   the expected status; the time-limit follow-up uses APPEND_OR_REPLACE.
+- **o.** SAF: directory creation is serialized; writes use a temp file (octet-stream MIME)
+   then rename, falling back to "wt"; size is computed on demand and cached.
+- **p.** upsertSafe updates source-owned fields only and returns the canonical id; callers use
+   it. Notification types come from the NotificationTypes constants (data.model).
+- **q.** An unknown source throws SourceUnavailable (no active-source fallback).
+   getChapterList always rethrows CancellationException and other fetch errors.
 
 ## 14. Rules
 
