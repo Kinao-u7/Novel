@@ -268,8 +268,8 @@ class ChapterStorageEngineTest {
             chapterIndex = 1
         )
 
-        val success = chapterRepository.downloadChapter(novelModel, chapterModel)
-        assertTrue(success)
+        val result = chapterRepository.downloadChapter(novelModel, chapterModel)
+        assertTrue(result.isSuccess)
         assertEquals("No network fetch when promoting cached file", 1, fakeSource.fetchCount)
 
         // Cache file was moved; download file exists

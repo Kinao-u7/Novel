@@ -29,14 +29,20 @@ import com.example.data.model.Novel
 import com.example.data.repository.NovelRepository
 import com.example.data.source.NovelSource
 import com.example.data.source.SourceManager
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -933,6 +939,165 @@ class DownloadEngineAndWorkerTest {
             // Verify ch_1 and ch_2 were never inserted into queue
             assertNull(downloadQueueDao.getItem(novelId, "ch_1"))
             assertNull(downloadQueueDao.getItem(novelId, "ch_2"))
+        }
+    }
+
+    // --- 7. RACE CONDITIONS & COORDINATOR TESTS ---
+
+    @Test
+    fun evictionVsPromote_casPreventsEvictionOverwritingDownloaded() = runTest {
+        withTimeout(10_000) {
+            val novelId = "nov_evict_promote"
+            insertTestNovelAndChapters(novelId, 1)
+
+            // Put chapter into CACHE
+            repository.chapterRepository.getChapterContent(novelId, "ch_1")
+            val cacheRow = chapterDao.getChapter(novelId, "ch_1")
+            assertEquals("CACHE", cacheRow?.storageTier)
+
+            val novel = novelDao.getNovelById(novelId)!!.toModel()
+            val chapter = chapterDao.getChapterById(novelId, "ch_1")!!.toModel()
+
+            // Promote chapter to DOWNLOADED
+            val dlResult = repository.chapterRepository.downloadChapter(novel, chapter)
+            assertTrue(dlResult.isSuccess)
+            assertEquals("DOWNLOADED", chapterDao.getChapter(novelId, "ch_1")?.storageTier)
+
+            // Trigger eviction - candidate list might have cached chapter, but inside leaf lock
+            // re-read verifies row is still CACHE; since it's now DOWNLOADED, CAS skips it
+            repository.settingsRepository.updateDownloadSettings { it.copy(cacheSizeCapMb = 0) }
+            repository.chapterRepository.runEviction()
+
+            // Verify tier was NOT reset to NONE
+            val finalRow = chapterDao.getChapter(novelId, "ch_1")
+            assertEquals("DOWNLOADED", finalRow?.storageTier)
+            assertTrue(repository.storageResolver.getDownloadChapterFile(novelId, "ch_1").exists())
+        }
+    }
+
+    @Test
+    fun downloadVsReaderFetch_leafLockEnsuresConsistentDownloadedTier() = runTest {
+        withTimeout(10_000) {
+            val novelId = "nov_dl_reader"
+            insertTestNovelAndChapters(novelId, 1)
+
+            val novel = novelDao.getNovelById(novelId)!!.toModel()
+            val chapter = chapterDao.getChapterById(novelId, "ch_1")!!.toModel()
+
+            coroutineScope {
+                val readDeferred = async(Dispatchers.IO) {
+                    repository.chapterRepository.getChapterContent(novelId, "ch_1")
+                }
+                val downloadDeferred = async(Dispatchers.IO) {
+                    repository.chapterRepository.downloadChapter(novel, chapter)
+                }
+
+                val content = readDeferred.await()
+                val dlResult = downloadDeferred.await()
+
+                assertNotNull(content)
+                assertTrue(dlResult.isSuccess)
+
+                // Chapter row must have storageTier DOWNLOADED
+                val finalRow = chapterDao.getChapter(novelId, "ch_1")
+                assertEquals("DOWNLOADED", finalRow?.storageTier)
+            }
+        }
+    }
+
+    @Test
+    fun enqueueChapters_rejectsNovelsBeingDeleted() = runTest {
+        withTimeout(10_000) {
+            val novelId = "nov_deleting_guard"
+            insertTestNovelAndChapters(novelId, 2)
+
+            val coordinator = repository.chapterRepository.downloadCoordinator
+            coordinator.deletingNovelIds.add(novelId)
+            try {
+                val result = downloadEngine.enqueueChapters(novelId, listOf("ch_1", "ch_2"))
+                assertEquals(0, result.enqueuedCount)
+                assertEquals(2, result.skippedCount)
+                assertTrue(result.skippedReasons["ch_1"]?.contains("being deleted") == true)
+                assertEquals(0, downloadQueueDao.getTotalCount())
+            } finally {
+                coordinator.deletingNovelIds.remove(novelId)
+            }
+        }
+    }
+
+    @Test
+    fun deleteNovelDownloads_clearsQueueAndGuardsDeletion() = runTest {
+        withTimeout(10_000) {
+            val novelId = "nov_delete_flow"
+            insertTestNovelAndChapters(novelId, 2)
+            downloadEngine.enqueueChapters(novelId, listOf("ch_1", "ch_2"))
+            assertEquals(2, downloadQueueDao.getTotalCount())
+
+            repository.chapterRepository.deleteNovelDownloads(novelId)
+
+            assertEquals(0, downloadQueueDao.getQueuedChapterIds(novelId).size)
+            assertFalse(repository.chapterRepository.downloadCoordinator.deletingNovelIds.contains(novelId))
+        }
+    }
+
+    @Test
+    fun missingDownloaded_selfHealsBackToDownloadedInOriginalLocation() = runTest {
+        withTimeout(10_000) {
+            val novelId = "nov_self_heal"
+            insertTestNovelAndChapters(novelId, 1)
+
+            // Mark as DOWNLOADED in Room, but don't create file
+            chapterDao.updateTierToDownloaded(
+                novelId = novelId,
+                id = "ch_1",
+                storageLocation = "INTERNAL",
+                fileHash = "hash1",
+                lastAccessedAt = System.currentTimeMillis()
+            )
+
+            val downloadFile = repository.storageResolver.getDownloadChapterFile(novelId, "ch_1")
+            assertFalse("File must not exist initially", downloadFile.exists())
+
+            // Read miss triggers refetch & self-healing write back as DOWNLOADED
+            val content = repository.chapterRepository.getChapterContent(novelId, "ch_1")
+            assertNotNull(content)
+            assertTrue("Content returned isDownloaded", content.isDownloaded)
+
+            // Verify file written to downloads location
+            assertTrue("File was written back to downloads", downloadFile.exists())
+
+            // Verify Room tier remains DOWNLOADED
+            val row = chapterDao.getChapter(novelId, "ch_1")
+            assertEquals("DOWNLOADED", row?.storageTier)
+            assertEquals("INTERNAL", row?.storageLocation)
+        }
+    }
+
+    @Test
+    fun diskFirstCheck_skipsNetworkIfFileExists() = runTest {
+        withTimeout(10_000) {
+            val novelId = "nov_disk_first"
+            insertTestNovelAndChapters(novelId, 1)
+
+            val novel = novelDao.getNovelById(novelId)!!.toModel()
+            val chapter = chapterDao.getChapterById(novelId, "ch_1")!!.toModel()
+
+            // Pre-create valid file on disk in downloads/ without setting tier in Room
+            repository.chapterStorage.writeToDownloads(
+                ChapterContent("ch_1", novelId, "Pre-existing Title", listOf("P1", "P2"), isDownloaded = true),
+                "INTERNAL"
+            )
+
+            val initialFetchCount = fakeSource.callTimes.size
+
+            val result = repository.chapterRepository.downloadChapter(novel, chapter)
+            assertTrue(result.isSuccess)
+
+            // Network was NOT called because file was found on disk
+            assertEquals(initialFetchCount, fakeSource.callTimes.size)
+
+            val row = chapterDao.getChapter(novelId, "ch_1")
+            assertEquals("DOWNLOADED", row?.storageTier)
         }
     }
 }

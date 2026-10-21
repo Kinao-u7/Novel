@@ -154,11 +154,13 @@ Every stage ends with: the app compiling and launching, tests passing, and a sum
    DAO order.
 - **m.** Read miss: a DOWNLOADED or CACHE tier is reset only together with a successful
    refetch. A read IOException throws ChapterReadException and never changes the tier
-   (an unreadable CACHE file falls through to a refetch). A file is deleted only when its
-   content is unparseable. EPUB rows are never reset (EpubFileMissing).
-- **n.** Queue: only QUEUED/DOWNLOADING/PAUSED block enqueueing; COMPLETED rows are cleared at
-   each worker run and when downloads are deleted; worker status writes are guarded by
-   the expected status; the time-limit follow-up uses APPEND_OR_REPLACE.
+   (an unreadable CACHE file falls through to a refetch). A DOWNLOADED row whose file is
+   missing and refetched successfully is written back as DOWNLOADED in its original
+   location, not CACHE. A file is deleted only when its content is unparseable.
+   EPUB rows are never reset (EpubFileMissing).
+- **n.** Queue: only QUEUED/DOWNLOADING/PAUSED block enqueueing; COMPLETED rows are cleared only
+   when no QUEUED, DOWNLOADING or PAUSED rows remain and when downloads are deleted; worker status
+   writes are guarded by the expected status; the time-limit follow-up uses APPEND_OR_REPLACE.
 - **o.** SAF: directory creation is serialized; writes use a temp file (octet-stream MIME)
    then rename, falling back to "wt"; size is computed on demand and cached.
 - **p.** upsertSafe updates source-owned fields only and returns the canonical id; callers use

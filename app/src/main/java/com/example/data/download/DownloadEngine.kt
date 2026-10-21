@@ -18,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 data class EnqueueResult(
@@ -45,7 +46,8 @@ class DownloadEngine(
     private val novelDao: NovelDao,
     private val chapterRepository: ChapterRepository,
     private val settingsRepository: SettingsRepository,
-    private val notificationDao: NotificationDao
+    private val notificationDao: NotificationDao,
+    val downloadCoordinator: DownloadCoordinator = DownloadCoordinator.getInstance()
 ) {
 
     companion object {
@@ -86,6 +88,15 @@ class DownloadEngine(
      * if missing, returns a structured result reporting which were skipped rather than inserting orphaned rows.
      */
     suspend fun enqueueChapters(novelId: String, chapterIds: List<String>): EnqueueResult = withContext(Dispatchers.IO) {
+        if (downloadCoordinator.deletingNovelIds.contains(novelId)) {
+            val reasons = chapterIds.associateWith { "Novel is currently being deleted: $novelId" }
+            return@withContext EnqueueResult(
+                enqueuedChapterIds = emptyList(),
+                skippedChapterIds = chapterIds,
+                skippedReasons = reasons
+            )
+        }
+
         val novel = novelDao.getNovelById(novelId)
         if (novel == null) {
             val reasons = chapterIds.associateWith { "Novel not found in database: $novelId" }
@@ -126,21 +137,31 @@ class DownloadEngine(
         }
 
         if (toQueue.isNotEmpty()) {
-            val now = System.currentTimeMillis()
-            val entities = toQueue.map { id ->
-                DownloadQueueEntity(
-                    novelId = novelId,
-                    chapterId = id,
-                    status = "QUEUED",
-                    queuedAt = now
-                )
-            }
-            entities.chunked(500).forEach { chunk ->
-                downloadQueueDao.insertIgnoreAll(chunk)
-            }
-            downloadQueueDao.bulkRequeue(novelId, toQueue, now)
+            downloadCoordinator.mutex.withLock {
+                if (downloadCoordinator.deletingNovelIds.contains(novelId)) {
+                    val deleteReasons = chapterIds.associateWith { "Novel is currently being deleted: $novelId" }
+                    return@withLock EnqueueResult(
+                        enqueuedChapterIds = emptyList(),
+                        skippedChapterIds = chapterIds,
+                        skippedReasons = deleteReasons
+                    )
+                }
+                val now = System.currentTimeMillis()
+                val entities = toQueue.map { id ->
+                    DownloadQueueEntity(
+                        novelId = novelId,
+                        chapterId = id,
+                        status = "QUEUED",
+                        queuedAt = now
+                    )
+                }
+                entities.chunked(500).forEach { chunk ->
+                    downloadQueueDao.insertIgnoreAll(chunk)
+                }
+                downloadQueueDao.bulkRequeue(novelId, toQueue, now)
 
-            scheduleWorker()
+                scheduleWorker()
+            }
         }
 
         EnqueueResult(
@@ -199,31 +220,49 @@ class DownloadEngine(
     }
 
     suspend fun pauseQueue() = withContext(Dispatchers.IO) {
-        downloadQueueDao.pauseQueue()
+        downloadCoordinator.mutex.withLock {
+            downloadQueueDao.pauseQueue()
+        }
         cancelWorker()
+        downloadCoordinator.awaitWorkerStopped()
     }
 
     suspend fun resumeQueue() = withContext(Dispatchers.IO) {
-        downloadQueueDao.resumeQueue()
-        scheduleWorker()
+        downloadCoordinator.awaitWorkerStopped()
+        downloadCoordinator.mutex.withLock {
+            downloadQueueDao.resumeQueue()
+            scheduleWorker()
+        }
     }
 
     suspend fun cancelChapter(novelId: String, chapterId: String) = withContext(Dispatchers.IO) {
-        downloadQueueDao.delete(novelId, chapterId)
+        downloadCoordinator.mutex.withLock {
+            downloadQueueDao.delete(novelId, chapterId)
+        }
+        downloadCoordinator.awaitChapterJobs(listOf(Pair(novelId, chapterId)))
     }
 
     suspend fun cancelNovel(novelId: String) = withContext(Dispatchers.IO) {
-        downloadQueueDao.deleteForNovel(novelId)
+        downloadCoordinator.mutex.withLock {
+            downloadQueueDao.deleteForNovel(novelId)
+        }
+        downloadCoordinator.awaitAllChapterJobsForNovel(novelId)
     }
 
     suspend fun cancelAll() = withContext(Dispatchers.IO) {
-        downloadQueueDao.clearQueue()
+        downloadCoordinator.mutex.withLock {
+            downloadQueueDao.clearQueue()
+        }
         cancelWorker()
+        downloadCoordinator.awaitWorkerStopped()
+        downloadCoordinator.awaitAllChapterJobs()
     }
 
     suspend fun retryFailed() = withContext(Dispatchers.IO) {
-        downloadQueueDao.retryFailed()
-        scheduleWorker()
+        downloadCoordinator.mutex.withLock {
+            downloadQueueDao.retryFailed()
+            scheduleWorker()
+        }
     }
 
     suspend fun clearCompleted() = withContext(Dispatchers.IO) {

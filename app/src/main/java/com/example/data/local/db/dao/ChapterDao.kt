@@ -106,6 +106,68 @@ interface ChapterDao {
         lastAccessedAt: Long
     ): Int
 
+    @Query("""
+        UPDATE chapters 
+        SET storage_tier = :storageTier, 
+            storage_location = :storageLocation, 
+            file_hash = :fileHash, 
+            last_accessed_at = :lastAccessedAt 
+        WHERE novel_id = :novelId AND id = :id AND storage_tier IN (:allowedPreviousTiers)
+    """)
+    suspend fun updateStorageTierCas(
+        novelId: String,
+        id: String,
+        storageTier: String,
+        storageLocation: String,
+        fileHash: String,
+        lastAccessedAt: Long,
+        allowedPreviousTiers: List<String>
+    ): Int
+
+    @Query("""
+        UPDATE chapters 
+        SET storage_tier = 'CACHE', 
+            storage_location = :storageLocation, 
+            file_hash = :fileHash, 
+            last_accessed_at = :lastAccessedAt 
+        WHERE novel_id = :novelId AND id = :id AND storage_tier IN ('NONE', 'CACHE')
+    """)
+    suspend fun updateTierToCacheIfNoneOrCache(
+        novelId: String,
+        id: String,
+        storageLocation: String,
+        fileHash: String,
+        lastAccessedAt: Long
+    ): Int
+
+    @Query("""
+        UPDATE chapters 
+        SET storage_tier = 'NONE', 
+            last_accessed_at = :lastAccessedAt 
+        WHERE novel_id = :novelId AND id = :id AND storage_tier = 'CACHE'
+    """)
+    suspend fun updateTierToNoneIfCache(
+        novelId: String,
+        id: String,
+        lastAccessedAt: Long
+    ): Int
+
+    @Query("""
+        UPDATE chapters 
+        SET storage_tier = 'DOWNLOADED', 
+            storage_location = :storageLocation, 
+            file_hash = :fileHash, 
+            last_accessed_at = :lastAccessedAt 
+        WHERE novel_id = :novelId AND id = :id AND storage_tier IN ('NONE', 'CACHE', 'DOWNLOADED')
+    """)
+    suspend fun updateTierToDownloaded(
+        novelId: String,
+        id: String,
+        storageLocation: String,
+        fileHash: String,
+        lastAccessedAt: Long
+    ): Int
+
     @Query("UPDATE chapters SET last_accessed_at = :timestamp WHERE novel_id = :novelId AND id = :id")
     suspend fun updateLastAccessed(novelId: String, id: String, timestamp: Long): Int
 

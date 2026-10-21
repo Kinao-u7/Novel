@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import com.example.data.model.ChapterContent
+import com.example.data.repository.SettingsRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -256,6 +257,7 @@ class InternalChapterFileStore(
 class SafChapterFileStore(
     private val context: Context,
     private val resolver: StorageResolver,
+    private val settingsRepository: SettingsRepository? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ChapterFileStore {
     // Tree URI string -> Root DocumentFile
@@ -477,7 +479,19 @@ class SafChapterFileStore(
         isCalculatingSize.set(true)
         try {
             var total = 0L
-            for (treeUriStr in treeRoots.keys) {
+            val configuredUri = settingsRepository?.downloadSettings?.value?.customDownloadLocationUri
+                ?: try {
+                    SettingsRepository.getInstance(context).downloadSettings.value.customDownloadLocationUri
+                } catch (_: Exception) {
+                    null
+                }
+            val urisToScan = mutableSetOf<String>()
+            if (!configuredUri.isNullOrBlank()) {
+                urisToScan.add(configuredUri)
+            }
+            urisToScan.addAll(treeRoots.keys)
+
+            for (treeUriStr in urisToScan) {
                 try {
                     val uri = Uri.parse(treeUriStr)
                     val root = getRootDoc(treeUriStr, uri) ?: continue

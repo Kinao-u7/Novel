@@ -18,15 +18,16 @@ import com.example.data.local.db.toModel
 import com.example.data.source.webscrape.WebChapterScraper
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
 
@@ -59,121 +60,191 @@ class DownloadQueueWorker(
         val chapterRepository = repository.chapterRepository
         val settingsRepository = repository.settingsRepository
         val notificationDao = repository.notificationDao
+        val coordinator = chapterRepository.downloadCoordinator
+
+        coordinator.onWorkerStarted()
 
         // Reset rate-limit per worker run / batch so at most 1 warning and 1 notification per batch
         chapterRepository.resetStorageWarningRateLimit()
-
-        // Clear completed items from previous runs at start of each worker run
-        downloadQueueDao.clearCompleted()
 
         // Invariant: turn every DOWNLOADING row back to QUEUED on worker start so a killed worker never abandons work
         downloadQueueDao.resetDownloadingToQueued()
 
         val startTime = System.currentTimeMillis()
         val downloadedCountThisSession = AtomicInteger(0)
-        val batchCounter = AtomicInteger(0)
         var followUpScheduled = false
 
-        val initialQueuedCount = downloadQueueDao.countByStatus("QUEUED")
-        if (initialQueuedCount == 0) {
+        val initialCompleted = downloadQueueDao.countByStatus("COMPLETED")
+        val initialRemaining = downloadQueueDao.countActiveRemaining()
+        val initialTotal = initialCompleted + initialRemaining
+        if (initialRemaining == 0) {
+            coordinator.onWorkerStopped()
+            if (downloadQueueDao.countActiveOrPaused() == 0) {
+                downloadQueueDao.clearCompleted()
+            }
             return@withContext Result.success()
         }
 
-        trySetForeground(progress = 0, total = initialQueuedCount)
+        trySetForeground(progress = initialCompleted, total = initialTotal)
 
         try {
-            while (!isStopped) {
-                // Time limit: Stop after ~8 minutes of work and re-enqueue if queue still has QUEUED rows
-                val maxDuration = maxWorkerDurationOverrideMs ?: MAX_WORKER_DURATION_MS
-                if (System.currentTimeMillis() - startTime >= maxDuration) {
-                    val remainingQueued = downloadQueueDao.countByStatus("QUEUED")
-                    if (remainingQueued > 0) {
-                        followUpScheduled = true
-                        repository.downloadEngine.scheduleWorker(appendOrReplace = true)
+            val settings = settingsRepository.downloadSettings.value
+            val maxConcurrent = settings.simultaneousDownloads.coerceIn(1, 5)
+            WebChapterScraper.configurePoolCapacity(maxConcurrent)
+
+            val sourceNextAllowedAt = ConcurrentHashMap<String, Long>()
+            val semaphore = Semaphore(maxConcurrent)
+            val activeJobs = java.util.Collections.synchronizedList(mutableListOf<Job>())
+
+            coroutineScope {
+                while (!isStopped) {
+                    // Time limit: Stop after ~8 minutes of work and re-enqueue if queue still has QUEUED rows
+                    val maxDuration = maxWorkerDurationOverrideMs ?: MAX_WORKER_DURATION_MS
+                    if (System.currentTimeMillis() - startTime >= maxDuration) {
+                        val remainingQueued = downloadQueueDao.countByStatus("QUEUED")
+                        if (remainingQueued > 0) {
+                            followUpScheduled = true
+                            repository.downloadEngine.scheduleWorker(appendOrReplace = true)
+                        }
+                        break
                     }
-                    break
-                }
 
-                // Pause check: pause pauses the whole queue: do not download, stop the worker
-                val pausedCount = downloadQueueDao.countByStatus("PAUSED")
-                if (pausedCount > 0) {
-                    break
-                }
+                    // Pause check: pause pauses the whole queue: do not download, stop the worker
+                    val pausedCount = downloadQueueDao.countByStatus("PAUSED")
+                    if (pausedCount > 0) {
+                        break
+                    }
 
-                val settings = settingsRepository.downloadSettings.value
-                val maxConcurrent = settings.simultaneousDownloads.coerceIn(1, 5)
-                WebChapterScraper.configurePoolCapacity(maxConcurrent)
+                    semaphore.acquire()
 
-                val batch = downloadQueueDao.getNextQueuedBatch(maxConcurrent)
-                if (batch.isEmpty()) {
-                    break
-                }
+                    if (isStopped) {
+                        semaphore.release()
+                        break
+                    }
 
-                // Transition selected batch to DOWNLOADING
-                for (item in batch) {
-                    downloadQueueDao.updateStatus(item.novelId, item.chapterId, "DOWNLOADING")
-                }
+                    val now = System.currentTimeMillis()
+                    val candidates = downloadQueueDao.getNextQueuedBatch(10)
 
-                val semaphore = Semaphore(maxConcurrent)
-                coroutineScope {
-                    batch.map { item ->
-                        async {
-                            semaphore.withPermit {
-                                if (isStopped) return@withPermit
+                    var chosenItem: com.example.data.local.db.entity.DownloadQueueEntity? = null
+                    var chosenNovel: com.example.data.local.db.entity.NovelEntity? = null
+                    var chosenSourceId: String? = null
+                    var minThrottleWaitMs: Long? = null
 
-                                val novelEntity = novelDao.getNovelById(item.novelId)
-                                val chapterEntity = chapterDao.getChapterById(item.novelId, item.chapterId)
+                    for (candidate in candidates) {
+                        val novelEntity = novelDao.getNovelById(candidate.novelId)
+                        if (novelEntity == null) {
+                            downloadQueueDao.delete(candidate.novelId, candidate.chapterId)
+                            continue
+                        }
+                        val sourceId = novelEntity.sourceId
+                        val nextAllowed = sourceNextAllowedAt[sourceId] ?: 0L
+                        if (nextAllowed > now) {
+                            val waitMs = nextAllowed - now
+                            if (minThrottleWaitMs == null || waitMs < minThrottleWaitMs) {
+                                minThrottleWaitMs = waitMs
+                            }
+                            continue
+                        }
 
-                                if (novelEntity == null || chapterEntity == null) {
-                                    downloadQueueDao.delete(item.novelId, item.chapterId)
-                                    return@withPermit
-                                }
+                        // Guarded transition to DOWNLOADING
+                        val updated = downloadQueueDao.updateStatusIfExpected(
+                            novelId = candidate.novelId,
+                            chapterId = candidate.chapterId,
+                            status = "DOWNLOADING",
+                            expectedStatus = "QUEUED"
+                        )
+                        if (updated > 0) {
+                            chosenItem = candidate
+                            chosenNovel = novelEntity
+                            chosenSourceId = sourceId
+                            break
+                        }
+                    }
 
-                                if (chapterEntity.storageTier == "DOWNLOADED") {
-                                    downloadQueueDao.updateStatusIfDownloading(item.novelId, item.chapterId, "COMPLETED")
-                                    return@withPermit
-                                }
+                    if (chosenItem == null) {
+                        semaphore.release()
+                        if (minThrottleWaitMs != null) {
+                            delay(minThrottleWaitMs.coerceIn(50L, 500L))
+                            continue
+                        }
 
-                                // Apply request throttling with jitter at call site if enabled
-                                val throttleBatchSize = settings.throttleBatchSize.coerceAtLeast(1)
-                                val currentBatch = batchCounter.getAndIncrement()
-                                if (settings.throttlingEnabled && currentBatch > 0 && currentBatch % throttleBatchSize == 0) {
-                                    val delayMs = throttleDelayOverrideMs ?: run {
-                                        var computed = (settings.throttleDelaySeconds * 1000).toLong()
-                                        if (settings.throttleRandomJitter) {
-                                            val jitterFactor = Random.nextDouble(0.5, 1.5)
-                                            computed = (computed * jitterFactor).toLong().coerceAtLeast(200L)
-                                        }
-                                        computed
-                                    }
-                                    if (delayMs > 0L) {
-                                        delay(delayMs)
-                                    }
-                                }
+                        // No candidates: check under coordinator lock if queue is truly empty
+                        val shouldExit = coordinator.mutex.withLock {
+                            val remainingQueued = downloadQueueDao.countByStatus("QUEUED")
+                            remainingQueued == 0
+                        }
+                        if (shouldExit) {
+                            break
+                        }
+                        delay(100L)
+                        continue
+                    }
 
-                                val success = try {
-                                    chapterRepository.downloadChapter(novelEntity.toModel(), chapterEntity.toModel())
-                                } catch (e: Exception) {
-                                    if (e is CancellationException) throw e
-                                    Log.e("DownloadQueueWorker", "Download failed for chapter ${item.chapterId}", e)
-                                    false
-                                }
+                    val item = chosenItem
+                    val novelEntity = chosenNovel!!
+                    val sourceId = chosenSourceId
 
-                                if (success) {
-                                    downloadQueueDao.updateStatusIfDownloading(item.novelId, item.chapterId, "COMPLETED")
+                    val job = launch {
+                        try {
+                            if (isStopped) return@launch
+
+                            val chapterEntity = chapterDao.getChapterById(item.novelId, item.chapterId)
+                            if (chapterEntity == null) {
+                                downloadQueueDao.delete(item.novelId, item.chapterId)
+                                return@launch
+                            }
+
+                            if (chapterEntity.storageTier == "DOWNLOADED") {
+                                downloadQueueDao.updateStatusIfExpected(item.novelId, item.chapterId, "COMPLETED", "DOWNLOADING")
+                                return@launch
+                            }
+
+                            val result: com.example.data.download.DownloadResult = try {
+                                chapterRepository.downloadChapter(novelEntity.toModel(), chapterEntity.toModel())
+                            } catch (e: Exception) {
+                                if (e is CancellationException) throw e
+                                Log.e("DownloadQueueWorker", "Download failed for chapter ${item.chapterId}", e)
+                                com.example.data.download.DownloadResult.Network(e.message ?: "Download exception", e)
+                            }
+
+                            when (result) {
+                                is com.example.data.download.DownloadResult.Success -> {
+                                    downloadQueueDao.updateStatusIfExpected(item.novelId, item.chapterId, "COMPLETED", "DOWNLOADING")
                                     downloadedCountThisSession.incrementAndGet()
-                                } else {
+
+                                    // Apply per-source throttle delay after success if enabled
+                                    if (settings.throttlingEnabled && sourceId != null) {
+                                        val delayOverride = throttleDelayOverrideMs
+                                        val computed = delayOverride ?: run {
+                                            var ms = (settings.throttleDelaySeconds * 1000).toLong()
+                                            if (settings.throttleRandomJitter) {
+                                                val jitterFactor = Random.nextDouble(0.5, 1.5)
+                                                ms = (ms * jitterFactor).toLong().coerceAtLeast(200L)
+                                            }
+                                            ms
+                                        }
+                                        if (computed > 0L) {
+                                            sourceNextAllowedAt[sourceId] = System.currentTimeMillis() + computed
+                                        }
+                                    }
+                                }
+                                is com.example.data.download.DownloadResult.RateLimited -> {
+                                    val retryAfter = result.retryAfterMs ?: run {
+                                        val nextRetry = item.retryCount + 1
+                                        (1000L * (1 shl nextRetry)).coerceAtMost(16_000L)
+                                    }
+                                    if (sourceId != null) {
+                                        sourceNextAllowedAt[sourceId] = System.currentTimeMillis() + retryAfter
+                                    }
                                     val nextRetry = item.retryCount + 1
                                     if (nextRetry < MAX_RETRY_COUNT) {
-                                        // Exponential backoff
-                                        val backoffMs = (1000L * (1 shl nextRetry)).coerceAtMost(16_000L)
-                                        delay(backoffMs)
+                                        delay(retryAfter.coerceAtMost(2000L))
                                         downloadQueueDao.updateStatusAndRetryIfDownloading(
                                             novelId = item.novelId,
                                             chapterId = item.chapterId,
                                             status = "QUEUED",
                                             retryCount = nextRetry,
-                                            errorMessage = "Download attempt $nextRetry failed"
+                                            errorMessage = result.message
                                         )
                                     } else {
                                         downloadQueueDao.updateStatusAndRetryIfDownloading(
@@ -181,22 +252,93 @@ class DownloadQueueWorker(
                                             chapterId = item.chapterId,
                                             status = "FAILED",
                                             retryCount = nextRetry,
-                                            errorMessage = "Max retries ($MAX_RETRY_COUNT) reached"
+                                            errorMessage = "Max retries ($MAX_RETRY_COUNT) reached: ${result.message}"
                                         )
                                     }
                                 }
-
-                                val completedThisRun = downloadedCountThisSession.get()
-                                val remaining = downloadQueueDao.countActiveRemaining()
-                                val totalForRun = completedThisRun + remaining
-                                trySetForeground(progress = completedThisRun, total = totalForRun, novelTitle = novelEntity.title)
+                                is com.example.data.download.DownloadResult.Network -> {
+                                    val nextRetry = item.retryCount + 1
+                                    if (nextRetry < MAX_RETRY_COUNT) {
+                                        val backoffMs = (1000L * (1 shl nextRetry)).coerceAtMost(16_000L)
+                                        delay(backoffMs.coerceAtMost(2000L))
+                                        downloadQueueDao.updateStatusAndRetryIfDownloading(
+                                            novelId = item.novelId,
+                                            chapterId = item.chapterId,
+                                            status = "QUEUED",
+                                            retryCount = nextRetry,
+                                            errorMessage = result.message
+                                        )
+                                    } else {
+                                        downloadQueueDao.updateStatusAndRetryIfDownloading(
+                                            novelId = item.novelId,
+                                            chapterId = item.chapterId,
+                                            status = "FAILED",
+                                            retryCount = nextRetry,
+                                            errorMessage = "Max retries ($MAX_RETRY_COUNT) reached: ${result.message}"
+                                        )
+                                    }
+                                }
+                                is com.example.data.download.DownloadResult.Parse -> {
+                                    downloadQueueDao.updateStatusAndRetryIfDownloading(
+                                        novelId = item.novelId,
+                                        chapterId = item.chapterId,
+                                        status = "FAILED",
+                                        retryCount = item.retryCount,
+                                        errorMessage = "Parse error: ${result.message}"
+                                    )
+                                }
+                                is com.example.data.download.DownloadResult.SourceUnavailable -> {
+                                    downloadQueueDao.updateStatusAndRetryIfDownloading(
+                                        novelId = item.novelId,
+                                        chapterId = item.chapterId,
+                                        status = "FAILED",
+                                        retryCount = item.retryCount,
+                                        errorMessage = "Source unavailable: ${result.sourceId}"
+                                    )
+                                }
+                                is com.example.data.download.DownloadResult.StorageFull -> {
+                                    downloadQueueDao.updateStatusAndRetryIfDownloading(
+                                        novelId = item.novelId,
+                                        chapterId = item.chapterId,
+                                        status = "FAILED",
+                                        retryCount = item.retryCount,
+                                        errorMessage = "Storage full: ${result.availableBytes} bytes available"
+                                    )
+                                }
+                                is com.example.data.download.DownloadResult.StorageUnavailable -> {
+                                    downloadQueueDao.updateStatusAndRetryIfDownloading(
+                                        novelId = item.novelId,
+                                        chapterId = item.chapterId,
+                                        status = "FAILED",
+                                        retryCount = item.retryCount,
+                                        errorMessage = "Storage unavailable: ${result.location} - ${result.message}"
+                                    )
+                                }
                             }
+
+                            val completedCount = downloadQueueDao.countByStatus("COMPLETED")
+                            val remaining = downloadQueueDao.countActiveRemaining()
+                            val totalForRun = completedCount + remaining
+                            trySetForeground(progress = completedCount, total = totalForRun, novelTitle = novelEntity.title)
+                        } finally {
+                            semaphore.release()
                         }
-                    }.awaitAll()
+                    }
+
+                    coordinator.registerChapterJob(item.novelId, item.chapterId, job)
+                    activeJobs.add(job)
+                    activeJobs.removeAll { it.isCompleted }
+                }
+
+                // Wait for all in-flight jobs launched in this session to finish
+                for (j in activeJobs.toList()) {
+                    try { j.join() } catch (_: Exception) {}
                 }
             }
         } finally {
             withContext(NonCancellable) {
+                coordinator.onWorkerStopped()
+
                 // Lifecycle: release pooled WebViews when queue is finished or worker stops
                 try {
                     WebChapterScraper.releaseWebViews()
