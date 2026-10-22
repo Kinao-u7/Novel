@@ -477,7 +477,7 @@ class DownloadEngineAndWorkerTest {
             // Download all 50 chapters
             for (ch in chapters) {
                 val success = repository.chapterRepository.downloadChapter(novel, ch.toModel())
-                assertTrue(success)
+                assertTrue(success.isSuccess)
             }
 
             collectJob.cancel()

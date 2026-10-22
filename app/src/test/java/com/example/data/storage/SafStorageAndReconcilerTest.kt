@@ -343,7 +343,7 @@ class SafStorageAndReconcilerTest {
 
             // Download chapter
             val success = chapterRepository.downloadChapter(novel, chapter)
-            assertTrue("Download must succeed even if SAF is unwritable (falls back to internal)", success)
+            assertTrue("Download must succeed even if SAF is unwritable (falls back to internal)", success.isSuccess)
 
             // Verify Room row records storage_location = "INTERNAL"
             val row = database.chapterDao().getChapter(novel.id, chapter.id)
@@ -377,7 +377,7 @@ class SafStorageAndReconcilerTest {
 
             // Download chapter to initialTree
             val downloaded = chapterRepository.downloadChapter(novel, chapter)
-            assertTrue(downloaded)
+            assertTrue(downloaded.isSuccess)
 
             val rowBefore = database.chapterDao().getChapter(novel.id, chapter.id)
             assertNotNull(rowBefore)
