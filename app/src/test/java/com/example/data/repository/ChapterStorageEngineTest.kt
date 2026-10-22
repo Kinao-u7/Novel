@@ -122,7 +122,11 @@ class ChapterStorageEngineTest {
         storageResolver = StorageResolver(tempFolder.root)
         val internalStore = InternalChapterFileStore(storageResolver, Dispatchers.IO)
         failingFileStore = FakeFailingFileStore(internalStore)
-        chapterStorage = ChapterStorage(storageResolver, Dispatchers.IO, failingFileStore)
+        chapterStorage = ChapterStorage(
+            resolver = storageResolver,
+            fileStore = failingFileStore,
+            ioDispatcher = Dispatchers.IO
+        )
         settingsRepository = SettingsRepository.getInstance(context)
         chapterRepository = ChapterRepository(
             chapterDao = database.chapterDao(),
@@ -145,25 +149,68 @@ class ChapterStorageEngineTest {
         database.close()
     }
 
+    private fun testNovel(
+        id: String = "test_novel_1",
+        title: String = "Test Novel",
+        author: String = "Author",
+        coverUrl: String? = null,
+        description: String = "Test Description",
+        genres: List<String> = emptyList(),
+        status: String = "Ongoing",
+        sourceId: String = "fake_source",
+        sourceName: String = "Fake Source",
+        inLibrary: Boolean = true
+    ): Novel = Novel(
+        id = id,
+        title = title,
+        author = author,
+        coverUrl = coverUrl,
+        description = description,
+        genres = genres,
+        status = status,
+        sourceId = sourceId,
+        sourceName = sourceName,
+        inLibrary = inLibrary
+    )
+
+    private fun testNovelEntity(
+        id: String = "novel_1",
+        title: String = "Test Novel",
+        author: String = "Author",
+        description: String = "Desc",
+        sourceId: String = "fake_source",
+        sourceName: String = "Fake Source",
+        status: String = "Ongoing",
+        genresJson: String = "[]",
+        inLibrary: Boolean = true,
+        isEpub: Boolean = false,
+        totalChapters: Int = 10,
+        rating: Float? = 4.5f
+    ): NovelEntity = NovelEntity(
+        id = id,
+        title = title,
+        author = author,
+        description = description,
+        sourceId = sourceId,
+        sourceName = sourceName,
+        status = status,
+        genresJson = genresJson,
+        inLibrary = inLibrary,
+        isEpub = isEpub,
+        totalChapters = totalChapters,
+        rating = rating
+    )
+
     private suspend fun insertTestNovel(
         id: String = "novel_1",
         isEpub: Boolean = false,
         sourceId: String = fakeSource.id
     ): NovelEntity {
-        val novel = NovelEntity(
+        val novel = testNovelEntity(
             id = id,
-            title = "Test Novel",
-            author = "Author",
-            description = "Desc",
-            genresJson = "[]",
-            status = "Ongoing",
-            sourceId = sourceId,
-            sourceName = "Fake Source",
-            inLibrary = true,
             isEpub = isEpub,
-            totalChapters = 10,
-            rating = 4.5f,
-            createdAt = System.currentTimeMillis()
+            sourceId = sourceId,
+            sourceName = "Fake Source"
         )
         database.novelDao().insertIgnore(novel)
         return novel
@@ -947,10 +994,14 @@ class ChapterStorageEngineTest {
     fun getChapterContent_epubMissingFile_throwsEpubFileMissing() = runTest {
         withTimeout(10_000) {
             database.novelDao().insertIgnore(
-                NovelEntity(
+                testNovelEntity(
                     id = "epub_novel_missing_file",
                     title = "Epub Novel",
                     author = "Author",
+                    description = "Epub Description",
+                    sourceId = "local_epub",
+                    sourceName = "Local EPUB",
+                    status = "Completed",
                     genresJson = "[]",
                     isEpub = true
                 )
@@ -980,10 +1031,14 @@ class ChapterStorageEngineTest {
     fun getChapterContent_missingChapterRow_throwsChapterRowMissing() = runTest {
         withTimeout(10_000) {
             database.novelDao().insertIgnore(
-                NovelEntity(
+                testNovelEntity(
                     id = "epub_novel_missing_row",
                     title = "Epub Novel",
                     author = "Author",
+                    description = "Epub Description",
+                    sourceId = "local_epub",
+                    sourceName = "Local EPUB",
+                    status = "Completed",
                     genresJson = "[]",
                     isEpub = true
                 )
@@ -1005,12 +1060,15 @@ class ChapterStorageEngineTest {
             val novelId = "nov_single_flight_3"
             val chapterId = "ch_sf_3"
 
-            val novel = NovelEntity(
+            val novel = testNovelEntity(
                 id = novelId,
                 title = "Single Flight Novel",
                 author = "Author",
+                description = "Single flight description",
                 genresJson = "[]",
                 sourceId = "sf_source",
+                sourceName = "Gating Source",
+                status = "Ongoing",
                 inLibrary = true
             )
             val chapter = ChapterEntity(
@@ -1038,7 +1096,14 @@ class ChapterStorageEngineTest {
 
                 override suspend fun getPopularNovels(page: Int) = emptyList<Novel>()
                 override suspend fun searchNovels(query: String, page: Int) = emptyList<Novel>()
-                override suspend fun getNovelDetails(novelId: String) = Novel(novelId, "Single Flight Novel", "Author", "Desc", id, name)
+                override suspend fun getNovelDetails(novelId: String): Novel = testNovel(
+                    id = novelId,
+                    title = "Single Flight Novel",
+                    author = "Author",
+                    description = "Desc",
+                    sourceId = id,
+                    sourceName = name
+                )
                 override suspend fun getChapterList(novelId: String) = emptyList<Chapter>()
                 override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent {
                     val count = fetchCount.incrementAndGet()
