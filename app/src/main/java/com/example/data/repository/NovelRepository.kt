@@ -413,7 +413,7 @@ class NovelRepository(context: Context) {
         chapterRepository.getChapterContent(novelId, chapterId)
 
     suspend fun downloadChapter(novel: Novel, chapter: Chapter): Boolean =
-        chapterRepository.downloadChapter(novel, chapter)
+        chapterRepository.downloadChapter(novel, chapter).isSuccess
 
     // --- DOWNLOAD ENGINE FUNCTIONS ---
 
