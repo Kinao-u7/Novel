@@ -547,8 +547,6 @@ class ChapterStorageEngineTest {
         assertEquals("DOWNLOADED", row?.storageTier)
         assertEquals(storageResolver.sha256("ch_missing_dl"), row?.fileHash)
     }
-        assertEquals(storageResolver.sha256("ch_missing_file"), row?.fileHash)
-    }
 
     @Test
     fun hashNames_stableForUrlChapterIds() {
