@@ -35,6 +35,14 @@ jobs:
       - name: Compile app and tests
         timeout-minutes: 12
         run: ./gradlew assembleDebug compileDebugUnitTestKotlin --console=plain
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --console=plain
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: app/build/reports/tests
       - name: G1 storage basics
         continue-on-error: true
         run: /tmp/grp.sh "*ChapterStorageEngineTest.read*" "*ChapterStorageEngineTest.second*" "*ChapterStorageEngineTest.promote*" "*ChapterStorageEngineTest.hash*"
