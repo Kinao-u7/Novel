@@ -46,6 +46,9 @@ class EpubFileMissing(val novelId: String, val chapterId: String) :
 class ChapterRowMissing(val novelId: String, val chapterId: String) :
     NoSuchElementException("Chapter row missing for novel $novelId, chapter $chapterId")
 
+class NovelRowMissing(val novelId: String) :
+    NoSuchElementException("Novel row missing for novel $novelId")
+
 /**
  * Modern repository managing chapter reading, caching, and offline downloads.
  *
@@ -232,7 +235,8 @@ class ChapterRepository(
         // Cache miss: fetch via shared single-flight map
         val isDownloadedMissing = (chapterRow.storageTier == "DOWNLOADED")
         val savedLocation = chapterRow.storageLocation
-        val novel = (novelDao.getNovelById(novelId) ?: throw ChapterRowMissing(novelId, chapterId)).toModel()
+        val novel = (novelDao.getNovelById(novelId)
+            ?: throw NovelRowMissing(novelId)).toModel()
 
         val rawContent = fetchChapterContentFromNetwork(novel, chapterId)
         val fileHash = storageResolver.sha256(chapterId)
