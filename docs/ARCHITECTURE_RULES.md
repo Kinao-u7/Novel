@@ -4,8 +4,8 @@ Append this to `docs/ARCHITECTURE.md`. These rules apply to every stage and ever
 
 ## Data safety
 
-1. **Deleting never touches protected data.** Delete-downloads, clear-cache and delete-all must never remove EPUB content, original `.epub` files, covers or the chapter list of any novel.
-2. **Reading is not downloading.** Reading a chapter writes only to the cache tier. It never marks the chapter as downloaded, and download counts always come from the database, not from a separate counter.
+1. **Deleting never touches protected data.** Delete-downloads, clear-cache (deleting the cache folder only) and delete-all must never remove permanent storage (EPUB content, original `.epub` files, downloads), covers or the chapter list of any novel.
+2. **Reading is not downloading.** Reading a chapter writes only to the untracked cache folder, never to permanent storage. It never marks the chapter as downloaded, and download counts always come from the database, not from a separate counter.
 3. **No `REPLACE` on tables with cascading foreign keys.** Chapter refresh uses insert-ignore plus an update of metadata columns only, so read state, positions, storage tier and bookmarks survive.
 4. **Removing a novel asks first.** Show a confirm dialog with an option to also delete files. Reading stats and history survive removal.
 5. **Writes are safe.** Write to a temp file and rename, run multi-table changes in a transaction, and never overwrite good data after a failed load.

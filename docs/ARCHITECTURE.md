@@ -5,7 +5,7 @@ This file is the source of truth for the rebuild of the Novel Reader app. Read i
 ## 1. Context
 
 - Nobody uses the app yet: no data migration, no backward compatibility. A fresh install may wipe old data.
-- Goal: a solid foundation (Room, whole-object settings, type-safe navigation with ViewModels, WorkManager downloads, two-tier chapter storage). Features stay the same.
+- Goal: a solid foundation (Room, whole-object settings, type-safe navigation with ViewModels, WorkManager downloads, permanent storage (downloads, EPUB) plus an untracked reader cache). Features stay the same.
 - Keep as-is for now: scrapers and parsers (`WtrLabExtractor`, `WebChapterScraper`, `WebScrapeScripts`, `EpubParser`), the theme, `CommonUi`, and the screen layouts. Fixes for those are listed in `docs/CARRYOVER.md` (Stage 7).
 - Environment rule: do not install JDKs or SDKs and do not run Gradle in the AI sandbox. Compilation is verified by GitHub Actions. Verify by reading the code.
 
@@ -19,7 +19,7 @@ com.example/
   data/
     local/db/        NovelDatabase (lazy holder), entity/, dao/, converters
     local/preferences/  SettingsRepository, SettingsModels   // JSON file, not DataStore
-    local/storage/   StorageResolver, ChapterStorage, CacheReconciler
+    local/storage/   StorageResolver, ChapterStorage, ChapterCache (untracked reader cache), staging cleanup
     remote/          source/, webscrape/                      // kept as-is
     epub/            EpubParser                               // kept as-is
     backup/          BackupManager
@@ -41,8 +41,8 @@ No stored downloaded counter: downloaded counts are derived from `chapters.stora
 
 ### chapters
 Composite PK `(novel_id, id)`. FK `novel_id → novels(id) ON DELETE CASCADE`.
-`title` · `chapter_index` INT (1-based) · `release_date` TEXT · `word_count` INT · `is_read` BOOL · `read_paragraph_index` INT · `read_char_offset` INT · `storage_tier` TEXT (`NONE`, `CACHE`, `DOWNLOADED`, `EPUB`) · `storage_location` TEXT (`INTERNAL` or a SAF root token) · `file_hash` TEXT (SHA-256 of the chapter id, used as the file name) · `last_accessed_at` INT (LRU).
-Indexes: `(novel_id, chapter_index)`, `(storage_tier, last_accessed_at)`.
+`title` · `chapter_index` INT (1-based) · `release_date` TEXT · `word_count` INT · `is_read` BOOL · `read_paragraph_index` INT · `read_char_offset` INT · `storage_tier` TEXT (`NONE`, `DOWNLOADED`, `EPUB`) · `storage_location` TEXT (`INTERNAL` or a SAF root token) · `file_hash` TEXT (SHA-256 of the chapter id, used as the file name).
+Indexes: `(novel_id, chapter_index)`, `(is_read, novel_id)`, `(novel_id, storage_tier)`.
 Chapter refresh = `INSERT OR IGNORE` new rows, then `UPDATE` only `title`, `chapter_index`, `word_count`, `release_date`. Read state, position, tier, location, hash and bookmarks are never overwritten.
 
 ### bookmarks
@@ -71,15 +71,18 @@ Composite PK `(novel_id, chapter_id)`, FK `novel_id` cascade. `status` (`QUEUED`
 
 Browse novels: a novel opened from Browse is persisted with `in_library = 0`. On startup, in the background, purge `in_library = 0` rows that have no read state, bookmarks or downloads.
 
-## 4. File layout (under `filesDir`)
+## 4. File layout (under `filesDir`, cache under `cacheDir`)
 
 ```
-covers/{novelId}.jpg            permanent
-epubs/{novelId}/{sha256}.json   permanent EPUB chapter text, never deleted by cache or download cleanup
-original_epubs/{novelId}.epub   original files (needed for backup restore)
-downloads/{novelId}/{sha256}.json   permanent downloads when storage_location = INTERNAL
-cache/chapters/{novelId}/{sha256}.json   transient reader cache (LRU, size cap)
-staging/                        temporary restore extraction
+filesDir/
+  covers/{novelId}.jpg                  permanent
+  epubs/{novelId}/{sha256}.json         permanent EPUB chapter text, never deleted by cache or download cleanup
+  original_epubs/{novelId}.epub         original files (needed for backup restore)
+  downloads/{novelId}/{sha256}.json     permanent downloads when storage_location = INTERNAL
+  staging/                              temporary restore extraction
+
+cacheDir/ (Android may clear it)
+  chapters/{novelId}/{sha256}.json      transient untracked reader cache (size cap)
 ```
 
 - Chapter file names are SHA-256 hashes of the chapter id (ids can be URLs).
@@ -100,16 +103,18 @@ Navigation Compose 2.8+ with `@Serializable` routes carrying IDs only: `Library`
 
 ## 8. Storage tiers, cache and downloads
 
-- `chapters.storage_tier` is the single source of truth. Reading an uncached chapter writes to `cache/` with tier `CACHE` and updates `last_accessed_at`. **Reading never marks a chapter downloaded.**
-- Explicit downloads are written to the download location with tier `DOWNLOADED`. If the chapter is already cached, promote it by moving the file (no network).
-- LRU eviction: when the cache exceeds `cacheSizeCapMb`, evict `CACHE` rows ordered by `last_accessed_at`, then set their tier to `NONE`. `EPUB` rows are never selected by eviction or delete queries.
-- `CacheReconciler`: deletes unregistered files only inside `cache/` and `staging/`, and only if older than 10 minutes. Never touches `downloads/`, `epubs/`, `original_epubs/` or SAF. Missing SAF files are handled lazily on read miss (reset tier to `NONE`). Runs after a restore.
+- `storage_tier` (`NONE`, `DOWNLOADED`, `EPUB`) says whether permanent content exists. Reading never marks a chapter downloaded.
+- Reader cache is untracked: chapters read online are written (temp file, then rename) to `cacheDir/chapters/{novelId}/{sha256}.json`. Room does not record them. Cap: `cacheSizeCapMb`. After a write, if the folder exceeds the cap, delete the least recently modified files until under it; a cache read refreshes the file's modified time. One mutex serializes trimming. A missing or unreadable cache file is a miss: delete it and refetch.
+- Reader order: `EPUB`, then `DOWNLOADED`, then cache, then network, with single-flight per chapter. A reader fetch and a download of the same chapter share one in-flight fetch (single-flight).
+- Downloads: written to the download location; tier set to `DOWNLOADED` with a compare-and-set (expected previous `NONE` or `DOWNLOADED`). Disk first: if a valid file already exists at the target, only set the tier. If the chapter is in the cache, copy it to the download location (no network) and delete the cache copy.
+- Delete downloads resets `DOWNLOADED` rows to `NONE` and deletes files, never `EPUB`; the cache is untouched. Clear cache deletes the cache folder only. Removing a novel from the app deletes its cache folder (`cacheDir/chapters/{novelId}`).
+- Startup cleans only `staging/` (files older than 10 minutes). No cache reconciliation. `CacheReconciler` is replaced by a minimal staging cleanup.
 - Downloads: one WorkManager `CoroutineWorker` (foreground, `dataSync`) drains `download_queue` ordered by `queued_at`. `NetworkType.UNMETERED` when `wifiOnly`. Concurrency from settings (default 2) with a WebView pool of the same size. Throttle with delay and jitter. Handle timeouts, HTTP 429 and network errors, with retry.
 
 ## 9. Backup format
 
 A zip: `manifest.json` (schema version, app version, timestamp, counts), `data.json` (Room dump), `settings.json`, `covers/`, `original_epubs/`.
-Restore: preview from the manifest, then user chooses **Replace all** or **Merge** (newer read state wins). Extract files to `staging/`, import in one `database.withTransaction`, move files only after the commit succeeds. Reset `CACHE` and `DOWNLOADED` tiers to `NONE` (content is not in the backup), re-parse EPUBs from `original_epubs/`, drop `customDownloadLocationUri` if its permission is no longer granted, validate zip entry paths (zip-slip).
+Restore: preview from the manifest, then user chooses **Replace all** or **Merge** (newer read state wins). Extract files to `staging/`, import in one `database.withTransaction`, move files only after the commit succeeds. Reset `DOWNLOADED` tier to `NONE` (content is not in the backup), re-parse EPUBs from `original_epubs/`, drop `customDownloadLocationUri` if its permission is no longer granted, validate zip entry paths (zip-slip).
 
 ## 10. Reading stats
 
@@ -128,7 +133,7 @@ Every stage ends with: the app compiling and launching, tests passing, and a sum
    - **1b-1:** entities, DAOs, database, converters, Robolectric tests. Not wired into the app.
    - **1b-2:** `NovelRepository` uses Room (library, chapter metadata, read state, bookmarks, term replacements, custom sources, notifications). Delete `LibraryManager`. Thin temporary adapters for old code that still needs it.
 3. **2a** `AppContainer`, `NovelApplication` and the type-safe `NavHost`.
-4. **4** Storage engine: `StorageResolver`, `ChapterStorage`, `CacheReconciler`, LRU tests. Delete `StorageManager`.
+4. **4** Storage engine: `StorageResolver`, `ChapterStorage`, `ChapterCache` (untracked reader cache), cache-folder tests. Delete `StorageManager`.
 5. **2b** ViewModels: Library, Detail, Downloads, Settings (and the remove-from-library confirm with a delete-files option).
 6. **3** Reader and real stats: `ReaderViewModel`, every `ReaderSettings` field visibly wired, the Reader checklist from `docs/CARRYOVER.md`.
 7. **5** Download engine (WorkManager, notification permission, foreground service type, WebView pool). Delete `DownloadManager`.
@@ -152,12 +157,11 @@ Every stage ends with: the app compiling and launching, tests passing, and a sum
    normalized to null); chapters (is_read, novel_id). term_replacements.sort_order INT
    default 0; queries ORDER BY (novel_id IS NULL), sort_order, id; the reader keeps the
    DAO order.
-- **m.** Read miss: a DOWNLOADED or CACHE tier is reset only together with a successful
-   refetch. A read IOException throws ChapterReadException and never changes the tier
-   (an unreadable CACHE file falls through to a refetch). A DOWNLOADED row whose file is
-   missing and refetched successfully is written back as DOWNLOADED in its original
-   location, not CACHE. A file is deleted only when its content is unparseable.
-   EPUB rows are never reset (EpubFileMissing).
+- **m.** A DOWNLOADED row whose file is missing is reset only together with a successful
+   refetch, written back as DOWNLOADED in its original location. A read IOException on a
+   DOWNLOADED file throws ChapterReadException and never changes the tier. A corrupt cache
+   file is deleted and refetched. A DOWNLOADED file is deleted only when its content is
+   unparseable. EPUB rows are never reset (EpubFileMissing).
 - **n.** Queue: only QUEUED/DOWNLOADING/PAUSED block enqueueing; COMPLETED rows are cleared only
    when no QUEUED, DOWNLOADING or PAUSED rows remain and when downloads are deleted; worker status
    writes are guarded by the expected status; the time-limit follow-up uses APPEND_OR_REPLACE.
@@ -171,6 +175,8 @@ Every stage ends with: the app compiling and launching, tests passing, and a sum
 - **s.** Current package layout differs from section 2: data/download/ (not download/),
    data/source/ (not data/remote/source/), BackupManager and SettingsRepository live
    under data/repository/. Reconcile in Stage 7h or update section 2.
+- **t.** The reader cache is untracked (no Room column, no tier), and Stage 4 is amended
+   accordingly (LRU tests become cache-folder tests).
 
 ## 14. Rules
 
