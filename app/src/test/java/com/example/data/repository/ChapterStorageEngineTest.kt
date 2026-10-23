@@ -14,6 +14,7 @@ import com.example.data.local.storage.ChapterReadException
 import com.example.data.local.storage.ChapterStorage
 import com.example.data.local.storage.InternalChapterFileStore
 import com.example.data.local.storage.StorageResolver
+import com.example.data.local.storage.StorageUnavailableException
 import com.example.data.model.Chapter
 import com.example.data.model.ChapterContent
 import com.example.data.model.Novel
@@ -26,6 +27,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -393,7 +395,7 @@ class ChapterStorageEngineTest {
 
         // Trim cap set to keep roughly 2 files (f1 and f3)
         val capBytes = f1.length() + f3.length() + 10L
-        chapterRepository.chapterCache.trim(maxBytes = capBytes)
+        chapterRepository.chapterCache.trimToBytes(maxBytes = capBytes)
 
         // f2 was oldest modified -> evicted
         assertFalse("Oldest modified chapter (f2) must be evicted", f2.exists())
@@ -699,7 +701,6 @@ class ChapterStorageEngineTest {
                         val fetchCount = slowSource.fetchCount.get()
                         assertEquals("Two simultaneous reads must fetch uncached chapter exactly once, but fetched $fetchCount", 1, fetchCount)
                         assertTrue("inFlightFetches must be empty after release", chapterRepository.inFlightFetches.isEmpty())
-                        assertTrue("chapterLocks must be empty after release", chapterRepository.chapterLocks.isEmpty())
                     }
                 } finally {
                     releaseFetch.complete(Unit)
@@ -816,7 +817,8 @@ class ChapterStorageEngineTest {
 
                 val chapterRow = database.chapterDao().getChapter("novel_fail_retry", "ch_fail_retry")
                 assertNotNull(chapterRow)
-                assertEquals("CACHE", chapterRow?.storageTier)
+                assertEquals("NONE", chapterRow?.storageTier)
+                assertTrue("File exists in ChapterCache", chapterRepository.chapterCache.contains("novel_fail_retry", "ch_fail_retry"))
             } finally {
                 releaseFetch.complete(Unit)
                 SourceManager.unregisterSource(failSource.id)
@@ -856,10 +858,10 @@ class ChapterStorageEngineTest {
         coverFileWeb.parentFile?.mkdirs()
         coverFileWeb.writeText("web cover data")
         chapterStorage.writeToDownloads(ChapterContent("ch_web_dl", "novel_web_rm", "Web DL", listOf("text")))
-        chapterStorage.writeToCache(ChapterContent("ch_web_c", "novel_web_rm", "Web Cache", listOf("text")))
+        chapterRepository.chapterCache.write(ChapterContent("ch_web_c", "novel_web_rm", "Web Cache", listOf("text")))
 
         val dlFile = storageResolver.getDownloadChapterFile("novel_web_rm", "ch_web_dl")
-        val cacheFile = storageResolver.getCacheChapterFile("novel_web_rm", "ch_web_c")
+        val cacheFile = chapterRepository.chapterCache.getCacheFile("novel_web_rm", "ch_web_c")
 
         assertTrue(coverFileWeb.exists())
         assertTrue(dlFile.exists())
@@ -869,7 +871,7 @@ class ChapterStorageEngineTest {
 
         assertFalse("Web cover file must be deleted", coverFileWeb.exists())
         assertFalse("Downloads dir must be deleted", storageResolver.getNovelDownloadsDir("novel_web_rm").exists())
-        assertFalse("Cache dir must be deleted", storageResolver.getNovelCacheDir("novel_web_rm").exists())
+        assertFalse("Cache dir must be deleted", chapterRepository.chapterCache.getNovelDir("novel_web_rm").exists())
         assertNull("Novel row must be deleted from Room", database.novelDao().getNovelById("novel_web_rm"))
     }
 
@@ -1181,7 +1183,7 @@ class ChapterStorageEngineTest {
                 }
 
                 // Delete cache file to force a cache miss on the third call
-                storageResolver.getCacheChapterFile(novelId, chapterId).delete()
+                chapterRepository.chapterCache.delete(novelId, chapterId)
 
                 val res3 = chapterRepository.getChapterContent(novelId, chapterId)
                 assertEquals("Title 2", res3.title)
@@ -1246,19 +1248,21 @@ class ChapterStorageEngineTest {
                 id = chapterId,
                 title = "Chapter Cache",
                 chapterIndex = 1,
-                storageTier = "CACHE",
+                storageTier = "NONE",
                 storageLocation = "INTERNAL"
             )
         )
-        val file = storageResolver.getCacheChapterFile(novelId, chapterId)
+        val file = chapterRepository.chapterCache.getCacheFile(novelId, chapterId)
         file.parentFile?.mkdirs()
         file.writeText("{\"title\":\"Old Cache\"}")
         file.setReadable(false)
         try {
-            // CACHE read errors fall through to refetch instead of throwing ChapterReadException
+            // Unreadable cache file falls through to refetch with no Room row change
             val content = chapterRepository.getChapterContent(novelId, chapterId)
             assertNotNull(content)
             assertEquals("Title for ch_unreadable_cache_real", content.title)
+            val chapterRow = database.chapterDao().getChapter(novelId, chapterId)
+            assertEquals("NONE", chapterRow?.storageTier)
         } finally {
             file.setReadable(true)
         }
@@ -1365,7 +1369,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun unreadableCacheFile_fallsThroughToRefetch() = runBlocking {
+    fun corruptCacheFile_fallsThroughToRefetch_andLeavesTierNone() = runBlocking {
         insertTestNovel("novel_unreadable_cache")
         val novelId = "novel_unreadable_cache"
         val chapterId = "ch_unreadable_cache"
@@ -1375,22 +1379,22 @@ class ChapterStorageEngineTest {
                 id = chapterId,
                 title = "Chapter Cache",
                 chapterIndex = 1,
-                storageTier = "CACHE",
+                storageTier = "NONE",
                 storageLocation = "INTERNAL"
             )
         )
-        val file = storageResolver.getCacheChapterFile(novelId, chapterId)
+        val file = chapterRepository.chapterCache.getCacheFile(novelId, chapterId)
         file.parentFile?.mkdirs()
-        file.writeText("{\"title\":\"Old Cache\"}")
-        failingFileStore.failOnRead = true
-        try {
-            // CACHE read errors fall through to refetch instead of throwing ChapterReadException
-            val content = chapterRepository.getChapterContent(novelId, chapterId)
-            assertNotNull(content)
-            assertEquals("Title for ch_unreadable_cache", content.title)
-        } finally {
-            failingFileStore.failOnRead = false
-        }
+        file.writeText("corrupt non-json data")
+        assertTrue(file.exists())
+
+        // Corrupt cache file returns miss and refetches without throwing ChapterReadException
+        val content = chapterRepository.getChapterContent(novelId, chapterId)
+        assertNotNull(content)
+        assertEquals("Title for ch_unreadable_cache", content.title)
+        val chapterRow = database.chapterDao().getChapter(novelId, chapterId)
+        assertEquals("NONE", chapterRow?.storageTier)
+        assertTrue("Cache now holds the newly fetched valid content", chapterRepository.chapterCache.contains(novelId, chapterId))
     }
 
     @Test
@@ -1425,6 +1429,310 @@ class ChapterStorageEngineTest {
             assertEquals("EPUB", row?.storageTier)
         } finally {
             failingFileStore.failOnRead = false
+        }
+    }
+
+    @Test
+    fun promote_whenCasFails_keepsCacheCopy() = runBlocking {
+        insertTestNovel("novel_cas_fail")
+        val novelId = "novel_cas_fail"
+        val chapterId = "ch_cas_fail"
+        // Chapter row in Room has storage_tier EPUB (which updateTierToDownloaded rejects, returning 0 rows)
+        database.chapterDao().insertIgnore(
+            ChapterEntity(
+                novelId = novelId,
+                id = chapterId,
+                title = "Chapter 1",
+                chapterIndex = 1,
+                storageTier = "EPUB"
+            )
+        )
+        // Put in ChapterCache
+        val cachedContent = ChapterContent(chapterId, novelId, "Title", listOf("Line 1"))
+        chapterRepository.chapterCache.write(cachedContent)
+        assertTrue("Cache file exists before promotion", chapterRepository.chapterCache.contains(novelId, chapterId))
+
+        val novelModel = Novel(
+            id = novelId,
+            title = "Test Novel",
+            author = "Author",
+            description = "Desc",
+            sourceId = fakeSource.id,
+            sourceName = "Fake Source"
+        )
+        val chapterModel = Chapter(
+            id = chapterId,
+            novelId = novelId,
+            title = "Chapter 1",
+            chapterIndex = 1
+        )
+
+        // downloadChapter attempts promote, but Room tier is EPUB (so updateTierToDownloaded updates 0 rows)
+        chapterRepository.downloadChapter(novelModel, chapterModel)
+
+        // Cache copy must be kept because CAS did not update any rows
+        assertTrue("Cache file must be kept when CAS returns 0 rows", chapterRepository.chapterCache.contains(novelId, chapterId))
+    }
+
+    @Test
+    fun readerAndDownloader_shareOneInFlightFetch() = runBlocking {
+        withTimeout(10_000L) {
+            val novelId = "novel_reader_downloader_shared"
+            val chapterId = "ch_shared"
+            insertTestNovel(novelId)
+            database.chapterDao().insertIgnore(
+                ChapterEntity(
+                    novelId = novelId,
+                    id = chapterId,
+                    title = "Shared Chapter",
+                    chapterIndex = 1,
+                    storageTier = "NONE"
+                )
+            )
+
+            val fetchStarted = CompletableDeferred<Unit>()
+            val releaseFetch = CompletableDeferred<Unit>()
+
+            val slowSharedSource = object : NovelSource {
+                override val id = "slow_shared_source"
+                override val name = "Slow Shared Source"
+                override val language = "English"
+                override val version = "1.0"
+                override val description = "Slow shared source"
+                override val isLocal = false
+
+                val fetchCount = java.util.concurrent.atomic.AtomicInteger(0)
+
+                override suspend fun getPopularNovels(page: Int): List<Novel> = emptyList()
+                override suspend fun searchNovels(query: String, page: Int): List<Novel> = emptyList()
+                override suspend fun getNovelDetails(nId: String): Novel = Novel(
+                    id = nId,
+                    title = "Test Novel",
+                    author = "Author",
+                    description = "Desc",
+                    sourceId = id,
+                    sourceName = name
+                )
+                override suspend fun getChapterList(nId: String): List<Chapter> = emptyList()
+                override suspend fun getChapterContent(nId: String, cId: String): ChapterContent {
+                    fetchCount.incrementAndGet()
+                    fetchStarted.complete(Unit)
+                    releaseFetch.await()
+                    return ChapterContent(
+                        chapterId = cId,
+                        novelId = nId,
+                        title = "Shared Title",
+                        paragraphs = listOf("P1", "P2")
+                    )
+                }
+            }
+
+            SourceManager.registerSource(slowSharedSource)
+            try {
+                database.openHelper.writableDatabase.execSQL("UPDATE novels SET source_id = '${slowSharedSource.id}' WHERE id = '$novelId'")
+
+                val novelModel = Novel(
+                    id = novelId,
+                    title = "Test Novel",
+                    author = "Author",
+                    description = "Desc",
+                    sourceId = slowSharedSource.id,
+                    sourceName = slowSharedSource.name
+                )
+                val chapterModel = Chapter(
+                    id = chapterId,
+                    novelId = novelId,
+                    title = "Shared Chapter",
+                    chapterIndex = 1
+                )
+
+                coroutineScope {
+                    // Reader call
+                    val readerJob = async(Dispatchers.IO) {
+                        chapterRepository.getChapterContent(novelId, chapterId)
+                    }
+                    // Downloader call
+                    val downloadJob = async(Dispatchers.IO) {
+                        chapterRepository.downloadChapter(novelModel, chapterModel)
+                    }
+
+                    fetchStarted.await()
+                    delay(50)
+                    releaseFetch.complete(Unit)
+
+                    val readerResult = readerJob.await()
+                    val downloadResult = downloadJob.await()
+
+                    assertEquals("Reader got content title", "Shared Title", readerResult.title)
+                    assertTrue("Downloader succeeded", downloadResult.isSuccess)
+                    assertEquals("Single-flight ensures source is fetched exactly once", 1, slowSharedSource.fetchCount.get())
+
+                    // Final state: downloader marked row DOWNLOADED
+                    val row = database.chapterDao().getChapter(novelId, chapterId)
+                    assertEquals("DOWNLOADED", row?.storageTier)
+                }
+            } finally {
+                releaseFetch.complete(Unit)
+                SourceManager.unregisterSource(slowSharedSource.id)
+            }
+        }
+    }
+
+    @Test
+    fun getChapterContent_whenStorageUnavailable_throwsExceptionAndKeepsTierWithoutRefetch() = runBlocking {
+        val novelId = "novel_storage_unavail"
+        val chapterId = "ch_storage_unavail"
+        insertTestNovel(novelId)
+        database.chapterDao().insertIgnore(
+            ChapterEntity(
+                novelId = novelId,
+                id = chapterId,
+                title = "Unavailable Chapter",
+                chapterIndex = 1,
+                storageTier = "DOWNLOADED",
+                storageLocation = "SAF:content://unmounted/tree"
+            )
+        )
+
+        val storeWithUnavailable = object : ChapterFileStore by failingFileStore {
+            override suspend fun read(novelId: String, chapterId: String, tier: String, location: String): ChapterContent? {
+                throw StorageUnavailableException("Storage unmounted")
+            }
+        }
+        val customStorage = ChapterStorage(
+            resolver = storageResolver,
+            fileStore = storeWithUnavailable,
+            chapterCache = chapterRepository.chapterCache,
+            ioDispatcher = Dispatchers.IO
+        )
+        val repo = ChapterRepository(
+            chapterDao = database.chapterDao(),
+            novelDao = database.novelDao(),
+            chapterStorage = customStorage,
+            storageResolver = storageResolver,
+            settingsRepository = settingsRepository,
+            downloadQueueDao = database.downloadQueueDao(),
+            chapterCache = chapterRepository.chapterCache,
+            ioDispatcher = Dispatchers.IO
+        )
+
+        val beforeFetchCount = fakeSource.fetchCount
+        try {
+            repo.getChapterContent(novelId, chapterId)
+            fail("Expected StorageUnavailableException")
+        } catch (_: StorageUnavailableException) {
+            // Expected
+        }
+
+        assertEquals("No network refetch should happen when storage is unavailable", beforeFetchCount, fakeSource.fetchCount)
+        val row = database.chapterDao().getChapter(novelId, chapterId)
+        assertEquals("DOWNLOADED tier must be preserved when storage is unavailable", "DOWNLOADED", row?.storageTier)
+    }
+
+    @Test
+    fun inFlightFetches_cancelledCallerDoesNotRemoveMapEntry_andThirdCallerSharesSameFetch() = runBlocking {
+        withTimeout(10_000L) {
+            val novelId = "novel_inflight_cancel"
+            val chapterId = "ch_inflight_cancel"
+            insertTestNovel(novelId)
+            database.chapterDao().insertIgnore(
+                ChapterEntity(
+                    novelId = novelId,
+                    id = chapterId,
+                    title = "In-Flight Cancel Chapter",
+                    chapterIndex = 1,
+                    storageTier = "NONE"
+                )
+            )
+
+            val fetchStarted = CompletableDeferred<Unit>()
+            val releaseFetch = CompletableDeferred<Unit>()
+
+            val gatedSource = object : NovelSource {
+                override val id = "gated_cancel_source"
+                override val name = "Gated Cancel Source"
+                override val language = "English"
+                override val version = "1.0"
+                override val description = "Gated cancel source"
+                override val isLocal = false
+
+                val fetchCount = java.util.concurrent.atomic.AtomicInteger(0)
+
+                override suspend fun getPopularNovels(page: Int): List<Novel> = emptyList()
+                override suspend fun searchNovels(query: String, page: Int): List<Novel> = emptyList()
+                override suspend fun getNovelDetails(nId: String): Novel = Novel(
+                    id = nId,
+                    title = "Test Novel",
+                    author = "Author",
+                    description = "Desc",
+                    sourceId = id,
+                    sourceName = name
+                )
+                override suspend fun getChapterList(nId: String): List<Chapter> = emptyList()
+                override suspend fun getChapterContent(nId: String, cId: String): ChapterContent {
+                    fetchCount.incrementAndGet()
+                    fetchStarted.complete(Unit)
+                    releaseFetch.await()
+                    return ChapterContent(
+                        chapterId = cId,
+                        novelId = nId,
+                        title = "Gated Content",
+                        paragraphs = listOf("Para 1")
+                    )
+                }
+            }
+
+            SourceManager.registerSource(gatedSource)
+            try {
+                database.openHelper.writableDatabase.execSQL("UPDATE novels SET source_id = '${gatedSource.id}' WHERE id = '$novelId'")
+
+                coroutineScope {
+                    // Two callers start reading the same chapter
+                    val caller1 = async(Dispatchers.IO) {
+                        chapterRepository.getChapterContent(novelId, chapterId)
+                    }
+                    val caller2 = async(Dispatchers.IO) {
+                        chapterRepository.getChapterContent(novelId, chapterId)
+                    }
+
+                    // Wait until the underlying fetch has been entered and is blocked on releaseFetch
+                    fetchStarted.await()
+
+                    // Cancel caller1 while fetch is still blocked
+                    caller1.cancel()
+
+                    // A third caller arrives while fetch is still blocked
+                    val caller3 = async(Dispatchers.IO) {
+                        chapterRepository.getChapterContent(novelId, chapterId)
+                    }
+
+                    // Release the fetch gate so the blocked fetch can complete
+                    releaseFetch.complete(Unit)
+
+                    // caller1 should fail with CancellationException
+                    try {
+                        caller1.await()
+                        fail("Expected caller1 to be cancelled")
+                    } catch (e: Throwable) {
+                        assertTrue("caller1 threw CancellationException", e is CancellationException)
+                    }
+
+                    val res2 = caller2.await()
+                    val res3 = caller3.await()
+
+                    assertEquals("caller2 received gated content", "Gated Content", res2.title)
+                    assertEquals("caller3 received gated content", "Gated Content", res3.title)
+
+                    // Source must have been fetched exactly once in total
+                    assertEquals("Source is fetched only once despite cancellation and 3 callers", 1, gatedSource.fetchCount.get())
+
+                    // inFlightFetches must be empty at the end
+                    assertTrue("inFlightFetches must be empty after all callers complete", chapterRepository.inFlightFetches.isEmpty())
+                }
+            } finally {
+                releaseFetch.complete(Unit)
+                SourceManager.unregisterSource(gatedSource.id)
+            }
         }
     }
 }

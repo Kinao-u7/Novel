@@ -130,7 +130,7 @@ class ChapterCache(
      * Writes chapter content to a temporary file (.tmp) in the same directory, then renames.
      * Updates running size estimate.
      */
-    suspend fun write(content: ChapterContent): Unit = withContext(ioDispatcher) {
+    suspend fun write(content: ChapterContent): File = withContext(ioDispatcher) {
         initSizeIfNeeded()
         val targetFile = getCacheFile(content.novelId, content.chapterId)
         val parent = targetFile.parentFile ?: getNovelDir(content.novelId)
@@ -167,6 +167,7 @@ class ChapterCache(
             val newLen = targetFile.length()
             targetFile.setLastModified(System.currentTimeMillis())
             runningSizeEstimate.addAndGet(newLen - prevLen)
+            targetFile
         } catch (e: Exception) {
             if (tempFile.exists()) tempFile.delete()
             throw e
@@ -238,10 +239,12 @@ class ChapterCache(
      * Deletes stale .tmp files (> 10m).
      * Evicts oldest modified .json files until total size is <= capMb.
      */
-    suspend fun trim(capMb: Int): Long = withContext(ioDispatcher) {
-        val capBytes = capMb.toLong() * 1024L * 1024L
+    suspend fun trim(capMb: Int): Long =
+        trimToBytes(maxBytes = capMb.toLong() * 1024L * 1024L)
+
+    internal suspend fun trimToBytes(maxBytes: Long): Long = withContext(ioDispatcher) {
         val currentEstimate = initSizeIfNeeded()
-        if (currentEstimate <= capBytes) {
+        if (currentEstimate <= maxBytes) {
             return@withContext 0L
         }
 
@@ -272,7 +275,7 @@ class ChapterCache(
                 }
             }
 
-            if (totalBytes <= capBytes) {
+            if (totalBytes <= maxBytes) {
                 runningSizeEstimate.set(totalBytes)
                 return@withLock 0L
             }
@@ -282,7 +285,7 @@ class ChapterCache(
 
             var bytesFreed = 0L
             val iterator = validFiles.iterator()
-            while (iterator.hasNext() && totalBytes > capBytes) {
+            while (iterator.hasNext() && totalBytes > maxBytes) {
                 val file = iterator.next()
                 val len = file.length()
                 if (file.delete()) {

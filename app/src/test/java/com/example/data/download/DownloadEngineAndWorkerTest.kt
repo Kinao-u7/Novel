@@ -975,7 +975,7 @@ class DownloadEngineAndWorkerTest {
             assertFalse(repository.chapterCache.contains(novelId, "ch_1"))
 
             // Cache trim cannot touch DOWNLOADED files
-            repository.chapterCache.trim(maxBytes = 0)
+            repository.chapterCache.trimToBytes(maxBytes = 0L)
             val finalRow = chapterDao.getChapter(novelId, "ch_1")
             assertEquals("DOWNLOADED", finalRow?.storageTier)
             assertTrue(repository.storageResolver.getDownloadChapterFile(novelId, "ch_1").exists())

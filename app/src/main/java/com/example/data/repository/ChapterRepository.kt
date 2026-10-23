@@ -1,5 +1,6 @@
 package com.example.data.repository
 
+import androidx.annotation.VisibleForTesting
 import com.example.data.download.DownloadCoordinator
 import com.example.data.download.DownloadResult
 import com.example.data.local.db.dao.ChapterDao
@@ -76,7 +77,12 @@ class ChapterRepository(
      * Shared in-flight network fetch map for single-flight deduplication.
      * Shared between online reader fetches and download tasks for the same chapter.
      */
+    @VisibleForTesting
     internal val inFlightNetworkFetches = ConcurrentHashMap<Pair<String, String>, Deferred<ChapterContent>>()
+
+    @VisibleForTesting
+    internal val inFlightFetches: ConcurrentHashMap<Pair<String, String>, Deferred<ChapterContent>>
+        get() = inFlightNetworkFetches
 
     /**
      * Repository-level scope for background fetches and tasks.
@@ -160,7 +166,13 @@ class ChapterRepository(
             candidate.start()
             candidate
         }
-        return deferred.await()
+        return try {
+            deferred.await()
+        } finally {
+            if (deferred.isCompleted) {
+                inFlightNetworkFetches.remove(key, deferred)
+            }
+        }
     }
 
     /**
@@ -244,7 +256,7 @@ class ChapterRepository(
                 val capMb = settingsRepository.downloadSettings.value.cacheSizeCapMb
                 repositoryScope.launch {
                     try {
-                        chapterCache.trim(capMb)
+                        chapterCache.trim(capMb = capMb)
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
                     }

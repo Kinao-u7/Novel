@@ -335,8 +335,6 @@ class SafChapterFileStore(
 
     override suspend fun writeEpub(content: ChapterContent): File? = null
 
-    override suspend fun promoteCacheToDownload(novelId: String, chapterId: String, targetLocation: String): Boolean = false
-
     override suspend fun deleteChapter(novelId: String, chapterId: String, tier: String, location: String): Boolean = withContext(ioDispatcher) {
         if (!isLocationReachable(location)) return@withContext false
         val treeUriStr = location.removePrefix("SAF:")
