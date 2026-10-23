@@ -8,6 +8,7 @@ import com.example.data.local.db.NovelDatabase
 import com.example.data.local.db.NovelDatabaseHolder
 import com.example.data.local.db.entity.ChapterEntity
 import com.example.data.local.db.entity.NovelEntity
+import com.example.data.local.storage.ChapterCache
 import com.example.data.local.storage.ChapterFileStore
 import com.example.data.local.storage.ChapterReadException
 import com.example.data.local.storage.ChapterStorage
@@ -113,18 +114,23 @@ class ChapterStorageEngineTest {
 
     @Before
     fun setup() {
+        com.example.data.download.DownloadCoordinator.resetInstanceForTesting()
         context = ApplicationProvider.getApplicationContext()
         database = Room.inMemoryDatabaseBuilder(context, NovelDatabase::class.java)
             .allowMainThreadQueries()
             .build()
         NovelDatabaseHolder.setInstanceForTesting(database)
 
-        storageResolver = StorageResolver(tempFolder.root)
-        val internalStore = InternalChapterFileStore(storageResolver, Dispatchers.IO)
+        val filesDir = tempFolder.newFolder("files")
+        val cacheDir = tempFolder.newFolder("cache")
+        storageResolver = StorageResolver(filesDir = filesDir, cacheDir = cacheDir)
+        val internalStore = InternalChapterFileStore(resolver = storageResolver, ioDispatcher = Dispatchers.IO)
         failingFileStore = FakeFailingFileStore(internalStore)
+        val chapterCache = ChapterCache(cacheDir = cacheDir, ioDispatcher = Dispatchers.IO)
         chapterStorage = ChapterStorage(
             resolver = storageResolver,
             fileStore = failingFileStore,
+            chapterCache = chapterCache,
             ioDispatcher = Dispatchers.IO
         )
         settingsRepository = SettingsRepository.getInstance(context)
@@ -134,7 +140,10 @@ class ChapterStorageEngineTest {
             chapterStorage = chapterStorage,
             storageResolver = storageResolver,
             settingsRepository = settingsRepository,
-            downloadQueueDao = database.downloadQueueDao()
+            downloadQueueDao = database.downloadQueueDao(),
+            downloadCoordinator = com.example.data.download.DownloadCoordinator.getInstance(),
+            chapterCache = chapterCache,
+            ioDispatcher = Dispatchers.IO
         )
         novelRepository = NovelRepository(context)
 
@@ -147,6 +156,7 @@ class ChapterStorageEngineTest {
         SourceManager.unregisterSource(fakeSource.id)
         NovelDatabaseHolder.clearInstanceForTesting()
         database.close()
+        com.example.data.download.DownloadCoordinator.resetInstanceForTesting()
     }
 
     private fun testNovel(
@@ -217,7 +227,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun read_createsFileInCache_withTierCache_andNeverDownloaded() = runBlocking {
+    fun read_createsFileInCache_leavesTierNone_andNeverDownloaded() = runBlocking {
         insertTestNovel("novel_1")
         database.chapterDao().insertIgnore(
             ChapterEntity(
@@ -233,22 +243,20 @@ class ChapterStorageEngineTest {
         assertEquals("ch_1", content.chapterId)
         assertFalse("Reading never sets isDownloaded true", content.isDownloaded)
 
-        // Cache file created under cache/chapters/{novelId}/{sha256}.json
-        val cacheFile = storageResolver.getCacheChapterFile("novel_1", "ch_1")
-        assertTrue("Cache file should exist", cacheFile.exists())
+        // Cache file created under cacheDir/chapters/{novelId}/{sha256}.json
+        assertTrue("Cache file should exist in ChapterCache", chapterRepository.chapterCache.contains("novel_1", "ch_1"))
+        val cacheFile = chapterRepository.chapterCache.getCacheFile("novel_1", "ch_1")
+        assertTrue("Cache file should exist on disk", cacheFile.exists())
 
         // Download file does NOT exist
         val downloadFile = storageResolver.getDownloadChapterFile("novel_1", "ch_1")
         assertFalse("Download file must not exist on read", downloadFile.exists())
 
-        // Room tier is CACHE, never DOWNLOADED
+        // Room tier remains NONE, untracked reader cache, never DOWNLOADED
         val row = database.chapterDao().getChapter("novel_1", "ch_1")
         assertNotNull(row)
-        assertEquals("CACHE", row!!.storageTier)
+        assertEquals("NONE", row!!.storageTier)
         assertNotEquals("DOWNLOADED", row.storageTier)
-        assertEquals("INTERNAL", row.storageLocation)
-        assertEquals(storageResolver.sha256("ch_1"), row.fileHash)
-        assertTrue(row.lastAccessedAt > 0L)
     }
 
     @Test
@@ -294,7 +302,7 @@ class ChapterStorageEngineTest {
         chapterRepository.getChapterContent("novel_1", "ch_promote")
         assertEquals(1, fakeSource.fetchCount)
 
-        val cacheFile = storageResolver.getCacheChapterFile("novel_1", "ch_promote")
+        val cacheFile = chapterRepository.chapterCache.getCacheFile("novel_1", "ch_promote")
         val downloadFile = storageResolver.getDownloadChapterFile("novel_1", "ch_promote")
         assertTrue("Cache file exists before promotion", cacheFile.exists())
         assertFalse("Download file does not exist before promotion", downloadFile.exists())
@@ -319,7 +327,7 @@ class ChapterStorageEngineTest {
         assertTrue(result.isSuccess)
         assertEquals("No network fetch when promoting cached file", 1, fakeSource.fetchCount)
 
-        // Cache file was moved; download file exists
+        // Cache file was removed; download file exists
         assertFalse("Cache file removed after promotion", cacheFile.exists())
         assertTrue("Download file exists after promotion", downloadFile.exists())
 
@@ -330,76 +338,93 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun lruEviction_orderAndSizeCap() = runBlocking {
-        insertTestNovel("novel_lru")
-
-        // Insert 3 CACHE chapters with different lastAccessedAt and chapterIndex
-        val ch1 = ChapterEntity(
-            novelId = "novel_lru",
-            id = "ch_old_1",
-            title = "Old Chapter 1",
-            chapterIndex = 1,
-            storageTier = "CACHE",
-            lastAccessedAt = 1000L
+    fun chapterCache_writeAndRead_atomicRenameAndTempFilePlacement() = runBlocking {
+        val novelId = "novel_cache_atomic"
+        val chapterId = "ch_cache_atomic"
+        val content = ChapterContent(
+            chapterId = chapterId,
+            novelId = novelId,
+            title = "Atomic Chapter",
+            paragraphs = listOf("Line 1", "Line 2")
         )
-        val ch2 = ChapterEntity(
-            novelId = "novel_lru",
-            id = "ch_old_2",
-            title = "Old Chapter 2 (tie-break)",
-            chapterIndex = 2,
-            storageTier = "CACHE",
-            lastAccessedAt = 1000L // same timestamp as ch1, higher chapterIndex
-        )
-        val ch3 = ChapterEntity(
-            novelId = "novel_lru",
-            id = "ch_recent",
-            title = "Recent Chapter",
-            chapterIndex = 3,
-            storageTier = "CACHE",
-            lastAccessedAt = 5000L
-        )
-        database.chapterDao().insertIgnore(listOf(ch1, ch2, ch3))
 
-        // Write files to cache
-        chapterStorage.writeToCache(ChapterContent("ch_old_1", "novel_lru", "Old 1", listOf("P1", "P2")))
-        chapterStorage.writeToCache(ChapterContent("ch_old_2", "novel_lru", "Old 2", listOf("P1", "P2")))
-        chapterStorage.writeToCache(ChapterContent("ch_recent", "novel_lru", "Recent", listOf("P1", "P2")))
+        val writtenFile = chapterRepository.chapterCache.write(content)
+        assertNotNull(writtenFile)
+        assertTrue(writtenFile!!.exists())
+        assertEquals(chapterRepository.chapterCache.getCacheFile(novelId, chapterId).absolutePath, writtenFile.absolutePath)
 
-        assertTrue(storageResolver.getCacheChapterFile("novel_lru", "ch_old_1").exists())
-        assertTrue(storageResolver.getCacheChapterFile("novel_lru", "ch_old_2").exists())
-        assertTrue(storageResolver.getCacheChapterFile("novel_lru", "ch_recent").exists())
+        // Verify no leftover .tmp files in the directory
+        val dir = writtenFile.parentFile
+        val tmpFiles = dir?.listFiles { f -> f.name.endsWith(".tmp") } ?: emptyArray()
+        assertEquals("No temp files should remain after atomic rename", 0, tmpFiles.size)
 
-        // Set cache size cap to 0 MB to trigger eviction
-        val initialSettings = settingsRepository.downloadSettings.value
-        settingsRepository.updateDownloadSettingsSync(initialSettings.copy(cacheSizeCapMb = 0))
-
-        try {
-            // Check LRU query order: ch_old_1 (1000L, idx 1) before ch_old_2 (1000L, idx 2) before ch_recent (5000L, idx 3)
-            val lruList = database.chapterDao().getCacheChaptersLru()
-            assertEquals("ch_old_1", lruList[0].id)
-            assertEquals("ch_old_2", lruList[1].id)
-            assertEquals("ch_recent", lruList[2].id)
-
-            chapterRepository.runEviction()
-
-            // All should be evicted when cap is 0
-            val row1 = database.chapterDao().getChapter("novel_lru", "ch_old_1")
-            val row2 = database.chapterDao().getChapter("novel_lru", "ch_old_2")
-            val row3 = database.chapterDao().getChapter("novel_lru", "ch_recent")
-            assertEquals("NONE", row1?.storageTier)
-            assertEquals("NONE", row2?.storageTier)
-            assertEquals("NONE", row3?.storageTier)
-
-            assertFalse(storageResolver.getCacheChapterFile("novel_lru", "ch_old_1").exists())
-            assertFalse(storageResolver.getCacheChapterFile("novel_lru", "ch_old_2").exists())
-            assertFalse(storageResolver.getCacheChapterFile("novel_lru", "ch_recent").exists())
-        } finally {
-            settingsRepository.updateDownloadSettingsSync(initialSettings)
-        }
+        // Read back content
+        val readBack = chapterRepository.chapterCache.read(novelId, chapterId)
+        assertNotNull(readBack)
+        assertEquals(content.title, readBack?.title)
+        assertEquals(content.paragraphs, readBack?.paragraphs)
     }
 
     @Test
-    fun epubAndDownloaded_neverEvictedOrDeletedByClearCache() = runBlocking {
+    fun chapterCache_trim_evictsOldestModifiedUnderCap_andCleansStaleTempFiles() = runBlocking {
+        val novelId = "novel_trim"
+        val c1 = ChapterContent("ch_1", novelId, "C1", listOf("Some text 1"))
+        val c2 = ChapterContent("ch_2", novelId, "C2", listOf("Some text 2"))
+        val c3 = ChapterContent("ch_3", novelId, "C3", listOf("Some text 3"))
+
+        val f1 = chapterRepository.chapterCache.write(c1)!!
+        val f2 = chapterRepository.chapterCache.write(c2)!!
+        val f3 = chapterRepository.chapterCache.write(c3)!!
+
+        val now = System.currentTimeMillis()
+        f1.setLastModified(now - 10_000L)
+        f2.setLastModified(now - 20_000L) // oldest
+        f3.setLastModified(now - 5_000L)  // newest
+
+        // Create a stale .tmp file (>10 minutes) and a recent .tmp file (<10 minutes) in the novel cache folder
+        val novelCacheDir = f1.parentFile!!
+        val staleTmp = File(novelCacheDir, "stale_upload.tmp")
+        staleTmp.writeText("stale temp")
+        staleTmp.setLastModified(now - 15 * 60 * 1000L)
+
+        val recentTmp = File(novelCacheDir, "recent_upload.tmp")
+        recentTmp.writeText("recent temp")
+        recentTmp.setLastModified(now - 2 * 60 * 1000L)
+
+        // Trim cap set to keep roughly 2 files (f1 and f3)
+        val capBytes = f1.length() + f3.length() + 10L
+        chapterRepository.chapterCache.trim(maxBytes = capBytes)
+
+        // f2 was oldest modified -> evicted
+        assertFalse("Oldest modified chapter (f2) must be evicted", f2.exists())
+        assertTrue("Newer chapter (f1) must be preserved", f1.exists())
+        assertTrue("Newest chapter (f3) must be preserved", f3.exists())
+
+        // Stale temp file must be cleaned up on trim
+        assertFalse("Stale temp file older than 10m must be deleted on trim", staleTmp.exists())
+        // Recent temp file must be preserved
+        assertTrue("Recent temp file newer than 10m must be preserved", recentTmp.exists())
+    }
+
+    @Test
+    fun chapterCache_read_refreshesLastModifiedTimestamp() = runBlocking {
+        val novelId = "novel_refresh_mtime"
+        val chapterId = "ch_mtime"
+        val content = ChapterContent(chapterId, novelId, "Title", listOf("Paragraph"))
+        val file = chapterRepository.chapterCache.write(content)!!
+
+        val past = System.currentTimeMillis() - 60_000L
+        file.setLastModified(past)
+        assertEquals(past, file.lastModified())
+
+        // Reading refreshes lastModified
+        val readBack = chapterRepository.chapterCache.read(novelId, chapterId)
+        assertNotNull(readBack)
+        assertTrue("Reading cache must refresh file modified time", file.lastModified() > past)
+    }
+
+    @Test
+    fun chapterCache_clear_deletesOnlyCacheFiles_neverTouchesDownloadsOrEpub() = runBlocking {
         insertTestNovel("novel_protect", isEpub = false)
 
         val chEpub = ChapterEntity(
@@ -407,68 +432,40 @@ class ChapterStorageEngineTest {
             id = "ch_epub",
             title = "EPUB Ch",
             chapterIndex = 1,
-            storageTier = "EPUB",
-            lastAccessedAt = 100L
+            storageTier = "EPUB"
         )
         val chDl = ChapterEntity(
             novelId = "novel_protect",
             id = "ch_dl",
             title = "DL Ch",
             chapterIndex = 2,
-            storageTier = "DOWNLOADED",
-            lastAccessedAt = 100L
+            storageTier = "DOWNLOADED"
         )
         val chCache = ChapterEntity(
             novelId = "novel_protect",
             id = "ch_cache",
             title = "Cache Ch",
             chapterIndex = 3,
-            storageTier = "CACHE",
-            lastAccessedAt = 100L
+            storageTier = "NONE"
         )
         database.chapterDao().insertIgnore(listOf(chEpub, chDl, chCache))
 
         chapterStorage.writeToEpub(ChapterContent("ch_epub", "novel_protect", "EPUB", listOf("EPUB text")))
         chapterStorage.writeToDownloads(ChapterContent("ch_dl", "novel_protect", "DL", listOf("DL text")))
-        chapterStorage.writeToCache(ChapterContent("ch_cache", "novel_protect", "Cache", listOf("Cache text")))
+        chapterRepository.chapterCache.write(ChapterContent("ch_cache", "novel_protect", "Cache", listOf("Cache text")))
 
         val epubFile = storageResolver.getEpubChapterFile("novel_protect", "ch_epub")
         val dlFile = storageResolver.getDownloadChapterFile("novel_protect", "ch_dl")
-        val cacheFile = storageResolver.getCacheChapterFile("novel_protect", "ch_cache")
+        val cacheFile = chapterRepository.chapterCache.getCacheFile("novel_protect", "ch_cache")
 
         assertTrue(epubFile.exists())
         assertTrue(dlFile.exists())
         assertTrue(cacheFile.exists())
 
-        // 1. Eviction run must NEVER evict EPUB or DOWNLOADED
-        val initialSettings = settingsRepository.downloadSettings.value
-        settingsRepository.updateDownloadSettingsSync(initialSettings.copy(cacheSizeCapMb = 0))
-        try {
-            chapterRepository.runEviction()
-
-            // Cache chapter evicted
-            assertFalse(cacheFile.exists())
-            assertEquals("NONE", database.chapterDao().getChapter("novel_protect", "ch_cache")?.storageTier)
-
-            // EPUB and DOWNLOADED remain intact
-            assertTrue("EPUB file must survive eviction", epubFile.exists())
-            assertTrue("DOWNLOADED file must survive eviction", dlFile.exists())
-            assertEquals("EPUB", database.chapterDao().getChapter("novel_protect", "ch_epub")?.storageTier)
-            assertEquals("DOWNLOADED", database.chapterDao().getChapter("novel_protect", "ch_dl")?.storageTier)
-        } finally {
-            settingsRepository.updateDownloadSettingsSync(initialSettings)
-        }
-
-        // 2. Clear cache must NEVER delete EPUB or DOWNLOADED
-        chapterStorage.writeToCache(ChapterContent("ch_cache", "novel_protect", "Cache", listOf("Cache text")))
-        database.chapterDao().updateStorageTier("novel_protect", "ch_cache", "CACHE", "INTERNAL", storageResolver.sha256("ch_cache"), 100L)
-        assertTrue(cacheFile.exists())
-
+        // Clear cache deletes cache folder only
         chapterRepository.clearChapterCache()
 
-        assertFalse(cacheFile.exists())
-        assertEquals("NONE", database.chapterDao().getChapter("novel_protect", "ch_cache")?.storageTier)
-
+        assertFalse("Cache file must be deleted by clearChapterCache", cacheFile.exists())
         assertTrue("EPUB file must survive clearChapterCache", epubFile.exists())
         assertTrue("DOWNLOADED file must survive clearChapterCache", dlFile.exists())
         assertEquals("EPUB", database.chapterDao().getChapter("novel_protect", "ch_epub")?.storageTier)
@@ -476,33 +473,78 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun readMiss_fileDeleted_resetsTierAndRefetches() = runBlocking {
+    fun chapterCache_corruptFile_isDeletedAndReturnsMiss() = runBlocking {
+        val novelId = "novel_corrupt_cache"
+        val chapterId = "ch_corrupt"
+        val file = chapterRepository.chapterCache.getCacheFile(novelId, chapterId)
+        file.parentFile?.mkdirs()
+        file.writeText("not valid json content at all")
+        assertTrue(file.exists())
+
+        val read = chapterRepository.chapterCache.read(novelId, chapterId)
+        assertNull("Corrupt cache file must return null (miss)", read)
+        assertFalse("Corrupt cache file must be deleted upon miss", file.exists())
+    }
+
+    @Test
+    fun chapterCache_fileNotFoundDuringRead_returnsMissNotError() = runBlocking {
+        val read = chapterRepository.chapterCache.read("non_existent_novel", "non_existent_ch")
+        assertNull("Missing cache file must return null without error", read)
+    }
+
+    @Test
+    fun chapterCache_concurrentWritesOfSameKey_areSafe() = runBlocking {
+        val novelId = "novel_concurrent_cache"
+        val chapterId = "ch_concurrent"
+
+        coroutineScope {
+            (1..10).map { idx ->
+                async(Dispatchers.IO) {
+                    val content = ChapterContent(
+                        chapterId = chapterId,
+                        novelId = novelId,
+                        title = "Title $idx",
+                        paragraphs = listOf("Paragraph $idx")
+                    )
+                    chapterRepository.chapterCache.write(content)
+                }
+            }.forEach { it.await() }
+        }
+
+        val read = chapterRepository.chapterCache.read(novelId, chapterId)
+        assertNotNull("Concurrent writes must result in valid readable file", read)
+        assertEquals(chapterId, read?.chapterId)
+    }
+
+    @Test
+    fun reader_missingDownloaded_selfHealsAsDownloadedInOriginalLocation() = runBlocking {
         insertTestNovel("novel_1")
-        // Row claims to be CACHE, but no file exists on disk
         database.chapterDao().insertIgnore(
             ChapterEntity(
                 novelId = "novel_1",
-                id = "ch_missing_file",
+                id = "ch_missing_dl",
                 title = "Chapter Title",
                 chapterIndex = 1,
-                storageTier = "CACHE",
-                fileHash = "fakehash",
-                lastAccessedAt = 500L
+                storageTier = "DOWNLOADED",
+                storageLocation = "INTERNAL",
+                fileHash = "fakehash"
             )
         )
 
-        val cacheFile = storageResolver.getCacheChapterFile("novel_1", "ch_missing_file")
-        assertFalse(cacheFile.exists())
+        val dlFile = storageResolver.getDownloadChapterFile("novel_1", "ch_missing_dl")
+        assertFalse(dlFile.exists())
         assertEquals(0, fakeSource.fetchCount)
 
-        // Reading detects missing file, resets tier to NONE, refetches from source, writes to cache
-        val content = chapterRepository.getChapterContent("novel_1", "ch_missing_file")
+        // Reading detects missing downloaded file, refetches from source, self-heals back as DOWNLOADED
+        val content = chapterRepository.getChapterContent("novel_1", "ch_missing_dl")
         assertEquals(1, fakeSource.fetchCount)
-        assertEquals("ch_missing_file", content.chapterId)
+        assertEquals("ch_missing_dl", content.chapterId)
 
-        assertTrue("Cache file recreated on miss refetch", cacheFile.exists())
-        val row = database.chapterDao().getChapter("novel_1", "ch_missing_file")
-        assertEquals("CACHE", row?.storageTier)
+        assertTrue("Download file recreated on miss refetch", dlFile.exists())
+        val row = database.chapterDao().getChapter("novel_1", "ch_missing_dl")
+        assertEquals("DOWNLOADED", row?.storageTier)
+        assertEquals(storageResolver.sha256("ch_missing_dl"), row?.fileHash)
+    }
         assertEquals(storageResolver.sha256("ch_missing_file"), row?.fileHash)
     }
 

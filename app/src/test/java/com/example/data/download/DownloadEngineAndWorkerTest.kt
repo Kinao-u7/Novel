@@ -118,6 +118,7 @@ class DownloadEngineAndWorkerTest {
 
     @Before
     fun setup() {
+        DownloadCoordinator.resetInstanceForTesting()
         context = ApplicationProvider.getApplicationContext()
 
         val config = Configuration.Builder()
@@ -155,6 +156,7 @@ class DownloadEngineAndWorkerTest {
         NovelRepository.resetInstanceForTesting()
         NovelDatabaseHolder.clearInstanceForTesting()
         database.close()
+        DownloadCoordinator.resetInstanceForTesting()
     }
 
     private suspend fun insertTestNovelAndChapters(novelId: String = "nov_1", chapterCount: Int = 3) {
@@ -373,8 +375,7 @@ class DownloadEngineAndWorkerTest {
                 id = "ch_3",
                 storageTier = "DOWNLOADED",
                 storageLocation = "INTERNAL",
-                fileHash = "hash3",
-                lastAccessedAt = System.currentTimeMillis()
+                fileHash = "hash3"
             )
 
             // Pre-enqueue chapter 4 into queue
@@ -730,8 +731,7 @@ class DownloadEngineAndWorkerTest {
                 id = "ch_1",
                 storageTier = "DOWNLOADED",
                 storageLocation = "INTERNAL",
-                fileHash = "hash1",
-                lastAccessedAt = System.currentTimeMillis()
+                fileHash = "hash1"
             )
 
             downloadEngine.enqueueChapters(novelId, listOf("ch_1", "ch_2"))
@@ -945,30 +945,37 @@ class DownloadEngineAndWorkerTest {
     // --- 7. RACE CONDITIONS & COORDINATOR TESTS ---
 
     @Test
-    fun evictionVsPromote_casPreventsEvictionOverwritingDownloaded() = runTest {
+    fun promoteFromCache_copiesToDownloads_andCasSetsDownloaded() = runTest {
         withTimeout(10_000) {
             val novelId = "nov_evict_promote"
             insertTestNovelAndChapters(novelId, 1)
 
-            // Put chapter into CACHE
-            repository.chapterRepository.getChapterContent(novelId, "ch_1")
-            val cacheRow = chapterDao.getChapter(novelId, "ch_1")
-            assertEquals("CACHE", cacheRow?.storageTier)
+            // Read chapter into untracked ChapterCache
+            fakeSource.callTimes.clear()
+            val readContent = repository.chapterRepository.getChapterContent(novelId, "ch_1")
+            assertNotNull(readContent)
+            assertEquals(1, fakeSource.callTimes.size)
+            assertTrue(repository.chapterCache.contains(novelId, "ch_1"))
+
+            // Room row remains NONE
+            val rowBefore = chapterDao.getChapter(novelId, "ch_1")
+            assertEquals("NONE", rowBefore?.storageTier)
 
             val novel = novelDao.getNovelById(novelId)!!.toModel()
             val chapter = chapterDao.getChapterById(novelId, "ch_1")!!.toModel()
 
-            // Promote chapter to DOWNLOADED
+            // Promote chapter to DOWNLOADED (copies cache file to downloads, CAS to DOWNLOADED, no network)
+            fakeSource.callTimes.clear()
             val dlResult = repository.chapterRepository.downloadChapter(novel, chapter)
             assertTrue(dlResult.isSuccess)
+            assertEquals(0, fakeSource.callTimes.size) // Promoted from cache, zero network calls!
             assertEquals("DOWNLOADED", chapterDao.getChapter(novelId, "ch_1")?.storageTier)
+            assertTrue(repository.storageResolver.getDownloadChapterFile(novelId, "ch_1").exists())
+            // Cache copy is removed after promote
+            assertFalse(repository.chapterCache.contains(novelId, "ch_1"))
 
-            // Trigger eviction - candidate list might have cached chapter, but inside leaf lock
-            // re-read verifies row is still CACHE; since it's now DOWNLOADED, CAS skips it
-            repository.settingsRepository.updateDownloadSettings { it.copy(cacheSizeCapMb = 0) }
-            repository.chapterRepository.runEviction()
-
-            // Verify tier was NOT reset to NONE
+            // Cache trim cannot touch DOWNLOADED files
+            repository.chapterCache.trim(maxBytes = 0)
             val finalRow = chapterDao.getChapter(novelId, "ch_1")
             assertEquals("DOWNLOADED", finalRow?.storageTier)
             assertTrue(repository.storageResolver.getDownloadChapterFile(novelId, "ch_1").exists())
@@ -1051,8 +1058,7 @@ class DownloadEngineAndWorkerTest {
                 novelId = novelId,
                 id = "ch_1",
                 storageLocation = "INTERNAL",
-                fileHash = "hash1",
-                lastAccessedAt = System.currentTimeMillis()
+                fileHash = "hash1"
             )
 
             val downloadFile = repository.storageResolver.getDownloadChapterFile(novelId, "ch_1")

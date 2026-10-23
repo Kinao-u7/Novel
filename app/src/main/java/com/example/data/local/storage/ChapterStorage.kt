@@ -13,18 +13,19 @@ class ChapterReadException(val novelId: String, val chapterId: String, cause: Th
 
 /**
  * Storage facade for chapter content files.
- * Delegates all underlying file I/O to a [ChapterFileStore] (internal disk or SAF).
+ * Delegates all underlying file I/O to a [ChapterFileStore] (internal disk or SAF)
+ * and untracked reader caching to [ChapterCache].
  *
  * Implements:
  * - Atomic writes via temp file and rename (Rule 5)
  * - File operations strictly off the main thread on Dispatchers.IO (Rule 11)
- * - Promotion of cached files to downloads (no re-downloading)
  * - Size calculation for cache, downloads, and epubs
  * - Multi-location support (INTERNAL and SAF)
  */
 class ChapterStorage(
     val resolver: StorageResolver,
     val fileStore: ChapterFileStore,
+    val chapterCache: ChapterCache = ChapterCache(resolver.cacheDir),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
 
@@ -34,6 +35,7 @@ class ChapterStorage(
     ) : this(
         resolver = resolver,
         fileStore = InternalChapterFileStore(resolver, ioDispatcher),
+        chapterCache = ChapterCache(resolver.cacheDir, ioDispatcher),
         ioDispatcher = ioDispatcher
     )
 
@@ -42,7 +44,8 @@ class ChapterStorage(
         fileStore = DefaultChapterFileStore(
             internalStore = InternalChapterFileStore(StorageResolver(context)),
             safStore = SafChapterFileStore(context, StorageResolver(context))
-        )
+        ),
+        chapterCache = ChapterCache(context.cacheDir)
     )
 
     constructor(resolver: StorageResolver, context: Context) : this(
@@ -50,7 +53,32 @@ class ChapterStorage(
         fileStore = DefaultChapterFileStore(
             internalStore = InternalChapterFileStore(resolver),
             safStore = SafChapterFileStore(context, resolver)
-        )
+        ),
+        chapterCache = ChapterCache(resolver.cacheDir)
+    )
+
+    constructor(
+        resolver: StorageResolver,
+        context: Context,
+        chapterCache: ChapterCache
+    ) : this(
+        resolver = resolver,
+        fileStore = DefaultChapterFileStore(
+            internalStore = InternalChapterFileStore(resolver),
+            safStore = SafChapterFileStore(context, resolver)
+        ),
+        chapterCache = chapterCache
+    )
+
+    constructor(
+        resolver: StorageResolver,
+        fileStore: ChapterFileStore,
+        chapterCache: ChapterCache
+    ) : this(
+        resolver = resolver,
+        fileStore = fileStore,
+        chapterCache = chapterCache,
+        ioDispatcher = Dispatchers.IO
     )
 
     val isCalculatingDownloadsSize: Boolean
@@ -65,10 +93,6 @@ class ChapterStorage(
         fileStore.read(novelId, chapterId, tier, location)
     }
 
-    suspend fun writeToCache(content: ChapterContent): File = withContext(ioDispatcher) {
-        fileStore.writeCache(content) ?: resolver.getCacheChapterFile(content.novelId, content.chapterId)
-    }
-
     suspend fun writeToDownloads(content: ChapterContent, location: String = "INTERNAL"): File? = withContext(ioDispatcher) {
         fileStore.writeDownload(content, location)
         if (location.startsWith("SAF:")) {
@@ -80,18 +104,6 @@ class ChapterStorage(
 
     suspend fun writeToEpub(content: ChapterContent): File = withContext(ioDispatcher) {
         fileStore.writeEpub(content) ?: resolver.getEpubChapterFile(content.novelId, content.chapterId)
-    }
-
-    suspend fun promoteCacheToDownload(
-        novelId: String,
-        chapterId: String,
-        targetLocation: String = "INTERNAL"
-    ): Boolean = withContext(ioDispatcher) {
-        fileStore.promoteCacheToDownload(novelId, chapterId, targetLocation)
-    }
-
-    suspend fun deleteCacheChapter(novelId: String, chapterId: String): Boolean = withContext(ioDispatcher) {
-        fileStore.deleteChapter(novelId, chapterId, "CACHE", "INTERNAL")
     }
 
     suspend fun deleteDownloadChapter(
@@ -109,19 +121,13 @@ class ChapterStorage(
         fileStore.deleteNovelDownloads(novelId, locations)
     }
 
-    suspend fun deleteCacheForNovel(novelId: String): Boolean = withContext(ioDispatcher) {
-        fileStore.deleteNovelCache(novelId)
-    }
-
     suspend fun deleteAllDownloads(
         locations: Set<String> = setOf("INTERNAL")
     ): Boolean = withContext(ioDispatcher) {
         fileStore.deleteAllDownloads(locations)
     }
 
-    suspend fun clearChapterCache(): Long = withContext(ioDispatcher) {
-        fileStore.clearCache()
-    }
+    suspend fun clearChapterCache(): Long = chapterCache.clear()
 
     suspend fun removeNovelCompletely(
         novelId: String,
@@ -133,9 +139,7 @@ class ChapterStorage(
         }
     }
 
-    suspend fun getCacheSizeBytes(): Long = withContext(ioDispatcher) {
-        fileStore.getCacheSizeBytes()
-    }
+    suspend fun getCacheSizeBytes(): Long = chapterCache.sizeBytes()
 
     suspend fun getDownloadsSizeBytes(): Long = withContext(ioDispatcher) {
         fileStore.getDownloadsSizeBytes()

@@ -8,10 +8,11 @@ import com.example.data.local.db.NovelDatabase
 import com.example.data.local.db.NovelDatabaseHolder
 import com.example.data.local.db.entity.ChapterEntity
 import com.example.data.local.db.entity.NovelEntity
-import com.example.data.local.storage.CacheReconciler
+import com.example.data.local.storage.ChapterCache
 import com.example.data.local.storage.ChapterFileStore
 import com.example.data.local.storage.ChapterStorage
 import com.example.data.local.storage.InternalChapterFileStore
+import com.example.data.local.storage.StagingCleanup
 import com.example.data.local.storage.StorageResolver
 import com.example.data.local.storage.StorageUnavailableException
 import com.example.data.model.Chapter
@@ -67,10 +68,6 @@ class FakeChapterFileStore(
         return internalStore.read(novelId, chapterId, tier, location)
     }
 
-    override suspend fun writeCache(content: ChapterContent): File? {
-        return internalStore.writeCache(content)
-    }
-
     override suspend fun writeDownload(content: ChapterContent, location: String): Boolean {
         if (location.startsWith("SAF:")) {
             if (!isSafWritable) {
@@ -85,22 +82,6 @@ class FakeChapterFileStore(
 
     override suspend fun writeEpub(content: ChapterContent): File? {
         return internalStore.writeEpub(content)
-    }
-
-    override suspend fun promoteCacheToDownload(novelId: String, chapterId: String, targetLocation: String): Boolean {
-        if (targetLocation == "INTERNAL") {
-            return internalStore.promoteCacheToDownload(novelId, chapterId, "INTERNAL")
-        }
-        if (targetLocation.startsWith("SAF:")) {
-            if (!isSafWritable) {
-                throw StorageUnavailableException("SAF folder is unwritable: $targetLocation")
-            }
-            val cached = internalStore.read(novelId, chapterId, "CACHE", "INTERNAL") ?: return false
-            writeDownload(cached, targetLocation)
-            internalStore.deleteChapter(novelId, chapterId, "CACHE", "INTERNAL")
-            return true
-        }
-        return false
     }
 
     override suspend fun deleteChapter(novelId: String, chapterId: String, tier: String, location: String): Boolean {
@@ -126,10 +107,6 @@ class FakeChapterFileStore(
         return deleted
     }
 
-    override suspend fun deleteNovelCache(novelId: String): Boolean {
-        return internalStore.deleteNovelCache(novelId)
-    }
-
     override suspend fun deleteAllDownloads(locations: Set<String>): Boolean {
         var deleted = internalStore.deleteAllDownloads(locations)
         if (safFiles.isNotEmpty()) {
@@ -137,10 +114,6 @@ class FakeChapterFileStore(
             deleted = true
         }
         return deleted
-    }
-
-    override suspend fun clearCache(): Long {
-        return internalStore.clearCache()
     }
 
     override suspend fun removeNovelCompletely(novelId: String, isEpub: Boolean, locations: Set<String>): Unit {
@@ -152,8 +125,6 @@ class FakeChapterFileStore(
             }
         }
     }
-
-    override suspend fun getCacheSizeBytes(): Long = internalStore.getCacheSizeBytes()
 
     override suspend fun getDownloadsSizeBytes(): Long =
         internalStore.getDownloadsSizeBytes() + safFiles.values.sumOf { it.length.toLong() }
@@ -210,24 +181,33 @@ class SafStorageAndReconcilerTest {
     private lateinit var storageResolver: StorageResolver
     private lateinit var internalFileStore: InternalChapterFileStore
     private lateinit var fakeFileStore: FakeChapterFileStore
+    private lateinit var chapterCache: ChapterCache
     private lateinit var chapterStorage: ChapterStorage
     private lateinit var settingsRepository: SettingsRepository
     private lateinit var chapterRepository: ChapterRepository
-    private lateinit var cacheReconciler: CacheReconciler
     private lateinit var fakeSource: TestFakeSource
 
     @Before
     fun setup() {
+        com.example.data.download.DownloadCoordinator.resetInstanceForTesting()
         context = ApplicationProvider.getApplicationContext()
         database = Room.inMemoryDatabaseBuilder(context, NovelDatabase::class.java)
             .allowMainThreadQueries()
             .build()
         NovelDatabaseHolder.setInstanceForTesting(database)
 
-        storageResolver = StorageResolver(tempFolder.root)
-        internalFileStore = InternalChapterFileStore(storageResolver, Dispatchers.IO)
-        fakeFileStore = FakeChapterFileStore(internalFileStore)
-        chapterStorage = ChapterStorage(storageResolver, fakeFileStore, Dispatchers.IO)
+        val filesDir = tempFolder.newFolder("files")
+        val cacheDir = tempFolder.newFolder("cache")
+        storageResolver = StorageResolver(filesDir = filesDir, cacheDir = cacheDir)
+        internalFileStore = InternalChapterFileStore(resolver = storageResolver, ioDispatcher = Dispatchers.IO)
+        fakeFileStore = FakeChapterFileStore(internalStore = internalFileStore)
+        chapterCache = ChapterCache(cacheDir = cacheDir, ioDispatcher = Dispatchers.IO)
+        chapterStorage = ChapterStorage(
+            resolver = storageResolver,
+            fileStore = fakeFileStore,
+            chapterCache = chapterCache,
+            ioDispatcher = Dispatchers.IO
+        )
 
         settingsRepository = SettingsRepository.createForTest(context, Dispatchers.IO)
         chapterRepository = ChapterRepository(
@@ -238,11 +218,8 @@ class SafStorageAndReconcilerTest {
             settingsRepository = settingsRepository,
             downloadQueueDao = database.downloadQueueDao(),
             notificationDao = database.notificationDao(),
-            ioDispatcher = Dispatchers.IO
-        )
-        cacheReconciler = CacheReconciler(
-            chapterDao = database.chapterDao(),
-            storageResolver = storageResolver,
+            downloadCoordinator = com.example.data.download.DownloadCoordinator.getInstance(),
+            chapterCache = chapterCache,
             ioDispatcher = Dispatchers.IO
         )
 
@@ -255,6 +232,7 @@ class SafStorageAndReconcilerTest {
         SourceManager.unregisterSource(fakeSource.id)
         NovelDatabaseHolder.clearInstanceForTesting()
         database.close()
+        com.example.data.download.DownloadCoordinator.resetInstanceForTesting()
     }
 
     private fun testNovel(
@@ -415,8 +393,7 @@ class SafStorageAndReconcilerTest {
                     chapterIndex = 1,
                     storageTier = "DOWNLOADED",
                     storageLocation = safLoc,
-                    fileHash = storageResolver.sha256(chapterId),
-                    lastAccessedAt = System.currentTimeMillis()
+                    fileHash = storageResolver.sha256(chapterId)
                 )
             )
 
@@ -444,7 +421,7 @@ class SafStorageAndReconcilerTest {
     }
 
     @Test
-    fun read_missingFileInReachableFolder_resetsTierToNone() = runBlocking {
+    fun read_missingFileInReachableFolder_selfHealsAsDownloadedInOriginalLocation() = runBlocking {
         withTimeout(10_000L) {
             val novel = insertTestNovel("novel_missing")
             val chapterId = "ch_missing_1"
@@ -459,22 +436,23 @@ class SafStorageAndReconcilerTest {
                     chapterIndex = 1,
                     storageTier = "DOWNLOADED",
                     storageLocation = safLoc,
-                    fileHash = storageResolver.sha256(chapterId),
-                    lastAccessedAt = System.currentTimeMillis()
+                    fileHash = storageResolver.sha256(chapterId)
                 )
             )
 
-            // Folder is reachable, but file is really missing
+            // Folder is reachable, but file is missing
             fakeFileStore.isSafReachable = true
+            fakeFileStore.isSafWritable = true
 
-            // Read chapter: should detect miss, reset tier to NONE, and fetch fresh from source into CACHE
+            // Read chapter: should detect miss, refetch fresh from source, self-heal back as DOWNLOADED in original location (amendment m)
             val content = chapterRepository.getChapterContent(novel.id, chapterId)
             assertNotNull("Content must be fetched from source", content)
 
             val row = database.chapterDao().getChapter(novel.id, chapterId)
             assertNotNull(row)
-            assertEquals("Missing file in reachable folder must reset tier and now cache it", "CACHE", row!!.storageTier)
-            assertEquals("INTERNAL", row.storageLocation)
+            assertEquals("Missing file in reachable folder must self-heal as DOWNLOADED", "DOWNLOADED", row!!.storageTier)
+            assertEquals("Location must remain original location", safLoc, row.storageLocation)
+            assertNotNull("File must be written back to SAF storage", fakeFileStore.safFiles["$safLoc|${novel.id}|$chapterId"])
         }
     }
 
@@ -494,8 +472,7 @@ class SafStorageAndReconcilerTest {
                     chapterIndex = 1,
                     storageTier = "DOWNLOADED",
                     storageLocation = safLoc,
-                    fileHash = storageResolver.sha256(dlChapterId),
-                    lastAccessedAt = System.currentTimeMillis()
+                    fileHash = storageResolver.sha256(dlChapterId)
                 )
             )
             fakeFileStore.safFiles["$safLoc|${novel.id}|$dlChapterId"] = InternalChapterFileStore.serialize(
@@ -512,8 +489,7 @@ class SafStorageAndReconcilerTest {
                     chapterIndex = 2,
                     storageTier = "EPUB",
                     storageLocation = "INTERNAL",
-                    fileHash = storageResolver.sha256(epubChapterId),
-                    lastAccessedAt = System.currentTimeMillis()
+                    fileHash = storageResolver.sha256(epubChapterId)
                 )
             )
             chapterStorage.writeToEpub(ChapterContent(epubChapterId, novel.id, "EPUB Chapter", listOf("EPUB"), isDownloaded = true))
@@ -536,134 +512,32 @@ class SafStorageAndReconcilerTest {
     }
 
     @Test
-    fun reconciler_deletesOnlyOldUnregisteredFilesInCacheAndStaging_andResetsMissingInternalRows() = runBlocking {
+    fun stagingCleanup_deletesFilesOlderThanTenMinutes_preservesNewerFiles() = runBlocking {
         withTimeout(10_000L) {
-            val novel = insertTestNovel("novel_reconcile")
+            val stagingDir = storageResolver.getStagingDir()
+            stagingDir.mkdirs()
+
             val now = System.currentTimeMillis()
             val fifteenMinsAgo = now - 15 * 60 * 1000L
             val fiveMinsAgo = now - 5 * 60 * 1000L
 
-            // A. Cache file older than 10 mins with NO Room row -> MUST be deleted
-            val oldOrphanCache = storageResolver.getCacheChapterFile(novel.id, "orphan_old")
-            oldOrphanCache.parentFile?.mkdirs()
-            oldOrphanCache.writeText("orphan old")
-            oldOrphanCache.setLastModified(fifteenMinsAgo)
+            val oldStagingFile = File(stagingDir, "old_staging.tmp")
+            oldStagingFile.writeText("old staging content")
+            oldStagingFile.setLastModified(fifteenMinsAgo)
 
-            // B. Cache file newer than 10 mins with NO Room row -> MUST NOT be deleted
-            val newOrphanCache = storageResolver.getCacheChapterFile(novel.id, "orphan_new")
-            newOrphanCache.writeText("orphan new")
-            newOrphanCache.setLastModified(fiveMinsAgo)
+            val newStagingFile = File(stagingDir, "new_staging.tmp")
+            newStagingFile.writeText("new staging content")
+            newStagingFile.setLastModified(fiveMinsAgo)
 
-            // C. Cache file older than 10 mins WITH Room row -> MUST NOT be deleted
-            val validOldCacheId = "valid_old_cache"
-            database.chapterDao().insertIgnore(
-                ChapterEntity(
-                    novelId = novel.id,
-                    id = validOldCacheId,
-                    title = "Valid Cache",
-                    chapterIndex = 1,
-                    storageTier = "CACHE",
-                    storageLocation = "INTERNAL",
-                    fileHash = storageResolver.sha256(validOldCacheId),
-                    lastAccessedAt = fifteenMinsAgo
-                )
-            )
-            val validOldCacheFile = storageResolver.getCacheChapterFile(novel.id, validOldCacheId)
-            validOldCacheFile.writeText("valid old")
-            validOldCacheFile.setLastModified(fifteenMinsAgo)
-
-            // D. Staging files: old deleted, new preserved
-            val stagingDir = storageResolver.getStagingDir()
-            stagingDir.mkdirs()
-            val oldStaging = File(stagingDir, "old_restore.tmp")
-            oldStaging.writeText("old staging")
-            oldStaging.setLastModified(fifteenMinsAgo)
-
-            val newStaging = File(stagingDir, "new_restore.tmp")
-            newStaging.writeText("new staging")
-            newStaging.setLastModified(fiveMinsAgo)
-
-            // E. Download file with NO Room row -> MUST NOT be deleted (downloads/ never touched)
-            val orphanDownload = storageResolver.getDownloadChapterFile(novel.id, "orphan_dl")
-            orphanDownload.parentFile?.mkdirs()
-            orphanDownload.writeText("orphan dl")
-            orphanDownload.setLastModified(fifteenMinsAgo)
-
-            // F. Missing internal CACHE row -> reset to NONE
-            val missingCacheId = "missing_cache_row"
-            database.chapterDao().insertIgnore(
-                ChapterEntity(
-                    novelId = novel.id,
-                    id = missingCacheId,
-                    title = "Missing Cache",
-                    chapterIndex = 2,
-                    storageTier = "CACHE",
-                    storageLocation = "INTERNAL",
-                    fileHash = storageResolver.sha256(missingCacheId),
-                    lastAccessedAt = now
-                )
+            val cleanedCount = StagingCleanup.cleanStaging(
+                stagingDir = stagingDir,
+                maxAgeMs = 10 * 60 * 1000L,
+                ioDispatcher = Dispatchers.IO
             )
 
-            // G. Missing internal DOWNLOADED row -> reset to NONE
-            val missingDlId = "missing_dl_row"
-            database.chapterDao().insertIgnore(
-                ChapterEntity(
-                    novelId = novel.id,
-                    id = missingDlId,
-                    title = "Missing DL",
-                    chapterIndex = 3,
-                    storageTier = "DOWNLOADED",
-                    storageLocation = "INTERNAL",
-                    fileHash = storageResolver.sha256(missingDlId),
-                    lastAccessedAt = now
-                )
-            )
-
-            // H. Missing SAF DOWNLOADED row -> MUST NOT be reset by reconciler
-            val missingSafId = "missing_saf_row"
-            database.chapterDao().insertIgnore(
-                ChapterEntity(
-                    novelId = novel.id,
-                    id = missingSafId,
-                    title = "Missing SAF",
-                    chapterIndex = 4,
-                    storageTier = "DOWNLOADED",
-                    storageLocation = "SAF:content://saf/tree",
-                    fileHash = storageResolver.sha256(missingSafId),
-                    lastAccessedAt = now
-                )
-            )
-
-            // Run Reconciler
-            cacheReconciler.reconcile(force = true)
-
-            // Verify A: old orphan cache deleted
-            assertFalse("Old orphan cache file must be deleted", oldOrphanCache.exists())
-
-            // Verify B: new orphan cache preserved
-            assertTrue("New orphan cache file must be preserved", newOrphanCache.exists())
-
-            // Verify C: registered old cache preserved
-            assertTrue("Registered old cache file must be preserved", validOldCacheFile.exists())
-
-            // Verify D: old staging deleted, new staging preserved
-            assertFalse("Old staging file must be deleted", oldStaging.exists())
-            assertTrue("New staging file must be preserved", newStaging.exists())
-
-            // Verify E: download file untouched
-            assertTrue("Downloads folder is never touched by reconciler", orphanDownload.exists())
-
-            // Verify F: missing internal cache row reset to NONE
-            val rowF = database.chapterDao().getChapter(novel.id, missingCacheId)
-            assertEquals("Missing internal CACHE row must be reset to NONE", "NONE", rowF!!.storageTier)
-
-            // Verify G: missing internal download row reset to NONE
-            val rowG = database.chapterDao().getChapter(novel.id, missingDlId)
-            assertEquals("Missing internal DOWNLOADED row must be reset to NONE", "NONE", rowG!!.storageTier)
-
-            // Verify H: SAF row NOT touched by reconciler
-            val rowH = database.chapterDao().getChapter(novel.id, missingSafId)
-            assertEquals("SAF row must not be touched by reconciler", "DOWNLOADED", rowH!!.storageTier)
+            assertEquals(1, cleanedCount)
+            assertFalse("Old staging file (>10m) must be deleted", oldStagingFile.exists())
+            assertTrue("New staging file (<10m) must be preserved", newStagingFile.exists())
         }
     }
 

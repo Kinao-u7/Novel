@@ -18,7 +18,8 @@ import com.example.data.source.webscrape.WebScrapeSource
 import com.example.data.source.webscrape.WtrLabExtractor
 import com.example.data.local.storage.ChapterStorage
 import com.example.data.local.storage.StorageResolver
-import com.example.data.local.storage.CacheReconciler
+import com.example.data.local.storage.ChapterCache
+import com.example.data.local.storage.StagingCleanup
 import androidx.room.withTransaction
 import com.example.data.download.DownloadEngine
 import com.example.data.download.DownloadQueueSummary
@@ -54,7 +55,7 @@ import java.io.File
  *   term replacements, custom sources, requested sources and notifications.
  * - LibraryNovels derives downloaded counts and last read info in the query (no stored counters).
  * - Safe insert-ignore plus update transactions; never OnConflictStrategy.REPLACE.
- * - Reading sets CACHE tier; explicit downloads set DOWNLOADED tier.
+ * - Reading writes to untracked reader cache; explicit downloads set DOWNLOADED tier.
  * - Debounced position writes (1-second debounce, flushed on chapter leave).
  * - Startup purge of unused Browse novels.
  */
@@ -72,8 +73,9 @@ class NovelRepository(context: Context) {
     val downloadQueueDao = database.downloadQueueDao()
 
     val settingsRepository = SettingsRepository.getInstance(appContext)
-    val storageResolver = StorageResolver(appContext)
-    val chapterStorage = ChapterStorage(storageResolver, appContext)
+    val storageResolver = StorageResolver(filesDir = appContext.filesDir, cacheDir = appContext.cacheDir)
+    val chapterCache = ChapterCache(appContext.cacheDir)
+    val chapterStorage = ChapterStorage(resolver = storageResolver, context = appContext, chapterCache = chapterCache)
     val downloadCoordinator = com.example.data.download.DownloadCoordinator.getInstance()
     val chapterRepository = ChapterRepository(
         chapterDao = chapterDao,
@@ -83,9 +85,9 @@ class NovelRepository(context: Context) {
         settingsRepository = settingsRepository,
         downloadQueueDao = downloadQueueDao,
         notificationDao = notificationDao,
-        downloadCoordinator = downloadCoordinator
+        downloadCoordinator = downloadCoordinator,
+        chapterCache = chapterCache
     )
-    val cacheReconciler = CacheReconciler(chapterDao, storageResolver)
     val downloadEngine = DownloadEngine(
         context = appContext,
         downloadQueueDao = downloadQueueDao,
@@ -200,14 +202,14 @@ class NovelRepository(context: Context) {
         }
         repoScope.launch(Dispatchers.IO) {
             try {
-                // Startup purge & cache reconciler: runs once per app start in the background on Dispatchers.IO,
+                // Startup purge & staging cleanup: runs once per app start in the background on Dispatchers.IO,
                 // only after the library flow has emitted its first value.
                 libraryNovels.first()
                 purgeUnusedBrowseNovels()
-                cacheReconciler.reconcile()
+                StagingCleanup.cleanStaging(stagingDir = storageResolver.getStagingDir())
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                android.util.Log.e("NovelRepository", "Failed to run startup reconciler or purge", e)
+                android.util.Log.e("NovelRepository", "Failed to run startup staging cleanup or purge", e)
             }
         }
         repoScope.launch(Dispatchers.IO) {
@@ -526,8 +528,7 @@ class NovelRepository(context: Context) {
                 ch.toEntity(
                     storageTier = "EPUB",
                     storageLocation = "INTERNAL",
-                    fileHash = storageResolver.sha256(ch.id),
-                    lastAccessedAt = System.currentTimeMillis()
+                    fileHash = storageResolver.sha256(ch.id)
                 )
             }
 

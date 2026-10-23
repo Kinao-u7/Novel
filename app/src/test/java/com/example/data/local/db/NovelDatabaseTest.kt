@@ -36,6 +36,7 @@ class NovelDatabaseTest {
 
     @Before
     fun setup() {
+        com.example.data.download.DownloadCoordinator.resetInstanceForTesting()
         val context = ApplicationProvider.getApplicationContext<Context>()
         database = Room.inMemoryDatabaseBuilder(context, NovelDatabase::class.java)
             .allowMainThreadQueries()
@@ -50,6 +51,7 @@ class NovelDatabaseTest {
     @After
     fun tearDown() {
         database.close()
+        com.example.data.download.DownloadCoordinator.resetInstanceForTesting()
     }
 
     @Test
@@ -183,10 +185,9 @@ class NovelDatabaseTest {
             isRead = true,
             readParagraphIndex = 18,
             readCharOffset = 45,
-            storageTier = "CACHE",
+            storageTier = "DOWNLOADED",
             storageLocation = "INTERNAL",
-            fileHash = "sha256_mock_hash",
-            lastAccessedAt = 123456789L
+            fileHash = "sha256_mock_hash"
         )
         chapterDao.insertIgnore(initialChapter)
 
@@ -214,8 +215,7 @@ class NovelDatabaseTest {
             readCharOffset = 0,
             storageTier = "NONE", // Must NOT overwrite storage tier
             storageLocation = "INTERNAL",
-            fileHash = "",
-            lastAccessedAt = 0L
+            fileHash = ""
         )
 
         chapterDao.refreshChapters("novel_refresh", listOf(updatedPayload))
@@ -228,14 +228,13 @@ class NovelDatabaseTest {
         assertEquals("2026-02-15", result?.releaseDate)
         assertEquals(1, result?.chapterIndex)
 
-        // Reading state, position, storage tier, location, hash, and access timestamp must be PRESERVED
+        // Reading state, position, storage tier, location, and hash must be PRESERVED
         assertEquals(true, result?.isRead)
         assertEquals(18, result?.readParagraphIndex)
         assertEquals(45, result?.readCharOffset)
-        assertEquals("CACHE", result?.storageTier)
+        assertEquals("DOWNLOADED", result?.storageTier)
         assertEquals("INTERNAL", result?.storageLocation)
         assertEquals("sha256_mock_hash", result?.fileHash)
-        assertEquals(123456789L, result?.lastAccessedAt)
 
         // Bookmark must still be present
         val bookmarks = bookmarkDao.getBookmarksForNovel("novel_refresh")
@@ -265,36 +264,6 @@ class NovelDatabaseTest {
         novelDao.updateRating("novel_rated", null)
         val clearedRating = novelDao.getNovelById("novel_rated")
         assertNull(clearedRating?.rating)
-    }
-
-    @Test
-    fun lruQuery_returnsOnlyCacheChapters_orderedByLastAccessedAt() = runBlocking {
-        val novel = createTestNovel(id = "novel_lru", title = "LRU Test Novel")
-        novelDao.insertIgnore(novel)
-
-        val chapters = listOf(
-            ChapterEntity(novelId = "novel_lru", id = "ch_cache_old", title = "Cache Old", chapterIndex = 1, storageTier = "CACHE", lastAccessedAt = 100L),
-            ChapterEntity(novelId = "novel_lru", id = "ch_downloaded", title = "Downloaded", chapterIndex = 2, storageTier = "DOWNLOADED", lastAccessedAt = 50L),
-            ChapterEntity(novelId = "novel_lru", id = "ch_cache_new", title = "Cache New", chapterIndex = 3, storageTier = "CACHE", lastAccessedAt = 300L),
-            ChapterEntity(novelId = "novel_lru", id = "ch_epub", title = "EPUB", chapterIndex = 4, storageTier = "EPUB", lastAccessedAt = 20L),
-            ChapterEntity(novelId = "novel_lru", id = "ch_none", title = "None", chapterIndex = 5, storageTier = "NONE", lastAccessedAt = 10L),
-            ChapterEntity(novelId = "novel_lru", id = "ch_cache_mid", title = "Cache Mid", chapterIndex = 6, storageTier = "CACHE", lastAccessedAt = 200L)
-        )
-        chapterDao.insertIgnore(chapters)
-
-        val lruList = chapterDao.getCacheChaptersLru()
-
-        // Only CACHE chapters must be returned, ordered by lastAccessedAt ASC
-        assertEquals(3, lruList.size)
-        assertEquals("ch_cache_old", lruList[0].id)
-        assertEquals(100L, lruList[0].lastAccessedAt)
-        assertEquals("ch_cache_mid", lruList[1].id)
-        assertEquals(200L, lruList[1].lastAccessedAt)
-        assertEquals("ch_cache_new", lruList[2].id)
-        assertEquals(300L, lruList[2].lastAccessedAt)
-
-        // Verify none of DOWNLOADED, EPUB, or NONE are included
-        assertTrue(lruList.all { it.storageTier == "CACHE" })
     }
 
     @Test

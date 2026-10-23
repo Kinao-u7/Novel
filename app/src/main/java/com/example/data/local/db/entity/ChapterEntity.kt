@@ -18,8 +18,8 @@ import androidx.room.Index
     ],
     indices = [
         Index(value = ["novel_id", "chapter_index"]),
-        Index(value = ["storage_tier", "last_accessed_at"]),
-        Index(value = ["is_read", "novel_id"])
+        Index(value = ["is_read", "novel_id"]),
+        Index(value = ["novel_id", "storage_tier"])
     ]
 )
 data class ChapterEntity(
@@ -44,7 +44,5 @@ data class ChapterEntity(
     @ColumnInfo(name = "storage_location")
     val storageLocation: String = "INTERNAL",
     @ColumnInfo(name = "file_hash")
-    val fileHash: String = "",
-    @ColumnInfo(name = "last_accessed_at")
-    val lastAccessedAt: Long = 0L
+    val fileHash: String = ""
 )

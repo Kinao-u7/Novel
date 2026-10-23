@@ -30,17 +30,12 @@ class StorageUnavailableException(message: String, cause: Throwable? = null) : I
  */
 interface ChapterFileStore {
     suspend fun read(novelId: String, chapterId: String, tier: String, location: String): ChapterContent?
-    suspend fun writeCache(content: ChapterContent): File?
     suspend fun writeDownload(content: ChapterContent, location: String): Boolean
     suspend fun writeEpub(content: ChapterContent): File?
-    suspend fun promoteCacheToDownload(novelId: String, chapterId: String, targetLocation: String): Boolean
     suspend fun deleteChapter(novelId: String, chapterId: String, tier: String, location: String): Boolean
     suspend fun deleteNovelDownloads(novelId: String, locations: Set<String>): Boolean
-    suspend fun deleteNovelCache(novelId: String): Boolean
     suspend fun deleteAllDownloads(locations: Set<String>): Boolean
-    suspend fun clearCache(): Long
     suspend fun removeNovelCompletely(novelId: String, isEpub: Boolean, locations: Set<String>): Unit
-    suspend fun getCacheSizeBytes(): Long
     suspend fun getDownloadsSizeBytes(): Long
     suspend fun getEpubsSizeBytes(): Long
     fun isLocationReachable(location: String): Boolean
@@ -57,7 +52,6 @@ class InternalChapterFileStore(
 
     override suspend fun read(novelId: String, chapterId: String, tier: String, location: String): ChapterContent? = withContext(ioDispatcher) {
         val file = when (tier) {
-            "CACHE" -> resolver.getCacheChapterFile(novelId, chapterId)
             "DOWNLOADED" -> resolver.getDownloadChapterFile(novelId, chapterId)
             "EPUB" -> resolver.getEpubChapterFile(novelId, chapterId)
             else -> return@withContext null
@@ -80,12 +74,6 @@ class InternalChapterFileStore(
         }
     }
 
-    override suspend fun writeCache(content: ChapterContent): File? = withContext(ioDispatcher) {
-        val file = resolver.getCacheChapterFile(content.novelId, content.chapterId)
-        atomicWrite(file, serialize(content.copy(isDownloaded = false)))
-        file
-    }
-
     override suspend fun writeDownload(content: ChapterContent, location: String): Boolean = withContext(ioDispatcher) {
         val file = resolver.getDownloadChapterFile(content.novelId, content.chapterId)
         atomicWrite(file, serialize(content.copy(isDownloaded = true)))
@@ -98,31 +86,8 @@ class InternalChapterFileStore(
         file
     }
 
-    override suspend fun promoteCacheToDownload(novelId: String, chapterId: String, targetLocation: String): Boolean = withContext(ioDispatcher) {
-        val cacheFile = resolver.getCacheChapterFile(novelId, chapterId)
-        if (!cacheFile.exists() || !cacheFile.isFile) {
-            return@withContext false
-        }
-        val downloadFile = resolver.getDownloadChapterFile(novelId, chapterId)
-        val parent = downloadFile.parentFile ?: throw IOException("Missing parent dir for $downloadFile")
-        if (!parent.exists()) {
-            parent.mkdirs()
-        }
-        val moved = cacheFile.renameTo(downloadFile)
-        if (!moved) {
-            cacheFile.copyTo(downloadFile, overwrite = true)
-            cacheFile.delete()
-        }
-        val novelCacheDir = resolver.getNovelCacheDir(novelId)
-        if (novelCacheDir.exists() && novelCacheDir.list()?.isEmpty() == true) {
-            novelCacheDir.delete()
-        }
-        true
-    }
-
     override suspend fun deleteChapter(novelId: String, chapterId: String, tier: String, location: String): Boolean = withContext(ioDispatcher) {
         val file = when (tier) {
-            "CACHE" -> resolver.getCacheChapterFile(novelId, chapterId)
             "DOWNLOADED" -> resolver.getDownloadChapterFile(novelId, chapterId)
             "EPUB" -> resolver.getEpubChapterFile(novelId, chapterId)
             else -> return@withContext false
@@ -135,24 +100,9 @@ class InternalChapterFileStore(
         if (dir.exists()) dir.deleteRecursively() else false
     }
 
-    override suspend fun deleteNovelCache(novelId: String): Boolean = withContext(ioDispatcher) {
-        val dir = resolver.getNovelCacheDir(novelId)
-        if (dir.exists()) dir.deleteRecursively() else false
-    }
-
     override suspend fun deleteAllDownloads(locations: Set<String>): Boolean = withContext(ioDispatcher) {
         val dir = resolver.getDownloadsDir()
         if (dir.exists()) dir.deleteRecursively() else false
-    }
-
-    override suspend fun clearCache(): Long = withContext(ioDispatcher) {
-        val dir = resolver.getCacheChaptersDir()
-        val before = getFolderSize(dir)
-        if (dir.exists()) {
-            dir.deleteRecursively()
-            dir.mkdirs()
-        }
-        before
     }
 
     override suspend fun removeNovelCompletely(novelId: String, isEpub: Boolean, locations: Set<String>): Unit {
@@ -167,13 +117,8 @@ class InternalChapterFileStore(
                 if (epubDir.exists()) epubDir.deleteRecursively()
             } else {
                 deleteNovelDownloads(novelId, locations)
-                deleteNovelCache(novelId)
             }
         }
-    }
-
-    override suspend fun getCacheSizeBytes(): Long = withContext(ioDispatcher) {
-        getFolderSize(resolver.getCacheChaptersDir())
     }
 
     override suspend fun getDownloadsSizeBytes(): Long = withContext(ioDispatcher) {
@@ -454,8 +399,6 @@ class SafChapterFileStore(
         return deleteAllDownloads(treeUris.map { "SAF:$it" }.toSet())
     }
 
-    override suspend fun clearCache(): Long = 0L
-
     override suspend fun removeNovelCompletely(novelId: String, isEpub: Boolean, locations: Set<String>): Unit {
         withContext(ioDispatcher) {
             deleteNovelDownloads(novelId, locations)
@@ -468,8 +411,6 @@ class SafChapterFileStore(
     private val dirCreationLock = Any()
 
     val isCalculatingDownloadsSize: Boolean get() = isCalculatingSize.get()
-
-    override suspend fun getCacheSizeBytes(): Long = 0L
 
     override suspend fun getDownloadsSizeBytes(): Long = withContext(ioDispatcher) {
         val now = System.currentTimeMillis()
@@ -588,10 +529,6 @@ class DefaultChapterFileStore(
         }
     }
 
-    override suspend fun writeCache(content: ChapterContent): File? {
-        return internalStore.writeCache(content)
-    }
-
     override suspend fun writeDownload(content: ChapterContent, location: String): Boolean {
         return if (location.startsWith("SAF:")) {
             safStore.writeDownload(content, location)
@@ -602,20 +539,6 @@ class DefaultChapterFileStore(
 
     override suspend fun writeEpub(content: ChapterContent): File? {
         return internalStore.writeEpub(content)
-    }
-
-    override suspend fun promoteCacheToDownload(novelId: String, chapterId: String, targetLocation: String): Boolean {
-        if (targetLocation == "INTERNAL") {
-            return internalStore.promoteCacheToDownload(novelId, chapterId, "INTERNAL")
-        }
-        if (targetLocation.startsWith("SAF:")) {
-            val cachedContent = internalStore.read(novelId, chapterId, "CACHE", "INTERNAL")
-                ?: return false
-            safStore.writeDownload(cachedContent, targetLocation)
-            internalStore.deleteChapter(novelId, chapterId, "CACHE", "INTERNAL")
-            return true
-        }
-        return false
     }
 
     override suspend fun deleteChapter(novelId: String, chapterId: String, tier: String, location: String): Boolean {
@@ -632,10 +555,6 @@ class DefaultChapterFileStore(
         return internalDeleted || safDeleted
     }
 
-    override suspend fun deleteNovelCache(novelId: String): Boolean {
-        return internalStore.deleteNovelCache(novelId)
-    }
-
     override suspend fun deleteAllDownloads(locations: Set<String>): Boolean {
         val anyDeleted = internalStore.deleteAllDownloads(locations)
         val safUris = locations.filter { it.startsWith("SAF:") }.toSet()
@@ -645,16 +564,10 @@ class DefaultChapterFileStore(
         return anyDeleted
     }
 
-    override suspend fun clearCache(): Long {
-        return internalStore.clearCache()
-    }
-
     override suspend fun removeNovelCompletely(novelId: String, isEpub: Boolean, locations: Set<String>): Unit {
         internalStore.removeNovelCompletely(novelId, isEpub, locations)
         safStore.removeNovelCompletely(novelId, isEpub, locations)
     }
-
-    override suspend fun getCacheSizeBytes(): Long = internalStore.getCacheSizeBytes()
 
     override suspend fun getDownloadsSizeBytes(): Long =
         internalStore.getDownloadsSizeBytes() + safStore.getDownloadsSizeBytes()

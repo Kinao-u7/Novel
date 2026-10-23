@@ -5,19 +5,27 @@ import java.io.File
 import java.security.MessageDigest
 
 /**
- * Resolves all application file paths and deterministic SHA-256 file names under filesDir.
+ * Resolves all application file paths and deterministic SHA-256 file names under filesDir and cacheDir.
  *
  * File layout under filesDir:
  * - downloads/{novelId}/{sha256(chapterId)}.json
- * - cache/chapters/{novelId}/{sha256(chapterId)}.json
  * - epubs/{novelId}/{sha256(chapterId)}.json
  * - covers/{novelId}.jpg
  * - original_epubs/{novelId}.epub
  * - staging/
+ *
+ * File layout under cacheDir:
+ * - chapters/{novelId}/{sha256(chapterId)}.json
  */
-class StorageResolver(val filesDir: File) {
+class StorageResolver(
+    val filesDir: File,
+    val cacheDir: File
+) {
 
-    constructor(context: Context) : this(context.filesDir)
+    constructor(context: Context) : this(
+        filesDir = context.filesDir,
+        cacheDir = context.cacheDir
+    )
 
     fun sha256(bytes: ByteArray): String {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -38,16 +46,6 @@ class StorageResolver(val filesDir: File) {
 
     fun getDownloadChapterFile(novelId: String, chapterId: String): File =
         File(getNovelDownloadsDir(novelId), sha256FileName(chapterId))
-
-    // cache/chapters/{novelId}/{sha256(chapterId)}.json
-    fun getCacheDir(): File = File(filesDir, "cache")
-
-    fun getCacheChaptersDir(): File = File(filesDir, "cache/chapters")
-
-    fun getNovelCacheDir(novelId: String): File = File(getCacheChaptersDir(), novelId)
-
-    fun getCacheChapterFile(novelId: String, chapterId: String): File =
-        File(getNovelCacheDir(novelId), sha256FileName(chapterId))
 
     // epubs/{novelId}/{sha256(chapterId)}.json
     fun getEpubsDir(): File = File(filesDir, "epubs")

@@ -54,6 +54,7 @@ class NovelRepositoryTest {
 
     @Before
     fun setup() {
+        com.example.data.download.DownloadCoordinator.resetInstanceForTesting()
         context = ApplicationProvider.getApplicationContext()
         database = Room.inMemoryDatabaseBuilder(context, NovelDatabase::class.java)
             .allowMainThreadQueries()
@@ -66,6 +67,7 @@ class NovelRepositoryTest {
     fun tearDown() {
         NovelDatabaseHolder.clearInstanceForTesting()
         database.close()
+        com.example.data.download.DownloadCoordinator.resetInstanceForTesting()
     }
 
     private fun testNovel(
@@ -256,8 +258,7 @@ class NovelRepositoryTest {
             readCharOffset = 45,
             storageTier = "DOWNLOADED",
             storageLocation = "INTERNAL",
-            fileHash = "initial_hash",
-            lastAccessedAt = 12345L
+            fileHash = "initial_hash"
         )
         database.chapterDao().insertIgnore(initialChapter)
 
@@ -331,7 +332,6 @@ class NovelRepositoryTest {
             assertEquals("DOWNLOADED", ch1After.storageTier)
             assertEquals("INTERNAL", ch1After.storageLocation)
             assertEquals("initial_hash", ch1After.fileHash)
-            assertEquals(12345L, ch1After.lastAccessedAt)
 
             // Preserved bookmark
             val bookmarks = withTimeout(5000L) {
@@ -362,21 +362,21 @@ class NovelRepositoryTest {
             chapterIndex = 2,
             storageTier = "EPUB"
         )
-        val chCache = ChapterEntity(
+        val chNone1 = ChapterEntity(
             novelId = "novel_tiers",
-            id = "ch_ca",
-            title = "Cache Ch",
+            id = "ch_no1",
+            title = "None Ch 1",
             chapterIndex = 3,
-            storageTier = "CACHE"
+            storageTier = "NONE"
         )
-        val chNone = ChapterEntity(
+        val chNone2 = ChapterEntity(
             novelId = "novel_tiers",
-            id = "ch_no",
-            title = "None Ch",
+            id = "ch_no2",
+            title = "None Ch 2",
             chapterIndex = 4,
             storageTier = "NONE"
         )
-        database.chapterDao().insertIgnore(listOf(chDownloaded, chEpub, chCache, chNone))
+        database.chapterDao().insertIgnore(listOf(chDownloaded, chEpub, chNone1, chNone2))
 
         // Check libraryNovels derived count
         val libraryNovel = withTimeout(5000L) {
@@ -385,7 +385,7 @@ class NovelRepositoryTest {
             }
         }.first { it.id == "novel_tiers" }
 
-        // DOWNLOADED (1) + EPUB (1) = 2; CACHE and NONE do not count
+        // DOWNLOADED (1) + EPUB (1) = 2; NONE does not count
         assertEquals(2, libraryNovel.downloadedChaptersCount)
 
         // Check downloadedChapters StateFlow mapping
@@ -396,12 +396,12 @@ class NovelRepositoryTest {
         }
         val downloadedSet = downloadedMap["novel_tiers"] ?: emptySet()
         assertEquals(setOf("ch_dl", "ch_ep"), downloadedSet)
-        assertFalse(downloadedSet.contains("ch_ca"))
-        assertFalse(downloadedSet.contains("ch_no"))
+        assertFalse(downloadedSet.contains("ch_no1"))
+        assertFalse(downloadedSet.contains("ch_no2"))
     }
 
     @Test
-    fun readingChapter_setsCache_andNeverDownloaded() = runBlocking {
+    fun readingChapter_writesUntrackedCache_andNeverDownloaded() = runBlocking {
         val novel = testNovel(id = "novel_read_tier", inLibrary = true, sourceId = "test_read_src")
         repository.addToLibrary(novel)
         withTimeout(5000L) { repository.libraryNovels.first { it.any { it.id == "novel_read_tier" } } }
@@ -439,8 +439,10 @@ class NovelRepositoryTest {
 
             val chapterInDb = database.chapterDao().getChapter("novel_read_tier", "ch_read_1")
             assertNotNull(chapterInDb)
-            assertEquals("CACHE", chapterInDb!!.storageTier)
+            // Reading leaves Room row untouched (untracked cache)
+            assertEquals("NONE", chapterInDb!!.storageTier)
             assertNotEquals("DOWNLOADED", chapterInDb.storageTier)
+            assertTrue(repository.chapterCache.contains("novel_read_tier", "ch_read_1"))
 
             // Reading does not increment downloadedChaptersCount
             val libraryNovel = withTimeout(5000L) {
@@ -453,26 +455,23 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun deleteDownloads_resetsDownloadedAndCacheToNone_leavesEpubRows() = runBlocking {
+    fun deleteDownloads_resetsDownloadedToNone_leavesEpubRows() = runBlocking {
         val novel = testNovel(id = "novel_delete_dl", inLibrary = true)
         repository.addToLibrary(novel)
 
         val chDl = ChapterEntity(novelId = "novel_delete_dl", id = "ch_dl", title = "DL", chapterIndex = 1, storageTier = "DOWNLOADED")
-        val chCache = ChapterEntity(novelId = "novel_delete_dl", id = "ch_cache", title = "Cache", chapterIndex = 2, storageTier = "CACHE")
-        val chEpub = ChapterEntity(novelId = "novel_delete_dl", id = "ch_epub", title = "Epub", chapterIndex = 3, storageTier = "EPUB")
-        val chNone = ChapterEntity(novelId = "novel_delete_dl", id = "ch_none", title = "None", chapterIndex = 4, storageTier = "NONE")
-        database.chapterDao().insertIgnore(listOf(chDl, chCache, chEpub, chNone))
+        val chEpub = ChapterEntity(novelId = "novel_delete_dl", id = "ch_epub", title = "Epub", chapterIndex = 2, storageTier = "EPUB")
+        val chNone = ChapterEntity(novelId = "novel_delete_dl", id = "ch_none", title = "None", chapterIndex = 3, storageTier = "NONE")
+        database.chapterDao().insertIgnore(listOf(chDl, chEpub, chNone))
 
         repository.deleteDownloadedNovelChapters("novel_delete_dl")
 
         val chDlAfter = database.chapterDao().getChapter("novel_delete_dl", "ch_dl")
-        val chCacheAfter = database.chapterDao().getChapter("novel_delete_dl", "ch_cache")
         val chEpubAfter = database.chapterDao().getChapter("novel_delete_dl", "ch_epub")
         val chNoneAfter = database.chapterDao().getChapter("novel_delete_dl", "ch_none")
 
-        // DOWNLOADED and CACHE are reset to NONE
+        // DOWNLOADED is reset to NONE
         assertEquals("NONE", chDlAfter?.storageTier)
-        assertEquals("NONE", chCacheAfter?.storageTier)
         // EPUB is preserved
         assertEquals("EPUB", chEpubAfter?.storageTier)
         // NONE stays NONE
@@ -1004,17 +1003,17 @@ class NovelRepositoryTest {
             )
         )
 
-        // Novel 8: has only CACHE chapter and unread -> PURGED
-        val n8 = testNovel(id = "n_cache_only", inLibrary = false, lastReadTimestamp = 0L)
+        // Novel 8: has only NONE chapter and unread -> PURGED
+        val n8 = testNovel(id = "n_none_only", inLibrary = false, lastReadTimestamp = 0L)
         database.novelDao().insertIgnore(n8.toEntity())
         database.chapterDao().insertIgnore(
             ChapterEntity(
-                novelId = "n_cache_only",
+                novelId = "n_none_only",
                 id = "ch_8",
                 title = "Ch 8",
                 chapterIndex = 1,
                 isRead = false,
-                storageTier = "CACHE"
+                storageTier = "NONE"
             )
         )
 
@@ -1022,9 +1021,9 @@ class NovelRepositoryTest {
         val purgedCount = repository.purgeUnusedBrowseNovels()
         assertEquals(2, purgedCount)
 
-        // n_unused and n_cache_only are deleted
+        // n_unused and n_none_only are deleted
         assertNull(database.novelDao().getNovelById("n_unused"))
-        assertNull(database.novelDao().getNovelById("n_cache_only"))
+        assertNull(database.novelDao().getNovelById("n_none_only"))
 
         // All other 6 novels are preserved
         assertNotNull(database.novelDao().getNovelById("n_in_lib"))

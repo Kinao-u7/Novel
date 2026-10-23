@@ -93,8 +93,7 @@ interface ChapterDao {
         UPDATE chapters 
         SET storage_tier = :storageTier, 
             storage_location = :storageLocation, 
-            file_hash = :fileHash, 
-            last_accessed_at = :lastAccessedAt 
+            file_hash = :fileHash
         WHERE novel_id = :novelId AND id = :id
     """)
     suspend fun updateStorageTier(
@@ -102,16 +101,14 @@ interface ChapterDao {
         id: String,
         storageTier: String,
         storageLocation: String,
-        fileHash: String,
-        lastAccessedAt: Long
+        fileHash: String
     ): Int
 
     @Query("""
         UPDATE chapters 
         SET storage_tier = :storageTier, 
             storage_location = :storageLocation, 
-            file_hash = :fileHash, 
-            last_accessed_at = :lastAccessedAt 
+            file_hash = :fileHash
         WHERE novel_id = :novelId AND id = :id AND storage_tier IN (:allowedPreviousTiers)
     """)
     suspend fun updateStorageTierCas(
@@ -120,71 +117,22 @@ interface ChapterDao {
         storageTier: String,
         storageLocation: String,
         fileHash: String,
-        lastAccessedAt: Long,
         allowedPreviousTiers: List<String>
-    ): Int
-
-    @Query("""
-        UPDATE chapters 
-        SET storage_tier = 'CACHE', 
-            storage_location = :storageLocation, 
-            file_hash = :fileHash, 
-            last_accessed_at = :lastAccessedAt 
-        WHERE novel_id = :novelId AND id = :id AND storage_tier IN ('NONE', 'CACHE')
-    """)
-    suspend fun updateTierToCacheIfNoneOrCache(
-        novelId: String,
-        id: String,
-        storageLocation: String,
-        fileHash: String,
-        lastAccessedAt: Long
-    ): Int
-
-    @Query("""
-        UPDATE chapters 
-        SET storage_tier = 'NONE', 
-            last_accessed_at = :lastAccessedAt 
-        WHERE novel_id = :novelId AND id = :id AND storage_tier = 'CACHE'
-    """)
-    suspend fun updateTierToNoneIfCache(
-        novelId: String,
-        id: String,
-        lastAccessedAt: Long
     ): Int
 
     @Query("""
         UPDATE chapters 
         SET storage_tier = 'DOWNLOADED', 
             storage_location = :storageLocation, 
-            file_hash = :fileHash, 
-            last_accessed_at = :lastAccessedAt 
-        WHERE novel_id = :novelId AND id = :id AND storage_tier IN ('NONE', 'CACHE', 'DOWNLOADED')
+            file_hash = :fileHash
+        WHERE novel_id = :novelId AND id = :id AND storage_tier IN ('NONE', 'DOWNLOADED')
     """)
     suspend fun updateTierToDownloaded(
         novelId: String,
         id: String,
         storageLocation: String,
-        fileHash: String,
-        lastAccessedAt: Long
+        fileHash: String
     ): Int
-
-    @Query("UPDATE chapters SET last_accessed_at = :timestamp WHERE novel_id = :novelId AND id = :id")
-    suspend fun updateLastAccessed(novelId: String, id: String, timestamp: Long): Int
-
-    /**
-     * LRU query returning only CACHE chapters ordered by last_accessed_at ascending
-     * (tie-break by chapter_index ascending).
-     * EPUB, DOWNLOADED, and NONE chapters are never returned by eviction queries.
-     */
-    @Query("SELECT * FROM chapters WHERE storage_tier = 'CACHE' ORDER BY last_accessed_at ASC, chapter_index ASC")
-    suspend fun getCacheChaptersLru(): List<ChapterEntity>
-
-    @Query("SELECT * FROM chapters WHERE storage_tier = 'CACHE' ORDER BY last_accessed_at ASC, chapter_index ASC LIMIT :limit")
-    suspend fun getCacheChaptersLru(limit: Int): List<ChapterEntity>
-
-    @Query("UPDATE chapters SET storage_tier = 'NONE' WHERE storage_tier = 'CACHE'")
-    suspend fun clearCacheTier(): Int
-
 
     @Query("SELECT * FROM chapters WHERE novel_id = :novelId AND storage_tier = 'DOWNLOADED'")
     suspend fun getDownloadedChapters(novelId: String): List<ChapterEntity>
@@ -213,19 +161,10 @@ interface ChapterDao {
     @Query("UPDATE chapters SET read_paragraph_index = :paragraphIndex, read_char_offset = :charOffset WHERE novel_id = :novelId AND id = :id")
     suspend fun updatePosition(novelId: String, id: String, paragraphIndex: Int, charOffset: Int): Int
 
-    @Query("UPDATE chapters SET storage_tier = CASE WHEN storage_tier = 'NONE' THEN 'CACHE' ELSE storage_tier END, last_accessed_at = :lastAccessedAt WHERE novel_id = :novelId AND id = :id")
-    suspend fun recordChapterAccess(novelId: String, id: String, lastAccessedAt: Long = System.currentTimeMillis()): Int
-
-    @Query("UPDATE chapters SET storage_tier = 'DOWNLOADED', storage_location = 'INTERNAL', last_accessed_at = :timestamp WHERE novel_id = :novelId AND id = :id")
-    suspend fun markChapterDownloaded(novelId: String, id: String, timestamp: Long = System.currentTimeMillis()): Int
-
-    @Query("UPDATE chapters SET storage_tier = 'DOWNLOADED', storage_location = 'INTERNAL', last_accessed_at = :timestamp WHERE novel_id = :novelId AND id IN (:ids)")
-    suspend fun markChaptersDownloaded(novelId: String, ids: Collection<String>, timestamp: Long = System.currentTimeMillis()): Int
-
-    @Query("UPDATE chapters SET storage_tier = 'NONE' WHERE novel_id = :novelId AND storage_tier IN ('DOWNLOADED', 'CACHE')")
+    @Query("UPDATE chapters SET storage_tier = 'NONE' WHERE novel_id = :novelId AND storage_tier = 'DOWNLOADED'")
     suspend fun deleteNovelDownloads(novelId: String): Int
 
-    @Query("UPDATE chapters SET storage_tier = 'NONE' WHERE storage_tier IN ('DOWNLOADED', 'CACHE')")
+    @Query("UPDATE chapters SET storage_tier = 'NONE' WHERE storage_tier = 'DOWNLOADED'")
     suspend fun deleteAllDownloads(): Int
 
     @Query("DELETE FROM chapters WHERE novel_id = :novelId")

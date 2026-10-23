@@ -154,7 +154,6 @@ fun Chapter.toEntity(
     storageTier: String = if (isDownloaded) "DOWNLOADED" else "NONE",
     storageLocation: String = "INTERNAL",
     fileHash: String = "",
-    lastAccessedAt: Long = 0L,
     readParagraphIndex: Int = 0,
     readCharOffset: Int = 0
 ): ChapterEntity {
@@ -170,8 +169,7 @@ fun Chapter.toEntity(
         readCharOffset = readCharOffset,
         storageTier = storageTier,
         storageLocation = storageLocation,
-        fileHash = fileHash,
-        lastAccessedAt = lastAccessedAt
+        fileHash = fileHash
     )
 }
 
