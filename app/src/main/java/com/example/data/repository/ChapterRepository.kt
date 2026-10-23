@@ -8,6 +8,7 @@ import com.example.data.local.db.dao.DownloadQueueDao
 import com.example.data.local.db.dao.NotificationDao
 import com.example.data.local.db.dao.NovelDao
 import com.example.data.local.db.entity.NotificationEntity
+import com.example.data.local.db.toModel
 import com.example.data.model.NotificationTypes
 import com.example.data.local.storage.ChapterCache
 import com.example.data.local.storage.ChapterReadException
@@ -231,7 +232,7 @@ class ChapterRepository(
         // Cache miss: fetch via shared single-flight map
         val isDownloadedMissing = (chapterRow.storageTier == "DOWNLOADED")
         val savedLocation = chapterRow.storageLocation
-        val novel = novelDao.getNovelById(novelId) ?: throw ChapterRowMissing(novelId, chapterId)
+        val novel = (novelDao.getNovelById(novelId) ?: throw ChapterRowMissing(novelId, chapterId)).toModel()
 
         val rawContent = fetchChapterContentFromNetwork(novel, chapterId)
         val fileHash = storageResolver.sha256(chapterId)

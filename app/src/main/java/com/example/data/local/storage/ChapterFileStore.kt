@@ -276,8 +276,6 @@ class SafChapterFileStore(
         }
     }
 
-    override suspend fun writeCache(content: ChapterContent): File? = null
-
     override suspend fun writeDownload(content: ChapterContent, location: String): Boolean = withContext(ioDispatcher) {
         if (!isLocationWritable(location)) {
             throw StorageUnavailableException("SAF location is unwritable: $location")
@@ -374,8 +372,6 @@ class SafChapterFileStore(
             false
         }
     }
-
-    override suspend fun deleteNovelCache(novelId: String): Boolean = false
 
     override suspend fun deleteAllDownloads(locations: Set<String>): Boolean = withContext(ioDispatcher) {
         val treeUris = locations.filter { it.startsWith("SAF:") }.map { it.removePrefix("SAF:") }.toSet()

@@ -92,7 +92,7 @@ class ChapterCache(
         try {
             val text = file.readText()
             val json = JSONObject(text)
-            val id = json.getString("id")
+            val chapterId = if (json.has("chapterId")) json.getString("chapterId") else json.getString("id")
             val nId = json.getString("novelId")
             val title = json.getString("title")
             val pArray = json.getJSONArray("paragraphs")
@@ -103,7 +103,7 @@ class ChapterCache(
             // Refresh lastModified time on read
             file.setLastModified(System.currentTimeMillis())
             ChapterContent(
-                id = id,
+                chapterId = chapterId,
                 novelId = nId,
                 title = title,
                 paragraphs = paragraphs,
@@ -139,7 +139,7 @@ class ChapterCache(
         }
 
         val json = JSONObject().apply {
-            put("id", content.id)
+            put("chapterId", content.chapterId)
             put("novelId", content.novelId)
             put("title", content.title)
             val arr = JSONArray()
