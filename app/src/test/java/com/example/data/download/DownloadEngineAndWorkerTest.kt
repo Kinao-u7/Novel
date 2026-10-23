@@ -38,7 +38,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -214,7 +213,7 @@ class DownloadEngineAndWorkerTest {
     // --- 1. DAO TESTS ---
 
     @Test
-    fun dao_insertIgnore_preventsDuplicateEntries() = runTest {
+    fun dao_insertIgnore_preventsDuplicateEntries() = runBlocking {
         withTimeout(10_000) {
             insertTestNovelAndChapters("nov_dao", 2)
 
@@ -233,7 +232,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun dao_fifoOrdering_returnsEarliestQueuedFirst() = runTest {
+    fun dao_fifoOrdering_returnsEarliestQueuedFirst() = runBlocking {
         withTimeout(10_000) {
             insertTestNovelAndChapters("nov_fifo", 3)
 
@@ -252,7 +251,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun dao_resetDownloadingToQueued_recoversAbandonedWork() = runTest {
+    fun dao_resetDownloadingToQueued_recoversAbandonedWork() = runBlocking {
         withTimeout(10_000) {
             insertTestNovelAndChapters("nov_recover", 2)
 
@@ -268,7 +267,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun dao_pauseAndResumeQueue_transitionsStatesCorrectly() = runTest {
+    fun dao_pauseAndResumeQueue_transitionsStatesCorrectly() = runBlocking {
         withTimeout(10_000) {
             insertTestNovelAndChapters("nov_pause", 3)
 
@@ -291,7 +290,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun dao_retryFailed_resetsCountersAndStatus() = runTest {
+    fun dao_retryFailed_resetsCountersAndStatus() = runBlocking {
         withTimeout(10_000) {
             insertTestNovelAndChapters("nov_retry", 1)
 
@@ -310,7 +309,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun dao_clearCompleted_removesOnlyCompleted() = runTest {
+    fun dao_clearCompleted_removesOnlyCompleted() = runBlocking {
         withTimeout(10_000) {
             insertTestNovelAndChapters("nov_clear", 3)
 
@@ -329,7 +328,7 @@ class DownloadEngineAndWorkerTest {
     // --- 2. DOWNLOAD ENGINE TESTS ---
 
     @Test
-    fun engine_enqueueChapters_skipsWhenNovelMissing_andInsertsNoOrphanRows() = runTest {
+    fun engine_enqueueChapters_skipsWhenNovelMissing_andInsertsNoOrphanRows() = runBlocking {
         withTimeout(10_000) {
             val result = downloadEngine.enqueueChapters("missing_novel", listOf("ch_1", "ch_2"))
 
@@ -341,7 +340,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun engine_enqueueChapters_skipsMissingChapters_andEnqueuesExisting() = runTest {
+    fun engine_enqueueChapters_skipsMissingChapters_andEnqueuesExisting() = runBlocking {
         withTimeout(10_000) {
             insertTestNovelAndChapters("nov_engine", 2)
 
@@ -359,7 +358,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun engine_queueSummaryFlow_accuratelyAggregatesStatuses() = runTest {
+    fun engine_queueSummaryFlow_accuratelyAggregatesStatuses() = runBlocking {
         withTimeout(10_000) {
             insertTestNovelAndChapters("nov_summary", 5)
 
@@ -380,7 +379,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun engine_autoDownloadNext_enqueuesNextEligibleChapters() = runTest {
+    fun engine_autoDownloadNext_enqueuesNextEligibleChapters() = runBlocking {
         withTimeout(10_000) {
             insertTestNovelAndChapters("nov_auto", 5)
 
@@ -394,7 +393,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun engine_autoDownloadNext_skipsAlreadyDownloadedOrQueuedChapters() = runTest {
+    fun engine_autoDownloadNext_skipsAlreadyDownloadedOrQueuedChapters() = runBlocking {
         withTimeout(10_000) {
             insertTestNovelAndChapters("nov_auto_skip", 5)
 
@@ -421,7 +420,7 @@ class DownloadEngineAndWorkerTest {
     // --- 3. DOWNLOAD QUEUE WORKER TESTS ---
 
     @Test
-    fun worker_processesQueue_andMarksCompleted() = runTest {
+    fun worker_processesQueue_andMarksCompleted() = runBlocking {
         withTimeout(10_000) {
             insertTestNovelAndChapters("nov_worker_1", 2)
             downloadEngine.enqueueChapters("nov_worker_1", listOf("ch_1", "ch_2"))
@@ -443,7 +442,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun worker_onFailure_retriesWithExponentialBackoff_andMarksFailedOnMaxRetries() = runTest {
+    fun worker_onFailure_retriesWithExponentialBackoff_andMarksFailedOnMaxRetries() = runBlocking {
         withTimeout(10_000) {
             insertTestNovelAndChapters("nov_fail", 1)
             fakeSource.failChapters.add("ch_1")
@@ -461,7 +460,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun worker_stopsImmediately_whenQueueIsPaused() = runTest {
+    fun worker_stopsImmediately_whenQueueIsPaused() = runBlocking {
         withTimeout(10_000) {
             insertTestNovelAndChapters("nov_worker_pause", 2)
             downloadEngine.enqueueChapters("nov_worker_pause", listOf("ch_1", "ch_2"))
@@ -495,7 +494,7 @@ class DownloadEngineAndWorkerTest {
             }
 
             val warnings = mutableListOf<String>()
-            val collectJob = launch(Dispatchers.IO) {
+            val collectJob = launch(Dispatchers.Unconfined) {
                 repository.chapterRepository.storageWarnings.collect {
                     warnings.add(it)
                 }
@@ -525,7 +524,7 @@ class DownloadEngineAndWorkerTest {
     // --- 5. REPOSITORY INTERFACE TEST ---
 
     @Test
-    fun repository_exposesDownloadEngineFunctionsDirectly() = runTest {
+    fun repository_exposesDownloadEngineFunctionsDirectly() = runBlocking {
         withTimeout(10_000) {
             insertTestNovelAndChapters("nov_repo_expose", 3)
 
@@ -555,7 +554,7 @@ class DownloadEngineAndWorkerTest {
     // --- 6. ADDITIONAL ENGINE & WORKER TESTS ---
 
     @Test
-    fun concurrency_neverExceedsSimultaneousDownloads() = runTest {
+    fun concurrency_neverExceedsSimultaneousDownloads() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_concurrent_10"
             insertTestNovelAndChapters(novelId, 10)
@@ -583,7 +582,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun cancelChapter_andCancelAll_removeRowsAndStopWork() = runTest {
+    fun cancelChapter_andCancelAll_removeRowsAndStopWork() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_cancel_flow"
             insertTestNovelAndChapters(novelId, 3)
@@ -609,7 +608,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun wifiOnly_true_usesUnmeteredConstraint_andFalse_usesConnected() = runTest {
+    fun wifiOnly_true_usesUnmeteredConstraint_andFalse_usesConnected() = runBlocking {
         withTimeout(10_000) {
             val testDriver = WorkManagerTestInitHelper.getTestDriver(context)
 
@@ -644,7 +643,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun worker_startedWithDownloadingRows_recoversThemToQueuedAndCompletes() = runTest {
+    fun worker_startedWithDownloadingRows_recoversThemToQueuedAndCompletes() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_worker_recover"
             insertTestNovelAndChapters(novelId, 2)
@@ -671,7 +670,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun throttling_insertsDelayBetweenRequests() = runTest {
+    fun throttling_insertsDelayBetweenRequests() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_throttle_delay"
             insertTestNovelAndChapters(novelId, 2)
@@ -720,7 +719,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun failedChapter_doesNotStopOthers() = runTest {
+    fun failedChapter_doesNotStopOthers() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_fail_other_3"
             insertTestNovelAndChapters(novelId, 3)
@@ -749,7 +748,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun worker_skipsAlreadyDownloadedChapters_marksCompletedImmediately() = runTest {
+    fun worker_skipsAlreadyDownloadedChapters_marksCompletedImmediately() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_skip_downloaded"
             insertTestNovelAndChapters(novelId, 2)
@@ -783,7 +782,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun engine_enqueueChapters_requeuesExistingFailedOrCompletedRows() = runTest {
+    fun engine_enqueueChapters_requeuesExistingFailedOrCompletedRows() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_requeue_test"
             insertTestNovelAndChapters(novelId, 3)
@@ -825,7 +824,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun chapterRepository_deleteNovelDownloads_cleansDownloadQueue() = runTest {
+    fun chapterRepository_deleteNovelDownloads_cleansDownloadQueue() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_del_queue_clean"
             insertTestNovelAndChapters(novelId, 2)
@@ -840,7 +839,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun worker_timeLimitReached_leavesFollowUpEnqueuedUnderUniqueWorkName() = runTest {
+    fun worker_timeLimitReached_leavesFollowUpEnqueuedUnderUniqueWorkName() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_time_limit"
             insertTestNovelAndChapters(novelId, 2)
@@ -887,7 +886,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun pausedRow_isNotOverwrittenByGuardedFailureUpdate() = runTest {
+    fun pausedRow_isNotOverwrittenByGuardedFailureUpdate() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_paused_guard"
             insertTestNovelAndChapters(novelId, 1)
@@ -919,7 +918,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun enqueueNovel_requeuesFailedChapter_andDoesNotQueueDownloadedOrEpub() = runTest {
+    fun enqueueNovel_requeuesFailedChapter_andDoesNotQueueDownloadedOrEpub() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_enqueue_novel_filter"
 
@@ -974,7 +973,7 @@ class DownloadEngineAndWorkerTest {
     // --- 7. RACE CONDITIONS & COORDINATOR TESTS ---
 
     @Test
-    fun promoteFromCache_copiesToDownloads_andCasSetsDownloaded() = runTest {
+    fun promoteFromCache_copiesToDownloads_andCasSetsDownloaded() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_evict_promote"
             insertTestNovelAndChapters(novelId, 1)
@@ -1042,7 +1041,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun enqueueChapters_rejectsNovelsBeingDeleted() = runTest {
+    fun enqueueChapters_rejectsNovelsBeingDeleted() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_deleting_guard"
             insertTestNovelAndChapters(novelId, 2)
@@ -1062,7 +1061,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun deleteNovelDownloads_clearsQueueAndGuardsDeletion() = runTest {
+    fun deleteNovelDownloads_clearsQueueAndGuardsDeletion() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_delete_flow"
             insertTestNovelAndChapters(novelId, 2)
@@ -1077,7 +1076,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun missingDownloaded_selfHealsBackToDownloadedInOriginalLocation() = runTest {
+    fun missingDownloaded_selfHealsBackToDownloadedInOriginalLocation() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_self_heal"
             insertTestNovelAndChapters(novelId, 1)
@@ -1109,7 +1108,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun diskFirstCheck_skipsNetworkIfFileExists() = runTest {
+    fun diskFirstCheck_skipsNetworkIfFileExists() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_disk_first"
             insertTestNovelAndChapters(novelId, 1)
@@ -1169,6 +1168,41 @@ class DownloadEngineAndWorkerTest {
             } finally {
                 downloadEngine.downloadCoordinator.deletingNovelIds.remove(novelId)
             }
+        }
+    }
+
+    @Test
+    fun removeNovelCompletely_usesOnlyDeletingNovelIds_andDoesNotIncrementIsDeletingAll() = runBlocking {
+        withTimeout(10_000) {
+            val novelId = "nov_rm_complete_guard"
+            val otherNovelId = "nov_rm_complete_other"
+            insertTestNovelAndChapters(novelId, 2)
+            insertTestNovelAndChapters(otherNovelId, 2)
+
+            val coordinator = repository.chapterRepository.downloadCoordinator
+            assertEquals(0, coordinator.isDeletingAll.get())
+
+            // While deletingNovelIds contains novelId, only that novel is blocked, other novel can enqueue
+            coordinator.deletingNovelIds.add(novelId)
+            try {
+                // isDeletingAll MUST NOT be incremented
+                assertEquals(0, coordinator.isDeletingAll.get())
+
+                val otherResult = downloadEngine.enqueueChapters(otherNovelId, listOf("ch_1"))
+                assertEquals(1, otherResult.enqueuedCount)
+
+                val targetResult = downloadEngine.enqueueChapters(novelId, listOf("ch_1"))
+                assertEquals(0, targetResult.enqueuedCount)
+                assertEquals(1, targetResult.skippedCount)
+            } finally {
+                coordinator.deletingNovelIds.remove(novelId)
+            }
+
+            // Verify full removeNovelCompletely execution leaves isDeletingAll untouched (0)
+            repository.removeNovelCompletely(novelId)
+            assertEquals(0, coordinator.isDeletingAll.get())
+            assertFalse(coordinator.deletingNovelIds.contains(novelId))
+            assertNull(novelDao.getNovelById(novelId))
         }
     }
 
