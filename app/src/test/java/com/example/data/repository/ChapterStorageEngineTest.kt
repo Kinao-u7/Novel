@@ -611,7 +611,7 @@ class ChapterStorageEngineTest {
 
         // 2. Delete all downloads
         chapterStorage.writeToDownloads(ChapterContent("ch_web_dl", "novel_web", "Web DL", listOf("text")))
-        database.chapterDao().updateStorageTier("novel_web", "ch_web_dl", "DOWNLOADED", "INTERNAL", storageResolver.sha256("ch_web_dl"), 100L)
+        database.chapterDao().updateStorageTier("novel_web", "ch_web_dl", "DOWNLOADED", "INTERNAL", storageResolver.sha256("ch_web_dl"))
 
         chapterRepository.deleteAllDownloads()
 

@@ -159,6 +159,34 @@ class DownloadEngineAndWorkerTest {
         DownloadCoordinator.resetInstanceForTesting()
     }
 
+    private fun testNovelEntity(
+        id: String = "nov_1",
+        title: String = "Test Novel",
+        author: String = "Author",
+        description: String = "Desc",
+        sourceId: String = "test_source",
+        sourceName: String = "Test Source",
+        status: String = "Ongoing",
+        genresJson: String = "[]",
+        inLibrary: Boolean = true,
+        isEpub: Boolean = false,
+        totalChapters: Int = 10,
+        rating: Float? = null
+    ): NovelEntity = NovelEntity(
+        id = id,
+        title = title,
+        author = author,
+        description = description,
+        sourceId = sourceId,
+        sourceName = sourceName,
+        status = status,
+        genresJson = genresJson,
+        inLibrary = inLibrary,
+        isEpub = isEpub,
+        totalChapters = totalChapters,
+        rating = rating
+    )
+
     private suspend fun insertTestNovelAndChapters(novelId: String = "nov_1", chapterCount: Int = 3) {
         val novel = NovelEntity(
             id = novelId,
@@ -894,7 +922,7 @@ class DownloadEngineAndWorkerTest {
         withTimeout(10_000) {
             val novelId = "nov_enqueue_novel_filter"
 
-            val novel = NovelEntity(
+            val novel = testNovelEntity(
                 id = novelId,
                 title = "Filter Test Novel",
                 author = "Author",

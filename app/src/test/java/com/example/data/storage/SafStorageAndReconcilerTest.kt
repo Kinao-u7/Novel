@@ -24,6 +24,9 @@ import com.example.data.repository.SettingsRepository
 import com.example.data.source.NovelSource
 import com.example.data.source.SourceManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -581,12 +584,15 @@ class SafStorageAndReconcilerTest {
             }
 
             // Execute concurrent downloads to the same SAF location
-            kotlinx.coroutines.coroutineScope {
+            val results = coroutineScope {
                 chapters.map { ch ->
-                    kotlinx.coroutines.async(Dispatchers.IO) {
+                    async(Dispatchers.IO) {
                         chapterRepository.downloadChapter(novel, ch)
                     }
-                }.forEach { it.await() }
+                }.awaitAll()
+            }
+            results.forEach { result ->
+                assertTrue("Concurrent SAF download should succeed", result.isSuccess)
             }
 
             // All 10 chapters exist under the exact same location and novel ID prefix
