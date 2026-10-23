@@ -65,6 +65,7 @@ class NovelRepositoryTest {
 
     @After
     fun tearDown() {
+        repository.shutdownForTesting()
         NovelDatabaseHolder.clearInstanceForTesting()
         database.close()
         com.example.data.download.DownloadCoordinator.resetInstanceForTesting()

@@ -62,32 +62,38 @@ class DownloadQueueWorker(
         val notificationDao = repository.notificationDao
         val coordinator = chapterRepository.downloadCoordinator
 
-        coordinator.onWorkerStarted()
-
-        // Reset rate-limit per worker run / batch so at most 1 warning and 1 notification per batch
-        chapterRepository.resetStorageWarningRateLimit()
-
-        // Invariant: turn every DOWNLOADING row back to QUEUED on worker start so a killed worker never abandons work
-        downloadQueueDao.resetDownloadingToQueued()
-
-        val startTime = System.currentTimeMillis()
+        val runId = id.toString()
         val downloadedCountThisSession = AtomicInteger(0)
         var followUpScheduled = false
-
-        val initialCompleted = downloadQueueDao.countByStatus("COMPLETED")
-        val initialRemaining = downloadQueueDao.countActiveRemaining()
-        val initialTotal = initialCompleted + initialRemaining
-        if (initialRemaining == 0) {
-            coordinator.onWorkerStopped()
-            if (downloadQueueDao.countActiveOrPaused() == 0) {
-                downloadQueueDao.clearCompleted()
-            }
-            return@withContext Result.success()
-        }
-
-        trySetForeground(progress = initialCompleted, total = initialTotal)
+        var startQueuedCount = 0
+        var startCompletedCount = 0
+        var startFailedCount = 0
 
         try {
+            coordinator.onWorkerStarted(runId)
+
+            // Reset rate-limit per worker run / batch so at most 1 warning and 1 notification per batch
+            chapterRepository.resetStorageWarningRateLimit()
+
+            // Invariant: turn every DOWNLOADING row back to QUEUED on worker start so a killed worker never abandons work
+            downloadQueueDao.resetDownloadingToQueued()
+
+            val startTime = System.currentTimeMillis()
+
+            startQueuedCount = downloadQueueDao.countByStatus("QUEUED")
+            startCompletedCount = downloadQueueDao.countByStatus("COMPLETED")
+            startFailedCount = downloadQueueDao.countByStatus("FAILED")
+            val initialRemaining = downloadQueueDao.countActiveRemaining()
+            val initialTotal = startCompletedCount + initialRemaining
+            if (initialRemaining == 0) {
+                if (downloadQueueDao.countActiveOrPaused() == 0) {
+                    downloadQueueDao.clearCompleted()
+                }
+                return@withContext Result.success()
+            }
+
+            trySetForeground(progress = startCompletedCount, total = initialTotal)
+
             val settings = settingsRepository.downloadSettings.value
             val maxConcurrent = settings.simultaneousDownloads.coerceIn(1, 5)
             WebChapterScraper.configurePoolCapacity(maxConcurrent)
@@ -337,7 +343,27 @@ class DownloadQueueWorker(
             }
         } finally {
             withContext(NonCancellable) {
-                coordinator.onWorkerStopped()
+                coordinator.onWorkerStopped(runId)
+
+                if (!isStopped && !followUpScheduled) {
+                    coordinator.mutex.withLock {
+                        val currentQueued = downloadQueueDao.countByStatus("QUEUED")
+                        val currentCompleted = downloadQueueDao.countByStatus("COMPLETED")
+                        val currentFailed = downloadQueueDao.countByStatus("FAILED")
+                        val pausedCount = downloadQueueDao.countByStatus("PAUSED")
+
+                        val changed = (currentCompleted != startCompletedCount) ||
+                                      (currentFailed != startFailedCount) ||
+                                      (currentQueued != startQueuedCount)
+
+                        if (currentQueued > 0 && pausedCount == 0 && changed) {
+                            followUpScheduled = true
+                            repository.downloadEngine.scheduleWorker(appendOrReplace = true)
+                        } else if (currentQueued == 0 && pausedCount == 0 && downloadQueueDao.countActiveRemaining() == 0) {
+                            downloadQueueDao.clearCompleted()
+                        }
+                    }
+                }
 
                 // Lifecycle: release pooled WebViews when queue is finished or worker stops
                 try {

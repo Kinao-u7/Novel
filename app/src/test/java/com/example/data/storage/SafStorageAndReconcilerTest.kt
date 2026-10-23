@@ -233,6 +233,7 @@ class SafStorageAndReconcilerTest {
     @After
     fun tearDown() {
         SourceManager.unregisterSource(fakeSource.id)
+        chapterRepository.shutdownForTesting()
         NovelDatabaseHolder.clearInstanceForTesting()
         database.close()
         com.example.data.download.DownloadCoordinator.resetInstanceForTesting()

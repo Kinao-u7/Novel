@@ -153,6 +153,7 @@ class DownloadEngineAndWorkerTest {
     fun tearDown() {
         DownloadQueueWorker.throttleDelayOverrideMs = null
         DownloadEngineProvider.setRepositoryForTesting(null)
+        repository.shutdownForTesting()
         NovelRepository.resetInstanceForTesting()
         NovelDatabaseHolder.clearInstanceForTesting()
         database.close()
@@ -483,7 +484,7 @@ class DownloadEngineAndWorkerTest {
     // --- 4. STORAGE WARNING RATE-LIMIT TEST ---
 
     @Test
-    fun rateLimit_storageWarning_producesExactlyOneWarningAndNotificationFor50Chapters() = runTest {
+    fun rateLimit_storageWarning_producesExactlyOneWarningAndNotificationFor50Chapters() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_unwritable_50"
             insertTestNovelAndChapters(novelId, 50)
@@ -494,7 +495,7 @@ class DownloadEngineAndWorkerTest {
             }
 
             val warnings = mutableListOf<String>()
-            val collectJob = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            val collectJob = launch(Dispatchers.IO) {
                 repository.chapterRepository.storageWarnings.collect {
                     warnings.add(it)
                 }
@@ -614,7 +615,7 @@ class DownloadEngineAndWorkerTest {
 
             // Case 1: wifiOnly = true -> UNMETERED constraint
             repository.settingsRepository.updateDownloadSettings { it.copy(wifiOnly = true) }
-            downloadEngine.scheduleWorker(replace = true)
+            downloadEngine.restartWorker()
 
             val workInfosTrue = WorkManager.getInstance(context)
                 .getWorkInfosForUniqueWork(DownloadEngine.WORK_NAME).get()
@@ -628,7 +629,7 @@ class DownloadEngineAndWorkerTest {
 
             // Case 2: wifiOnly = false -> CONNECTED constraint
             repository.settingsRepository.updateDownloadSettings { it.copy(wifiOnly = false) }
-            downloadEngine.scheduleWorker(replace = true)
+            downloadEngine.restartWorker()
 
             val workInfosFalse = WorkManager.getInstance(context)
                 .getWorkInfosForUniqueWork(DownloadEngine.WORK_NAME).get()
@@ -1011,7 +1012,7 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
-    fun downloadVsReaderFetch_leafLockEnsuresConsistentDownloadedTier() = runTest {
+    fun downloadVsReaderFetch_leafLockEnsuresConsistentDownloadedTier() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_dl_reader"
             insertTestNovelAndChapters(novelId, 1)
@@ -1132,6 +1133,68 @@ class DownloadEngineAndWorkerTest {
 
             val row = chapterDao.getChapter(novelId, "ch_1")
             assertEquals("DOWNLOADED", row?.storageTier)
+        }
+    }
+
+    @Test
+    fun enqueue_rejectedDuringDeleteAll() = runBlocking {
+        withTimeout(10_000) {
+            val novelId = "nov_del_all_reject"
+            insertTestNovelAndChapters(novelId, 2)
+
+            downloadEngine.downloadCoordinator.isDeletingAll.incrementAndGet()
+            try {
+                val result = downloadEngine.enqueueChapters(novelId, listOf("ch_1", "ch_2"))
+                assertEquals(0, result.enqueuedCount)
+                assertEquals(2, result.skippedCount)
+                assertTrue(result.skippedReasons["ch_1"]!!.contains("All downloads are currently being deleted"))
+            } finally {
+                downloadEngine.downloadCoordinator.isDeletingAll.decrementAndGet()
+            }
+        }
+    }
+
+    @Test
+    fun enqueue_usesUnderLockDeletionCheck() = runBlocking {
+        withTimeout(10_000) {
+            val novelId = "nov_lock_deletion_check"
+            insertTestNovelAndChapters(novelId, 2)
+
+            downloadEngine.downloadCoordinator.deletingNovelIds.add(novelId)
+            try {
+                val result = downloadEngine.enqueueChapters(novelId, listOf("ch_1", "ch_2"))
+                assertEquals(0, result.enqueuedCount)
+                assertEquals(2, result.skippedCount)
+                assertTrue(result.skippedReasons["ch_1"]!!.contains("currently being deleted"))
+            } finally {
+                downloadEngine.downloadCoordinator.deletingNovelIds.remove(novelId)
+            }
+        }
+    }
+
+    @Test
+    fun failureBeforeTryBlock_doesNotHangAwaitWorkerStopped() = runBlocking {
+        withTimeout(5_000) {
+            downloadEngine.downloadCoordinator.awaitWorkerStopped(timeoutMs = 1_000L)
+        }
+    }
+
+    @Test
+    fun restartWorker_waitsForWorkerToStop() = runBlocking {
+        withTimeout(10_000) {
+            val runId = "test_run_restart"
+            downloadEngine.downloadCoordinator.onWorkerStarted(runId)
+
+            val restartJob = launch(Dispatchers.IO) {
+                downloadEngine.restartWorker(timeoutMs = 5_000L)
+            }
+
+            delay(50)
+            assertFalse("restartJob should still be waiting for worker to stop", restartJob.isCompleted)
+
+            downloadEngine.downloadCoordinator.onWorkerStopped(runId)
+            restartJob.join()
+            assertTrue("restartWorker completed after worker stopped", restartJob.isCompleted)
         }
     }
 }

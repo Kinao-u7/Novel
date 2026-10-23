@@ -156,6 +156,8 @@ class ChapterStorageEngineTest {
     @After
     fun tearDown() {
         SourceManager.unregisterSource(fakeSource.id)
+        novelRepository.shutdownForTesting()
+        chapterRepository.shutdownForTesting()
         NovelDatabaseHolder.clearInstanceForTesting()
         database.close()
         com.example.data.download.DownloadCoordinator.resetInstanceForTesting()

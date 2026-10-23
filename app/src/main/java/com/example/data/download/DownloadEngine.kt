@@ -88,6 +88,15 @@ class DownloadEngine(
      * if missing, returns a structured result reporting which were skipped rather than inserting orphaned rows.
      */
     suspend fun enqueueChapters(novelId: String, chapterIds: List<String>): EnqueueResult = withContext(Dispatchers.IO) {
+        if (downloadCoordinator.isDeletingAll.get() > 0) {
+            val reasons = chapterIds.associateWith { "All downloads are currently being deleted" }
+            return@withContext EnqueueResult(
+                enqueuedChapterIds = emptyList(),
+                skippedChapterIds = chapterIds,
+                skippedReasons = reasons
+            )
+        }
+
         if (downloadCoordinator.deletingNovelIds.contains(novelId)) {
             val reasons = chapterIds.associateWith { "Novel is currently being deleted: $novelId" }
             return@withContext EnqueueResult(
@@ -137,7 +146,15 @@ class DownloadEngine(
         }
 
         if (toQueue.isNotEmpty()) {
-            downloadCoordinator.mutex.withLock {
+            val lockedResult = downloadCoordinator.mutex.withLock {
+                if (downloadCoordinator.isDeletingAll.get() > 0) {
+                    val deleteReasons = chapterIds.associateWith { "All downloads are currently being deleted" }
+                    return@withLock EnqueueResult(
+                        enqueuedChapterIds = emptyList(),
+                        skippedChapterIds = chapterIds,
+                        skippedReasons = deleteReasons
+                    )
+                }
                 if (downloadCoordinator.deletingNovelIds.contains(novelId)) {
                     val deleteReasons = chapterIds.associateWith { "Novel is currently being deleted: $novelId" }
                     return@withLock EnqueueResult(
@@ -160,7 +177,11 @@ class DownloadEngine(
                 }
                 downloadQueueDao.bulkRequeue(novelId, toQueue, now)
 
-                scheduleWorker()
+                scheduleWorker(appendOrReplace = true)
+                null
+            }
+            if (lockedResult != null) {
+                return@withContext lockedResult
             }
         }
 
@@ -261,7 +282,15 @@ class DownloadEngine(
     suspend fun retryFailed() = withContext(Dispatchers.IO) {
         downloadCoordinator.mutex.withLock {
             downloadQueueDao.retryFailed()
-            scheduleWorker()
+            scheduleWorker(appendOrReplace = true)
+        }
+    }
+
+    suspend fun restartWorker(timeoutMs: Long = 10_000L) = withContext(Dispatchers.IO) {
+        cancelWorker()
+        downloadCoordinator.awaitWorkerStopped(timeoutMs)
+        downloadCoordinator.mutex.withLock {
+            scheduleWorker(appendOrReplace = false)
         }
     }
 
@@ -269,7 +298,7 @@ class DownloadEngine(
         downloadQueueDao.clearCompleted()
     }
 
-    fun scheduleWorker(replace: Boolean = false, appendOrReplace: Boolean = false) {
+    fun scheduleWorker(appendOrReplace: Boolean = false) {
         val wifiOnly = settingsRepository.downloadSettings.value.wifiOnly
         val networkType = if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
         val constraints = Constraints.Builder()
@@ -281,10 +310,10 @@ class DownloadEngine(
             .addTag(TAG_DOWNLOAD)
             .build()
 
-        val policy = when {
-            appendOrReplace -> ExistingWorkPolicy.APPEND_OR_REPLACE
-            replace -> ExistingWorkPolicy.REPLACE
-            else -> ExistingWorkPolicy.KEEP
+        val policy = if (appendOrReplace) {
+            ExistingWorkPolicy.APPEND_OR_REPLACE
+        } else {
+            ExistingWorkPolicy.KEEP
         }
         try {
             WorkManager.getInstance(context).enqueueUniqueWork(WORK_NAME, policy, request)

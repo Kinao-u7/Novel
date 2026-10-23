@@ -25,8 +25,10 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -92,7 +94,16 @@ class ChapterRepository(
      * Repository-level scope for background fetches and tasks.
      * Uses SupervisorJob + ioDispatcher so child failures or caller cancellations do not cancel the scope.
      */
-    private val repositoryScope = CoroutineScope(SupervisorJob() + ioDispatcher)
+    private val repositoryExceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        if (throwable !is CancellationException) {
+            android.util.Log.e("ChapterRepository", "Uncaught exception in repository scope", throwable)
+        }
+    }
+    private val repositoryScope = CoroutineScope(SupervisorJob() + ioDispatcher + repositoryExceptionHandler)
+
+    internal fun shutdownForTesting() {
+        repositoryScope.cancel()
+    }
 
     /**
      * Small leaf Mutex per (novelId, chapterId) key.
@@ -477,18 +488,24 @@ class ChapterRepository(
      * Resets DOWNLOADED rows to NONE; never touches EPUB or ChapterCache.
      */
     suspend fun deleteAllDownloads(): Int = withContext(NonCancellable + ioDispatcher) {
-        // 1. Under coordinator lock: clear queue
+        // 1. Under coordinator lock: set isDeletingAll guard & clear queue
         downloadCoordinator.mutex.withLock {
+            downloadCoordinator.isDeletingAll.incrementAndGet()
             downloadQueueDao.clearQueue()
         }
-        // 2. Outside lock: wait for all in-flight tasks
-        downloadCoordinator.awaitAllChapterJobs()
+        try {
+            // 2. Outside lock: wait for all in-flight tasks
+            downloadCoordinator.awaitAllChapterJobs()
 
-        // 3. Delete files & reset tiers
-        val allDownloaded = chapterDao.getAllDownloadedChapters()
-        val locations = allDownloaded.map { it.storageLocation }.toSet()
-        chapterStorage.deleteAllDownloads(locations)
-        chapterDao.deleteAllDownloads()
+            // 3. Delete files & reset tiers
+            val allDownloaded = chapterDao.getAllDownloadedChapters()
+            val locations = allDownloaded.map { it.storageLocation }.toSet()
+            chapterStorage.deleteAllDownloads(locations)
+            chapterDao.deleteAllDownloads()
+        } finally {
+            // 4. Clear isDeletingAll guard
+            downloadCoordinator.isDeletingAll.decrementAndGet()
+        }
     }
 
     /**

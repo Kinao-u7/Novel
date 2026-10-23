@@ -28,10 +28,12 @@ import com.example.data.local.db.entity.DownloadQueueEntity
 import com.example.data.epub.EpubParser
 import com.example.data.epub.ParsedEpub
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -102,7 +104,17 @@ class NovelRepository(context: Context) {
     internal val preferencesManager = PreferencesManager(appContext, settingsRepository)
     internal val backupManager = BackupManager(this, preferencesManager)
 
-    private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val repoExceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        if (throwable !is CancellationException) {
+            android.util.Log.e("NovelRepository", "Uncaught exception in repository scope", throwable)
+        }
+    }
+    private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO + repoExceptionHandler)
+
+    internal fun shutdownForTesting() {
+        repoScope.cancel()
+        chapterRepository.shutdownForTesting()
+    }
 
     // Position debounce tracking
     private data class PendingPosition(
@@ -219,7 +231,7 @@ class NovelRepository(context: Context) {
                 .distinctUntilChanged()
                 .collect { wifiOnly ->
                     if (lastWifiOnly != null && lastWifiOnly != wifiOnly) {
-                        downloadEngine.scheduleWorker(replace = true)
+                        downloadEngine.restartWorker()
                     }
                     lastWifiOnly = wifiOnly
                 }
@@ -918,6 +930,7 @@ class NovelRepository(context: Context) {
 
         @androidx.annotation.VisibleForTesting
         fun resetInstanceForTesting() {
+            instance?.shutdownForTesting()
             instance = null
         }
     }

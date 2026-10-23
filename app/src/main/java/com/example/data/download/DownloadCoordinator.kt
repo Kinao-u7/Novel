@@ -22,26 +22,50 @@ class DownloadCoordinator {
     val deletingNovelIds: MutableSet<String> = ConcurrentHashMap.newKeySet<String>()
 
     /**
+     * Counter indicating whether all downloads are currently undergoing deletion.
+     * enqueueChapters checks and rejects operations while this is > 0.
+     */
+    val isDeletingAll = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /**
      * Map of active in-flight chapter jobs: (novelId, chapterId) -> Job.
      */
     val activeChapterJobs = ConcurrentHashMap<Pair<String, String>, Job>()
 
-    @Volatile
-    private var activeWorkerDeferred: CompletableDeferred<Unit>? = null
+    /**
+     * Map of active worker runs: runId -> CompletableDeferred<Unit>.
+     */
+    private val activeWorkerRuns = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
 
-    fun onWorkerStarted(): CompletableDeferred<Unit> {
+    fun onWorkerStarted(runId: String = java.util.UUID.randomUUID().toString()): CompletableDeferred<Unit> {
         val deferred = CompletableDeferred<Unit>()
-        activeWorkerDeferred = deferred
+        activeWorkerRuns[runId] = deferred
         return deferred
     }
 
-    fun onWorkerStopped() {
-        activeWorkerDeferred?.complete(Unit)
-        activeWorkerDeferred = null
+    fun onWorkerStopped(runId: String? = null) {
+        if (runId != null) {
+            activeWorkerRuns.remove(runId)?.complete(Unit)
+        } else {
+            // If no specific runId provided, complete all active runs
+            val runs = activeWorkerRuns.keys.toList()
+            for (id in runs) {
+                activeWorkerRuns.remove(id)?.complete(Unit)
+            }
+        }
     }
 
-    suspend fun awaitWorkerStopped() {
-        activeWorkerDeferred?.await()
+    suspend fun awaitWorkerStopped(timeoutMs: Long = 10_000L) {
+        val activeRuns = activeWorkerRuns.entries.toList()
+        for ((runId, deferred) in activeRuns) {
+            try {
+                kotlinx.coroutines.withTimeout(timeoutMs) {
+                    deferred.await()
+                }
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                android.util.Log.w("DownloadCoordinator", "Timed out waiting for worker run $runId to stop after ${timeoutMs}ms")
+            }
+        }
     }
 
     fun registerChapterJob(novelId: String, chapterId: String, job: Job) {
