@@ -55,7 +55,7 @@ class NovelDatabaseTest {
     }
 
     @Test
-    fun compositeKeys_allowSameChapterIdAcrossDifferentNovels_andPreventDuplicatesWithinSameNovel() = runBlocking {
+    fun compositeKeys_allowSameChapterIdAcrossDifferentNovels_andPreventDuplicatesWithinSameNovel() = runBlocking<Unit> {
         val novel1 = createTestNovel(id = "novel_1", title = "Novel One")
         val novel2 = createTestNovel(id = "novel_2", title = "Novel Two")
         novelDao.insertIgnore(novel1)
@@ -104,7 +104,7 @@ class NovelDatabaseTest {
     }
 
     @Test
-    fun cascadeDelete_removesChaptersAndBookmarks_whenNovelRemoved() = runBlocking {
+    fun cascadeDelete_removesChaptersAndBookmarks_whenNovelRemoved() = runBlocking<Unit> {
         val novel = createTestNovel(id = "novel_cascade", title = "Cascade Novel")
         novelDao.insertIgnore(novel)
 
@@ -141,7 +141,7 @@ class NovelDatabaseTest {
     }
 
     @Test
-    fun readingSessions_surviveNovelDeletion() = runBlocking {
+    fun readingSessions_surviveNovelDeletion() = runBlocking<Unit> {
         val novel = createTestNovel(id = "novel_session", title = "Session Novel")
         novelDao.insertIgnore(novel)
 
@@ -170,7 +170,7 @@ class NovelDatabaseTest {
     }
 
     @Test
-    fun chapterRefresh_keepsIsRead_position_tier_andBookmarks() = runBlocking {
+    fun chapterRefresh_keepsIsRead_position_tier_andBookmarks() = runBlocking<Unit> {
         val novel = createTestNovel(id = "novel_refresh", title = "Refresh Novel")
         novelDao.insertIgnore(novel)
 
@@ -243,7 +243,7 @@ class NovelDatabaseTest {
     }
 
     @Test
-    fun nullableRating_preservesNullUnrated_andStoresNonNullAccurately() = runBlocking {
+    fun nullableRating_preservesNullUnrated_andStoresNonNullAccurately() = runBlocking<Unit> {
         // Novel with null rating (unrated)
         val unratedNovel = createTestNovel(id = "novel_unrated", title = "Unrated Novel", rating = null)
         novelDao.insertIgnore(unratedNovel)
@@ -267,7 +267,7 @@ class NovelDatabaseTest {
     }
 
     @Test
-    fun upsertSafe_keepsInLibrary_rating_andLastReadFields() = runBlocking {
+    fun upsertSafe_keepsInLibrary_rating_andLastReadFields() = runBlocking<Unit> {
         val original = createTestNovel(
             id = "novel_preserve",
             title = "Original Title",
@@ -304,7 +304,7 @@ class NovelDatabaseTest {
     }
 
     @Test
-    fun upsertSafe_sameSourceAndRawIdWithDifferentId_returnsExistingId() = runBlocking {
+    fun upsertSafe_sameSourceAndRawIdWithDifferentId_returnsExistingId() = runBlocking<Unit> {
         val original = createTestNovel(
             id = "novel_orig",
             title = "Original Novel",
@@ -333,7 +333,7 @@ class NovelDatabaseTest {
     }
 
     @Test
-    fun upsertSafe_blankRawId_storedAsNull() = runBlocking {
+    fun upsertSafe_blankRawId_storedAsNull() = runBlocking<Unit> {
         val novelWithBlankRaw = createTestNovel(
             id = "novel_blank_raw",
             title = "Blank Raw Novel"

@@ -34,8 +34,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import com.example.data.download.DownloadResult
+import com.example.data.local.db.toModel
 import kotlinx.coroutines.supervisorScope
-import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -145,9 +146,10 @@ class ChapterStorageEngineTest {
             downloadQueueDao = database.downloadQueueDao(),
             downloadCoordinator = com.example.data.download.DownloadCoordinator.getInstance(),
             chapterCache = chapterCache,
-            ioDispatcher = Dispatchers.IO
+            ioDispatcher = Dispatchers.IO,
+            availableBytesProvider = { 1024L * 1024L * 1024L }
         )
-        novelRepository = NovelRepository(context)
+        novelRepository = NovelRepository(context, availableBytesProvider = { 1024L * 1024L * 1024L })
 
         fakeSource = FakeChapterSource()
         SourceManager.registerSource(fakeSource)
@@ -231,7 +233,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun read_createsFileInCache_leavesTierNone_andNeverDownloaded() = runBlocking {
+    fun read_createsFileInCache_leavesTierNone_andNeverDownloaded() = runBlocking<Unit> {
         insertTestNovel("novel_1")
         database.chapterDao().insertIgnore(
             ChapterEntity(
@@ -264,7 +266,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun secondRead_doesNotFetchAgain() = runBlocking {
+    fun secondRead_doesNotFetchAgain() = runBlocking<Unit> {
         insertTestNovel("novel_1")
         database.chapterDao().insertIgnore(
             ChapterEntity(
@@ -290,7 +292,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun promote_movesFile_withoutFetch() = runBlocking {
+    fun promote_movesFile_withoutFetch() = runBlocking<Unit> {
         insertTestNovel("novel_1")
         database.chapterDao().insertIgnore(
             ChapterEntity(
@@ -342,7 +344,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun chapterCache_writeAndRead_atomicRenameAndTempFilePlacement() = runBlocking {
+    fun chapterCache_writeAndRead_atomicRenameAndTempFilePlacement() = runBlocking<Unit> {
         val novelId = "novel_cache_atomic"
         val chapterId = "ch_cache_atomic"
         val content = ChapterContent(
@@ -370,7 +372,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun chapterCache_trim_evictsOldestModifiedUnderCap_andCleansStaleTempFiles() = runBlocking {
+    fun chapterCache_trim_evictsOldestModifiedUnderCap_andCleansStaleTempFiles() = runBlocking<Unit> {
         val novelId = "novel_trim"
         val c1 = ChapterContent("ch_1", novelId, "C1", listOf("Some text 1"))
         val c2 = ChapterContent("ch_2", novelId, "C2", listOf("Some text 2"))
@@ -411,7 +413,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun chapterCache_read_refreshesLastModifiedTimestamp() = runBlocking {
+    fun chapterCache_read_refreshesLastModifiedTimestamp() = runBlocking<Unit> {
         val novelId = "novel_refresh_mtime"
         val chapterId = "ch_mtime"
         val content = ChapterContent(chapterId, novelId, "Title", listOf("Paragraph"))
@@ -428,7 +430,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun chapterCache_clear_deletesOnlyCacheFiles_neverTouchesDownloadsOrEpub() = runBlocking {
+    fun chapterCache_clear_deletesOnlyCacheFiles_neverTouchesDownloadsOrEpub() = runBlocking<Unit> {
         insertTestNovel("novel_protect", isEpub = false)
 
         val chEpub = ChapterEntity(
@@ -477,7 +479,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun chapterCache_corruptFile_isDeletedAndReturnsMiss() = runBlocking {
+    fun chapterCache_corruptFile_isDeletedAndReturnsMiss() = runBlocking<Unit> {
         val novelId = "novel_corrupt_cache"
         val chapterId = "ch_corrupt"
         val file = chapterRepository.chapterCache.getCacheFile(novelId, chapterId)
@@ -491,13 +493,13 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun chapterCache_fileNotFoundDuringRead_returnsMissNotError() = runBlocking {
+    fun chapterCache_fileNotFoundDuringRead_returnsMissNotError() = runBlocking<Unit> {
         val read = chapterRepository.chapterCache.read("non_existent_novel", "non_existent_ch")
         assertNull("Missing cache file must return null without error", read)
     }
 
     @Test
-    fun chapterCache_concurrentWritesOfSameKey_areSafe() = runBlocking {
+    fun chapterCache_concurrentWritesOfSameKey_areSafe() = runBlocking<Unit> {
         val novelId = "novel_concurrent_cache"
         val chapterId = "ch_concurrent"
 
@@ -521,7 +523,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun reader_missingDownloaded_selfHealsAsDownloadedInOriginalLocation() = runBlocking {
+    fun reader_missingDownloaded_selfHealsAsDownloadedInOriginalLocation() = runBlocking<Unit> {
         insertTestNovel("novel_1")
         database.chapterDao().insertIgnore(
             ChapterEntity(
@@ -575,7 +577,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun deleteDownloads_leavesEpubRowsAndFiles() = runBlocking {
+    fun deleteDownloads_leavesEpubRowsAndFiles() = runBlocking<Unit> {
         insertTestNovel("novel_web", isEpub = false)
         insertTestNovel("novel_epub", isEpub = true)
 
@@ -625,7 +627,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun parallelReads_fetchOnce_viaChapterMutex() = runBlocking {
+    fun parallelReads_fetchOnce_viaChapterMutex() = runBlocking<Unit> {
         withTimeout(10_000L) {
             insertTestNovel("novel_parallel")
             database.chapterDao().insertIgnore(
@@ -713,7 +715,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun failingFetch_propagatesExceptionToAllWaiters_andSubsequentFetchRetries() = runBlocking {
+    fun failingFetch_propagatesExceptionToAllWaiters_andSubsequentFetchRetries() = runBlocking<Unit> {
         withTimeout(10_000L) {
             insertTestNovel("novel_fail_retry")
             database.chapterDao().insertIgnore(
@@ -827,7 +829,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun removeNovelCompletely_deletesCoverOriginalEpubAndEpubsFolder_forEpub_andCoversFileOtherwise() = runBlocking {
+    fun removeNovelCompletely_deletesCoverOriginalEpubAndEpubsFolder_forEpub_andCoversFileOtherwise() = runBlocking<Unit> {
         // 1. EPUB novel
         insertTestNovel("novel_epub_rm", isEpub = true)
         val coverFileEpub = storageResolver.getCoverFile("novel_epub_rm")
@@ -936,7 +938,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun importEpub_savesCoverPathAndOriginalEpubCopy() = runBlocking {
+    fun importEpub_savesCoverPathAndOriginalEpubCopy() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val (file, uri) = createTestEpubFile(
                 fileName = "book_with_cover_cse.epub",
@@ -952,24 +954,24 @@ class ChapterStorageEngineTest {
             assertTrue(novel.isEpub)
 
             assertNotNull("coverUrl must be set", novel.coverUrl)
-            val expectedCover = storageResolver.getCoverFile(novel.id)
+            val expectedCover = novelRepository.storageResolver.getCoverFile(novel.id)
             assertEquals(expectedCover.absolutePath, novel.coverUrl)
             assertTrue("Cover file must exist on disk", expectedCover.exists())
             assertEquals("${novel.id}.jpg", expectedCover.name)
             assertFalse("Must not use timestamp cover naming", expectedCover.name.startsWith("cover_"))
 
-            val expectedOriginal = storageResolver.getOriginalEpubFile(novel.id)
+            val expectedOriginal = novelRepository.storageResolver.getOriginalEpubFile(novel.id)
             assertTrue("Original epub file must exist on disk", expectedOriginal.exists())
             assertEquals("${novel.id}.epub", expectedOriginal.name)
             assertTrue("Original epub copy matches source file", expectedOriginal.readBytes().contentEquals(file.readBytes()))
 
-            val chapterFile = storageResolver.getEpubChapterFile(novel.id, "${novel.id}_ch_1")
+            val chapterFile = novelRepository.storageResolver.getEpubChapterFile(novel.id, "${novel.id}_ch_1")
             assertTrue("EPUB chapter file must exist on disk", chapterFile.exists())
         }
     }
 
     @Test
-    fun importEpub_dedupesOnSecondImport_andWritesNothing() = runBlocking {
+    fun importEpub_dedupesOnSecondImport_andWritesNothing() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val (_, uri) = createTestEpubFile(
                 fileName = "dedupe_book_cse.epub",
@@ -981,8 +983,8 @@ class ChapterStorageEngineTest {
             val novelFirst = novelRepository.importEpub(uri, "dedupe_book_cse.epub")
             assertNotNull(novelFirst)
 
-            val coverFile = storageResolver.getCoverFile(novelFirst.id)
-            val originalFile = storageResolver.getOriginalEpubFile(novelFirst.id)
+            val coverFile = novelRepository.storageResolver.getCoverFile(novelFirst.id)
+            val originalFile = novelRepository.storageResolver.getOriginalEpubFile(novelFirst.id)
             assertTrue(coverFile.exists())
             assertTrue(originalFile.exists())
 
@@ -1002,7 +1004,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun importEpub_cleanupFilesOnFailure() = runBlocking {
+    fun importEpub_cleanupFilesOnFailure() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val (_, uri) = createTestEpubFile(
                 fileName = "fail_test_cse.epub",
@@ -1021,9 +1023,9 @@ class ChapterStorageEngineTest {
             }
             assertTrue("Exception must be rethrown on failure", caughtException)
 
-            val covers = storageResolver.getCoversDir().listFiles()?.filter { it.name.startsWith("epub_") } ?: emptyList()
-            val origs = storageResolver.getOriginalEpubsDir().listFiles()?.filter { it.name.startsWith("epub_") } ?: emptyList()
-            val epubs = storageResolver.getEpubsDir().listFiles()?.filter { it.name.startsWith("epub_") } ?: emptyList()
+            val covers = novelRepository.storageResolver.getCoversDir().listFiles()?.filter { it.name.startsWith("epub_") } ?: emptyList()
+            val origs = novelRepository.storageResolver.getOriginalEpubsDir().listFiles()?.filter { it.name.startsWith("epub_") } ?: emptyList()
+            val epubs = novelRepository.storageResolver.getEpubsDir().listFiles()?.filter { it.name.startsWith("epub_") } ?: emptyList()
 
             assertTrue("No leftover covers after failure", covers.isEmpty())
             assertTrue("No leftover original epubs after failure", origs.isEmpty())
@@ -1035,7 +1037,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun getChapterContent_epubMissingFile_throwsEpubFileMissing() = runTest {
+    fun getChapterContent_epubMissingFile_throwsEpubFileMissing() = runBlocking<Unit> {
         withTimeout(10_000) {
             database.novelDao().insertIgnore(
                 testNovelEntity(
@@ -1072,7 +1074,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun getChapterContent_missingChapterRow_throwsChapterRowMissing() = runTest {
+    fun getChapterContent_missingChapterRow_throwsChapterRowMissing() = runBlocking<Unit> {
         withTimeout(10_000) {
             database.novelDao().insertIgnore(
                 testNovelEntity(
@@ -1099,7 +1101,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun singleFlight_twoConcurrentCallsFetchOnce_thirdCallAfterCompletionFetchesAgain() = runTest {
+    fun singleFlight_twoConcurrentCallsFetchOnce_thirdCallAfterCompletionFetchesAgain() = runBlocking<Unit> {
         withTimeout(10_000) {
             val novelId = "nov_single_flight_3"
             val chapterId = "ch_sf_3"
@@ -1201,7 +1203,7 @@ class ChapterStorageEngineTest {
     // --- REAL-FILE UNREADABLE TESTS (skipped when running as root) ---
 
     @Test
-    fun unreadableDownloadedFile_realFile_throwsChapterReadException_andKeepsTier() = runBlocking {
+    fun unreadableDownloadedFile_realFile_throwsChapterReadException_andKeepsTier() = runBlocking<Unit> {
         Assume.assumeFalse("Skip real-file permission test when running as root", isRunningAsRoot())
         insertTestNovel("novel_unreadable_dl_real")
         val novelId = "novel_unreadable_dl_real"
@@ -1237,7 +1239,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun unreadableCacheFile_realFile_fallsThroughToRefetch() = runBlocking {
+    fun unreadableCacheFile_realFile_fallsThroughToRefetch() = runBlocking<Unit> {
         Assume.assumeFalse("Skip real-file permission test when running as root", isRunningAsRoot())
         insertTestNovel("novel_unreadable_cache_real")
         val novelId = "novel_unreadable_cache_real"
@@ -1269,7 +1271,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun unreadableEpubFile_realFile_throwsChapterReadException_andKeepsTier() = runBlocking {
+    fun unreadableEpubFile_realFile_throwsChapterReadException_andKeepsTier() = runBlocking<Unit> {
         Assume.assumeFalse("Skip real-file permission test when running as root", isRunningAsRoot())
         insertTestNovel("novel_unreadable_epub_real", isEpub = true)
         val novelId = "novel_unreadable_epub_real"
@@ -1307,7 +1309,7 @@ class ChapterStorageEngineTest {
     // --- FAKE-STORE UNREADABLE TESTS (run in all environments including root) ---
 
     @Test
-    fun unreadableDownloadedFile_throwsChapterReadException_andKeepsTier() = runBlocking {
+    fun unreadableDownloadedFile_throwsChapterReadException_andKeepsTier() = runBlocking<Unit> {
         insertTestNovel("novel_unreadable_dl")
         val novelId = "novel_unreadable_dl"
         val chapterId = "ch_unreadable_dl"
@@ -1342,7 +1344,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun unparseableFile_isDeleted_andFallsBackToFetch() = runBlocking {
+    fun unparseableFile_isDeleted_andFallsBackToFetch() = runBlocking<Unit> {
         insertTestNovel("novel_corrupt")
         val novelId = "novel_corrupt"
         val chapterId = "ch_corrupt"
@@ -1361,15 +1363,21 @@ class ChapterStorageEngineTest {
         file.writeText("{corrupt not json content")
         assertTrue(file.exists())
 
-        // Reading unparseable file deletes the corrupt file and falls through to fetch from source into cache
+        // Reading unparseable file self-heals: refetched and rewritten as DOWNLOADED
         val content = chapterRepository.getChapterContent(novelId, chapterId)
         assertNotNull(content)
         assertEquals("Title for ch_corrupt", content.title)
-        assertFalse("Corrupted file must be deleted", file.exists())
+        assertTrue("File exists after refetch", file.exists())
+        val readBack = chapterStorage.read(novelId, chapterId, "DOWNLOADED", "INTERNAL")
+        assertNotNull("File reads back valid content", readBack)
+        assertEquals("Title for ch_corrupt", readBack?.title)
+        val row = database.chapterDao().getChapter(novelId, chapterId)
+        assertNotNull(row)
+        assertEquals("DOWNLOADED", row?.storageTier)
     }
 
     @Test
-    fun corruptCacheFile_fallsThroughToRefetch_andLeavesTierNone() = runBlocking {
+    fun corruptCacheFile_fallsThroughToRefetch_andLeavesTierNone() = runBlocking<Unit> {
         insertTestNovel("novel_unreadable_cache")
         val novelId = "novel_unreadable_cache"
         val chapterId = "ch_unreadable_cache"
@@ -1398,7 +1406,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun unreadableEpubFile_throwsChapterReadException_andKeepsTier() = runBlocking {
+    fun unreadableEpubFile_throwsChapterReadException_andKeepsTier() = runBlocking<Unit> {
         insertTestNovel("novel_unreadable_epub", isEpub = true)
         val novelId = "novel_unreadable_epub"
         val chapterId = "ch_unreadable_epub"
@@ -1433,7 +1441,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun promote_whenCasFails_keepsCacheCopy() = runBlocking {
+    fun promote_whenCasFails_keepsCacheCopy() = runBlocking<Unit> {
         insertTestNovel("novel_cas_fail")
         val novelId = "novel_cas_fail"
         val chapterId = "ch_cas_fail"
@@ -1475,7 +1483,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun readerAndDownloader_shareOneInFlightFetch() = runBlocking {
+    fun readerAndDownloader_shareOneInFlightFetch() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val novelId = "novel_reader_downloader_shared"
             val chapterId = "ch_shared"
@@ -1579,7 +1587,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun getChapterContent_whenStorageUnavailable_throwsExceptionAndKeepsTierWithoutRefetch() = runBlocking {
+    fun getChapterContent_whenStorageUnavailable_throwsExceptionAndKeepsTierWithoutRefetch() = runBlocking<Unit> {
         val novelId = "novel_storage_unavail"
         val chapterId = "ch_storage_unavail"
         insertTestNovel(novelId)
@@ -1613,7 +1621,8 @@ class ChapterStorageEngineTest {
             settingsRepository = settingsRepository,
             downloadQueueDao = database.downloadQueueDao(),
             chapterCache = chapterRepository.chapterCache,
-            ioDispatcher = Dispatchers.IO
+            ioDispatcher = Dispatchers.IO,
+            availableBytesProvider = { 1024L * 1024L * 1024L }
         )
 
         val beforeFetchCount = fakeSource.fetchCount
@@ -1630,7 +1639,7 @@ class ChapterStorageEngineTest {
     }
 
     @Test
-    fun inFlightFetches_cancelledCallerDoesNotRemoveMapEntry_andThirdCallerSharesSameFetch() = runBlocking {
+    fun inFlightFetches_cancelledCallerDoesNotRemoveMapEntry_andThirdCallerSharesSameFetch() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val novelId = "novel_inflight_cancel"
             val chapterId = "ch_inflight_cancel"
@@ -1734,5 +1743,38 @@ class ChapterStorageEngineTest {
                 SourceManager.unregisterSource(gatedSource.id)
             }
         }
+    }
+
+    @Test
+    fun downloadChapter_whenStorageFull_returnsStorageFullResult() = runBlocking<Unit> {
+        val novelId = "nov_storage_full"
+        val chapterId = "ch_storage_full"
+        insertTestNovel(novelId)
+        database.chapterDao().insertIgnore(
+            ChapterEntity(
+                novelId = novelId,
+                id = chapterId,
+                title = "Chapter Storage Full",
+                chapterIndex = 1,
+                storageTier = "NONE",
+                storageLocation = "INTERNAL"
+            )
+        )
+        val repoFull = ChapterRepository(
+            chapterDao = database.chapterDao(),
+            novelDao = database.novelDao(),
+            chapterStorage = chapterStorage,
+            storageResolver = storageResolver,
+            settingsRepository = settingsRepository,
+            downloadQueueDao = database.downloadQueueDao(),
+            chapterCache = chapterRepository.chapterCache,
+            availableBytesProvider = { 0L }
+        )
+        val novel = database.novelDao().getNovelById(novelId)!!.toModel()
+        val chapter = database.chapterDao().getChapterById(novelId, chapterId)!!.toModel()
+
+        val result = repoFull.downloadChapter(novel, chapter)
+        assertTrue("Result should be StorageFull, was $result", result is DownloadResult.StorageFull)
+        assertEquals(0L, (result as DownloadResult.StorageFull).availableBytes)
     }
 }

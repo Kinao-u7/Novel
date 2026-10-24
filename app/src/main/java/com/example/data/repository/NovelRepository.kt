@@ -61,7 +61,10 @@ import java.io.File
  * - Debounced position writes (1-second debounce, flushed on chapter leave).
  * - Startup purge of unused Browse novels.
  */
-class NovelRepository(context: Context) {
+class NovelRepository(
+    context: Context,
+    availableBytesProvider: (() -> Long)? = null
+) {
 
     private val appContext: Context = context.applicationContext ?: context
     private val database = NovelDatabaseHolder.getInstance(appContext)
@@ -79,17 +82,32 @@ class NovelRepository(context: Context) {
     val chapterCache = ChapterCache(appContext.cacheDir)
     val chapterStorage = ChapterStorage(resolver = storageResolver, context = appContext, chapterCache = chapterCache)
     val downloadCoordinator = com.example.data.download.DownloadCoordinator.getInstance()
-    val chapterRepository = ChapterRepository(
-        chapterDao = chapterDao,
-        novelDao = novelDao,
-        chapterStorage = chapterStorage,
-        storageResolver = storageResolver,
-        settingsRepository = settingsRepository,
-        downloadQueueDao = downloadQueueDao,
-        notificationDao = notificationDao,
-        downloadCoordinator = downloadCoordinator,
-        chapterCache = chapterCache
-    )
+    val chapterRepository = if (availableBytesProvider != null) {
+        ChapterRepository(
+            chapterDao = chapterDao,
+            novelDao = novelDao,
+            chapterStorage = chapterStorage,
+            storageResolver = storageResolver,
+            settingsRepository = settingsRepository,
+            downloadQueueDao = downloadQueueDao,
+            notificationDao = notificationDao,
+            downloadCoordinator = downloadCoordinator,
+            chapterCache = chapterCache,
+            availableBytesProvider = availableBytesProvider
+        )
+    } else {
+        ChapterRepository(
+            chapterDao = chapterDao,
+            novelDao = novelDao,
+            chapterStorage = chapterStorage,
+            storageResolver = storageResolver,
+            settingsRepository = settingsRepository,
+            downloadQueueDao = downloadQueueDao,
+            notificationDao = notificationDao,
+            downloadCoordinator = downloadCoordinator,
+            chapterCache = chapterCache
+        )
+    }
     val downloadEngine = DownloadEngine(
         context = appContext,
         downloadQueueDao = downloadQueueDao,

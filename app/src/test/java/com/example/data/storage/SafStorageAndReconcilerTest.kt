@@ -223,7 +223,8 @@ class SafStorageAndReconcilerTest {
             notificationDao = database.notificationDao(),
             downloadCoordinator = com.example.data.download.DownloadCoordinator.getInstance(),
             chapterCache = chapterCache,
-            ioDispatcher = Dispatchers.IO
+            ioDispatcher = Dispatchers.IO,
+            availableBytesProvider = { 1024L * 1024L * 1024L }
         )
 
         fakeSource = TestFakeSource()
@@ -310,7 +311,7 @@ class SafStorageAndReconcilerTest {
     }
 
     @Test
-    fun download_withUnwritableSaf_fallsBackToInternalAndRecordsIt() = runBlocking {
+    fun download_withUnwritableSaf_fallsBackToInternalAndRecordsIt() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val novel = insertTestNovel("novel_saf_unwritable")
             val chapter = Chapter("ch_saf_1", novel.id, "Ch 1", 1)
@@ -344,7 +345,7 @@ class SafStorageAndReconcilerTest {
     }
 
     @Test
-    fun readingUsesRecordedLocation_afterFolderSettingChanges() = runBlocking {
+    fun readingUsesRecordedLocation_afterFolderSettingChanges() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val novel = insertTestNovel("novel_saf_loc")
             val chapter = Chapter("ch_saf_loc_1", novel.id, "Ch Loc 1", 1)
@@ -382,7 +383,7 @@ class SafStorageAndReconcilerTest {
     }
 
     @Test
-    fun read_whenFolderIsUnavailable_doesNotResetTier() = runBlocking {
+    fun read_whenFolderIsUnavailable_doesNotResetTier() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val novel = insertTestNovel("novel_unavail")
             val chapterId = "ch_unavail_1"
@@ -425,7 +426,7 @@ class SafStorageAndReconcilerTest {
     }
 
     @Test
-    fun read_missingFileInReachableFolder_selfHealsAsDownloadedInOriginalLocation() = runBlocking {
+    fun read_missingFileInReachableFolder_selfHealsAsDownloadedInOriginalLocation() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val novel = insertTestNovel("novel_missing")
             val chapterId = "ch_missing_1"
@@ -461,7 +462,7 @@ class SafStorageAndReconcilerTest {
     }
 
     @Test
-    fun deletesRemoveSafFiles_andNeverEpub() = runBlocking {
+    fun deletesRemoveSafFiles_andNeverEpub() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val novel = insertTestNovel("novel_del_saf")
             val safLoc = "SAF:content://saf/tree/downloads"
@@ -516,7 +517,7 @@ class SafStorageAndReconcilerTest {
     }
 
     @Test
-    fun stagingCleanup_deletesFilesOlderThanTenMinutes_preservesNewerFiles() = runBlocking {
+    fun stagingCleanup_deletesFilesOlderThanTenMinutes_preservesNewerFiles() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val stagingDir = storageResolver.getStagingDir()
             stagingDir.mkdirs()
@@ -546,7 +547,7 @@ class SafStorageAndReconcilerTest {
     }
 
     @Test
-    fun folderSetting_savedOnlyWhenPermissionCheckPasses() = runBlocking {
+    fun folderSetting_savedOnlyWhenPermissionCheckPasses() = runBlocking<Unit> {
         withTimeout(10_000L) {
             // Test 1: Invalid / non-existent URI where permission check fails
             val invalidUri = Uri.parse("content://invalid.storage.provider/tree/non_existent")
@@ -570,7 +571,7 @@ class SafStorageAndReconcilerTest {
      * so directory creation is serialized and verified at the [SafChapterFileStore] lock boundary.
      */
     @Test
-    fun concurrentSafWrites_produceConsistentStorageKeys_underSimulatedConcurrency() = runBlocking {
+    fun concurrentSafWrites_produceConsistentStorageKeys_underSimulatedConcurrency() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val novel = insertTestNovel("novel_concurrent_saf")
             val safLoc = "SAF:content://saf/tree/concurrent"

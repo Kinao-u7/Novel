@@ -60,7 +60,7 @@ class NovelRepositoryTest {
             .allowMainThreadQueries()
             .build()
         NovelDatabaseHolder.setInstanceForTesting(database)
-        repository = NovelRepository(context)
+        repository = NovelRepository(context, availableBytesProvider = { 1024L * 1024L * 1024L })
     }
 
     @After
@@ -194,7 +194,7 @@ class NovelRepositoryTest {
     )
 
     @Test
-    fun libraryNovels_startsEmpty_andReflectsInLibraryNovelsOnly() = runBlocking {
+    fun libraryNovels_startsEmpty_andReflectsInLibraryNovelsOnly() = runBlocking<Unit> {
         // Starts empty
         val initial = repository.libraryNovels.value
         assertTrue(initial.isEmpty())
@@ -219,7 +219,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun removeFromLibrary_setsInLibraryFalse_doesNotDeleteRow_removeCompletelyDeletesRow() = runBlocking {
+    fun removeFromLibrary_setsInLibraryFalse_doesNotDeleteRow_removeCompletelyDeletesRow() = runBlocking<Unit> {
         val novel = testNovel(id = "novel_1", inLibrary = true)
         repository.addToLibrary(novel)
         withTimeout(5000L) { repository.libraryNovels.first { it.isNotEmpty() } }
@@ -242,7 +242,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun chapterRefresh_preservesReadState_position_tier_andBookmarks() = runBlocking {
+    fun chapterRefresh_preservesReadState_position_tier_andBookmarks() = runBlocking<Unit> {
         val novel = testNovel(id = "novel_refresh", inLibrary = true, sourceId = "test_refresh_src")
         repository.addToLibrary(novel)
 
@@ -345,7 +345,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun downloadedCount_isDerivedFromTiers_downloadedAndEpubCount_cacheAndNoneDoNot() = runBlocking {
+    fun downloadedCount_isDerivedFromTiers_downloadedAndEpubCount_cacheAndNoneDoNot() = runBlocking<Unit> {
         val novel = testNovel(id = "novel_tiers", inLibrary = true)
         repository.addToLibrary(novel)
 
@@ -402,7 +402,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun readingChapter_writesUntrackedCache_andNeverDownloaded() = runBlocking {
+    fun readingChapter_writesUntrackedCache_andNeverDownloaded() = runBlocking<Unit> {
         val novel = testNovel(id = "novel_read_tier", inLibrary = true, sourceId = "test_read_src")
         repository.addToLibrary(novel)
         withTimeout(5000L) { repository.libraryNovels.first { it.any { it.id == "novel_read_tier" } } }
@@ -456,7 +456,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun deleteDownloads_resetsDownloadedToNone_leavesEpubRows() = runBlocking {
+    fun deleteDownloads_resetsDownloadedToNone_leavesEpubRows() = runBlocking<Unit> {
         val novel = testNovel(id = "novel_delete_dl", inLibrary = true)
         repository.addToLibrary(novel)
 
@@ -480,7 +480,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun webNovelDedupe_bySourceAndRawId_andByNormalizedSourceUrl() = runBlocking {
+    fun webNovelDedupe_bySourceAndRawId_andByNormalizedSourceUrl() = runBlocking<Unit> {
         // 1. Dedupe by (source_id, raw_id)
         val data1 = testScrapedNovelData(
             title = "Web Novel One",
@@ -569,7 +569,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun newNovels_haveLastReadTimestampZero() = runBlocking {
+    fun newNovels_haveLastReadTimestampZero() = runBlocking<Unit> {
         // Novel added directly
         val novel = testNovel(id = "novel_new", inLibrary = true, lastReadTimestamp = 0L)
         repository.addToLibrary(novel)
@@ -608,7 +608,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun clearNovelReadingHistory_keepsLastReadChapterId() = runBlocking {
+    fun clearNovelReadingHistory_keepsLastReadChapterId() = runBlocking<Unit> {
         val novel = testNovel(id = "novel_clear_hist", inLibrary = true, lastReadTimestamp = 0L)
         repository.addToLibrary(novel)
         withTimeout(5000L) { repository.libraryNovels.first { it.any { it.id == "novel_clear_hist" } } }
@@ -645,7 +645,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun markChapterAsRead_onlySetsIsRead_doesNotTouchLastRead() = runBlocking {
+    fun markChapterAsRead_onlySetsIsRead_doesNotTouchLastRead() = runBlocking<Unit> {
         val novel = testNovel(id = "novel_1", inLibrary = true, lastReadTimestamp = 0L)
         repository.addToLibrary(novel)
 
@@ -671,7 +671,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun getReadChapterIds_returnsReadChapterIdsFlow() = runBlocking {
+    fun getReadChapterIds_returnsReadChapterIdsFlow() = runBlocking<Unit> {
         val novel = testNovel(id = "novel_read_ids", inLibrary = true)
         repository.addToLibrary(novel)
 
@@ -689,7 +689,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun bookmarks_crud_persistsInRoom() = runBlocking {
+    fun bookmarks_crud_persistsInRoom() = runBlocking<Unit> {
         val novel = testNovel(id = "novel_1", inLibrary = true)
         repository.addToLibrary(novel)
 
@@ -717,7 +717,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun termRules_globalAndEnableDisable_persistsInRoom() = runBlocking {
+    fun termRules_globalAndEnableDisable_persistsInRoom() = runBlocking<Unit> {
         val rule1 = TermReplacementRule(
             id = "rule_test_1",
             original = "cultivator",
@@ -769,7 +769,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun customSource_validationAndDedupe_andSourceManagerPushed() = runBlocking {
+    fun customSource_validationAndDedupe_andSourceManagerPushed() = runBlocking<Unit> {
         // Invalid URLs rejected
         val res1: CustomSourceResult = repository.addCustomSource("Bad 1", "")
         assertEquals(CustomSourceResult.InvalidUrl, res1)
@@ -818,7 +818,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun notifications_cap200_markRead_andUnreadCount() = runBlocking {
+    fun notifications_cap200_markRead_andUnreadCount() = runBlocking<Unit> {
         // Post first notification
         repository.postNotification("Notif 1", "Body 1")
         val unread1 = withTimeout(5000L) {
@@ -920,7 +920,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun requestedSources_addsAndFormatsCorrectly() = runBlocking {
+    fun requestedSources_addsAndFormatsCorrectly() = runBlocking<Unit> {
         repository.addRequestedSource("Source Without URL", "")
         repository.addRequestedSource("Source With URL", "https://example.com")
 
@@ -932,7 +932,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun startupPurge_removesOnlyUnusedNovels() = runBlocking {
+    fun startupPurge_removesOnlyUnusedNovels() = runBlocking<Unit> {
         // Novel 1: unused browse novel (in_library = 0, last_read = 0, no chapters, no bookmarks) -> PURGED
         val n1 = testNovel(id = "n_unused", inLibrary = false, lastReadTimestamp = 0L)
         database.novelDao().insertIgnore(n1.toEntity())
@@ -1119,7 +1119,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun importEpub_savesCoverPathAndOriginalEpubCopy() = runBlocking {
+    fun importEpub_savesCoverPathAndOriginalEpubCopy() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val (file, uri) = createTestEpubFile(
                 fileName = "book_with_cover.epub",
@@ -1155,7 +1155,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun importEpub_dedupesOnSecondImport_andWritesNothing() = runBlocking {
+    fun importEpub_dedupesOnSecondImport_andWritesNothing() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val (_, uri) = createTestEpubFile(
                 fileName = "dedupe_book.epub",
@@ -1191,7 +1191,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun importEpub_cleanupFilesOnFailure() = runBlocking {
+    fun importEpub_cleanupFilesOnFailure() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val (_, uri) = createTestEpubFile(
                 fileName = "fail_test.epub",
@@ -1227,7 +1227,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun removeNovelCompletely_deletesCoverOriginalEpubAndEpubsFolder_forEpub() = runBlocking {
+    fun removeNovelCompletely_deletesCoverOriginalEpubAndEpubsFolder_forEpub() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val (_, uri) = createTestEpubFile(
                 fileName = "rm_test.epub",
@@ -1255,7 +1255,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun addToLibrary_onExistingBrowseNovel_setsInLibraryTrue_andReturnsCanonicalId() = runBlocking {
+    fun addToLibrary_onExistingBrowseNovel_setsInLibraryTrue_andReturnsCanonicalId() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val browseNovel = testNovel(
                 id = "novel_browse_to_lib",
@@ -1276,7 +1276,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun importEpub_hashPrecheck_returnsExistingNovel() = runBlocking {
+    fun importEpub_hashPrecheck_returnsExistingNovel() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val (_, uri) = createTestEpubFile(
                 fileName = "conflict_branch.epub",
@@ -1296,7 +1296,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun getChapterList_withUnknownSourceId_throwsSourceUnavailable() = runBlocking {
+    fun getChapterList_withUnknownSourceId_throwsSourceUnavailable() = runBlocking<Unit> {
         withTimeout(10_000L) {
             val unknownNovel = testNovel(
                 id = "novel_unknown_source",
@@ -1314,7 +1314,7 @@ class NovelRepositoryTest {
     }
 
     @Test
-    fun getChapterList_noRoomChaptersAndFailingSource_throwsException() = runBlocking {
+    fun getChapterList_noRoomChaptersAndFailingSource_throwsException() = runBlocking<Unit> {
         val failingSource = object : NovelSource {
             override val id = "failing_test_source"
             override val name = "Failing Source"

@@ -76,7 +76,10 @@ class ChapterRepository(
     private val notificationDao: NotificationDao? = null,
     val downloadCoordinator: DownloadCoordinator = DownloadCoordinator.getInstance(),
     val chapterCache: ChapterCache = ChapterCache(storageResolver.cacheDir),
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val availableBytesProvider: () -> Long = {
+        android.os.StatFs(storageResolver.filesDir.path).availableBytes
+    }
 ) {
 
     /**
@@ -308,8 +311,7 @@ class ChapterRepository(
         // Space check for INTERNAL storage (StatFs)
         if (targetLocation == "INTERNAL") {
             try {
-                val statFs = android.os.StatFs(storageResolver.filesDir.path)
-                val available = statFs.availableBytes
+                val available = availableBytesProvider()
                 val minRequired = 20L * 1024L * 1024L // 20MB
                 if (available < minRequired) {
                     return@withContext DownloadResult.StorageFull(available, minRequired)
