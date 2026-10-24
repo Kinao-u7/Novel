@@ -369,7 +369,6 @@ class DownloadQueueWorker(
                 try {
                     WebChapterScraper.releaseWebViews()
                 } catch (e: Exception) {
-                    if (e is CancellationException) throw e
                     Log.w("DownloadQueueWorker", "Error releasing WebViews", e)
                 }
 

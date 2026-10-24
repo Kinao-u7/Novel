@@ -6,6 +6,7 @@ plugins {
   alias(libs.plugins.roborazzi)
 }
 
+import java.time.Duration
 import java.util.Properties
 
 val versionPropsFile = rootProject.file("version.properties")
@@ -186,7 +187,7 @@ ksp {
 }
 
 tasks.withType<Test>().configureEach {
-    timeout.set(java.time.Duration.ofMinutes(12))
+    timeout.set(Duration.ofMinutes(12))
     testLogging {
         events("started", "passed", "failed", "skipped")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL

@@ -91,28 +91,28 @@ object WebChapterScraper {
      * Releases all cached and active WebViews, clearing with about:blank before destroy.
      * Called when the download queue becomes empty, cancelled, or the worker finishes.
      */
-    suspend fun releaseWebViews() = withContext(Dispatchers.Main) {
+    fun releaseWebViews() {
+        val toRelease = mutableListOf<WebView>()
         synchronized(webViewPool) {
-            while (webViewPool.isNotEmpty()) {
+            synchronized(activeWebViews) {
+                if (webViewPool.isEmpty() && activeWebViews.isEmpty()) {
+                    return
+                }
+                while (webViewPool.isNotEmpty()) {
+                    toRelease.add(webViewPool.removeFirst())
+                }
+                toRelease.addAll(activeWebViews)
+                activeWebViews.clear()
+            }
+        }
+        Handler(Looper.getMainLooper()).post {
+            for (wv in toRelease) {
                 try {
-                    val wv = webViewPool.removeFirst()
                     wv.stopLoading()
                     wv.loadUrl("about:blank")
                     wv.destroy()
                 } catch (_: Exception) {}
             }
-        }
-        val remainingActive: List<WebView>
-        synchronized(activeWebViews) {
-            remainingActive = activeWebViews.toList()
-            activeWebViews.clear()
-        }
-        for (wv in remainingActive) {
-            try {
-                wv.stopLoading()
-                wv.loadUrl("about:blank")
-                wv.destroy()
-            } catch (_: Exception) {}
         }
     }
 
