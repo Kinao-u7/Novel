@@ -184,3 +184,12 @@ dependencies {
 ksp {
   arg("room.schemaLocation", "$projectDir/schemas")
 }
+
+tasks.withType<Test>().configureEach {
+    timeout.set(java.time.Duration.ofMinutes(12))
+    testLogging {
+        events("started", "passed", "failed", "skipped")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showStandardStreams = false
+    }
+}
