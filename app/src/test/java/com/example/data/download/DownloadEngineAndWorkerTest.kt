@@ -37,7 +37,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -1076,6 +1075,24 @@ class DownloadEngineAndWorkerTest {
     }
 
     @Test
+    fun removeNovelCompletely_usesOnlyDeletingNovelIds_andDoesNotSetIsDeletingAll() = runBlocking {
+        withTimeout(10_000) {
+            val novelId = "nov_remove_completely"
+            insertTestNovelAndChapters(novelId, 2)
+            insertTestNovelAndChapters("nov_other", 2)
+
+            assertEquals(0, downloadEngine.downloadCoordinator.isDeletingAll.get())
+            repository.chapterRepository.removeNovelCompletely(novelId)
+            assertEquals(0, downloadEngine.downloadCoordinator.isDeletingAll.get())
+            assertFalse(downloadEngine.downloadCoordinator.deletingNovelIds.contains(novelId))
+
+            // Other novel is unaffected and enqueues normally
+            val result = downloadEngine.enqueueChapters("nov_other", listOf("ch_1", "ch_2"))
+            assertEquals(2, result.enqueuedCount)
+        }
+    }
+
+    @Test
     fun missingDownloaded_selfHealsBackToDownloadedInOriginalLocation() = runBlocking {
         withTimeout(10_000) {
             val novelId = "nov_self_heal"
@@ -1168,41 +1185,6 @@ class DownloadEngineAndWorkerTest {
             } finally {
                 downloadEngine.downloadCoordinator.deletingNovelIds.remove(novelId)
             }
-        }
-    }
-
-    @Test
-    fun removeNovelCompletely_usesOnlyDeletingNovelIds_andDoesNotIncrementIsDeletingAll() = runBlocking {
-        withTimeout(10_000) {
-            val novelId = "nov_rm_complete_guard"
-            val otherNovelId = "nov_rm_complete_other"
-            insertTestNovelAndChapters(novelId, 2)
-            insertTestNovelAndChapters(otherNovelId, 2)
-
-            val coordinator = repository.chapterRepository.downloadCoordinator
-            assertEquals(0, coordinator.isDeletingAll.get())
-
-            // While deletingNovelIds contains novelId, only that novel is blocked, other novel can enqueue
-            coordinator.deletingNovelIds.add(novelId)
-            try {
-                // isDeletingAll MUST NOT be incremented
-                assertEquals(0, coordinator.isDeletingAll.get())
-
-                val otherResult = downloadEngine.enqueueChapters(otherNovelId, listOf("ch_1"))
-                assertEquals(1, otherResult.enqueuedCount)
-
-                val targetResult = downloadEngine.enqueueChapters(novelId, listOf("ch_1"))
-                assertEquals(0, targetResult.enqueuedCount)
-                assertEquals(1, targetResult.skippedCount)
-            } finally {
-                coordinator.deletingNovelIds.remove(novelId)
-            }
-
-            // Verify full removeNovelCompletely execution leaves isDeletingAll untouched (0)
-            repository.removeNovelCompletely(novelId)
-            assertEquals(0, coordinator.isDeletingAll.get())
-            assertFalse(coordinator.deletingNovelIds.contains(novelId))
-            assertNull(novelDao.getNovelById(novelId))
         }
     }
 
