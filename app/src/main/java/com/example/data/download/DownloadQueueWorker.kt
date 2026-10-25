@@ -15,6 +15,7 @@ import androidx.work.WorkerParameters
 import com.example.data.local.db.entity.NotificationEntity
 import com.example.data.model.NotificationTypes
 import com.example.data.local.db.toModel
+import com.example.data.source.SourceManager
 import com.example.data.source.webscrape.WebChapterScraper
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -287,7 +288,7 @@ class DownloadQueueWorker(
 
                     val item = chosenItem
                     val novelEntity = chosenNovel!!
-                    val sourceId = chosenSourceId
+                    val sourceId = requireNotNull(chosenSourceId)
 
                     // Keep a minimum spacing between request starts per source even with throttling off
                     val spacing = if (throttleDelayOverrideMs != null) {
@@ -353,7 +354,7 @@ class DownloadQueueWorker(
                                     chapterNotBefore.remove(Pair(item.novelId, item.chapterId))
 
                                     // Apply per-source throttle delay after success if enabled
-                                    if (settings.throttlingEnabled && sourceId != null) {
+                                    if (settings.throttlingEnabled) {
                                         val delayOverride = throttleDelayOverrideMs
                                         val computed = delayOverride ?: run {
                                             var ms = (settings.throttleDelaySeconds * 1000).toLong()
@@ -377,9 +378,7 @@ class DownloadQueueWorker(
                                     }
                                     val notBefore = System.currentTimeMillis() + backoffMs
                                     chapterNotBefore[Pair(item.novelId, item.chapterId)] = notBefore
-                                    if (sourceId != null) {
-                                        sourceNextAllowedAt[sourceId] = notBefore
-                                    }
+                                    sourceNextAllowedAt[sourceId] = notBefore
                                     if (nextRetry < MAX_RETRY_COUNT) {
                                         downloadQueueDao.updateStatusAndRetryIfDownloading(
                                             novelId = item.novelId,
@@ -406,9 +405,7 @@ class DownloadQueueWorker(
                                     val backoffMs = (baseMs * (1 shl nextRetry)).coerceAtMost(capMs)
                                     val notBefore = System.currentTimeMillis() + backoffMs
                                     chapterNotBefore[Pair(item.novelId, item.chapterId)] = notBefore
-                                    if (sourceId != null) {
-                                        sourceNextAllowedAt[sourceId] = notBefore
-                                    }
+                                    sourceNextAllowedAt[sourceId] = notBefore
                                     if (nextRetry < MAX_RETRY_COUNT) {
                                         downloadQueueDao.updateStatusAndRetryIfDownloading(
                                             novelId = item.novelId,
@@ -485,9 +482,7 @@ class DownloadQueueWorker(
                             val totalForRun = completedCount + remaining
                             trySetForeground(progress = completedCount, total = totalForRun, novelTitle = novelEntity.title)
                         } finally {
-                            if (sourceId != null) {
-                                sourceInFlight[sourceId]?.decrementAndGet()
-                            }
+                            sourceInFlight[sourceId]?.decrementAndGet()
                             semaphore.release()
                         }
                     }

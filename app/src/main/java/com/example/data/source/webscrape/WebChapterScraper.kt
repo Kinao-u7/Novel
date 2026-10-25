@@ -134,7 +134,7 @@ object WebChapterScraper {
         return try {
             withContext(Dispatchers.Main) {
                 withTimeout(25_000L) {
-            suspendCancellableCoroutine { continuation ->
+                    suspendCancellableCoroutine { continuation ->
                 var webView: WebView? = null
                 val handler = Handler(Looper.getMainLooper())
 
@@ -259,10 +259,11 @@ object WebChapterScraper {
                     recycleWebView(webView)
                     continuation.resumeWithException(e)
                 }
+                    }
+                }
             }
+        } finally {
+            activeWebViewSemaphore.release()
         }
-    } finally {
-        activeWebViewSemaphore.release()
     }
-}
 }
