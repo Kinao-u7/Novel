@@ -142,6 +142,7 @@ class DownloadEngineAndWorkerTest {
 
         // Default: zero throttle delay for tests unless overridden specifically
         DownloadQueueWorker.throttleDelayOverrideMs = 0L
+        DownloadQueueWorker.backoffBaseMsOverride = 20L
 
         fakeSource = TestWorkerSource("test_source")
         SourceManager.registerSource(fakeSource)
@@ -151,6 +152,9 @@ class DownloadEngineAndWorkerTest {
     fun tearDown() {
         SourceManager.unregisterSource(fakeSource.id)
         DownloadQueueWorker.throttleDelayOverrideMs = null
+        DownloadQueueWorker.maxWorkerDurationOverrideMs = null
+        DownloadQueueWorker.backoffBaseMsOverride = null
+        DownloadQueueWorker.maxPerSourceConcurrencyOverride = null
         DownloadEngineProvider.setRepositoryForTesting(null)
         repository.shutdownForTesting()
         NovelRepository.resetInstanceForTesting()
@@ -556,28 +560,58 @@ class DownloadEngineAndWorkerTest {
     @Test
     fun concurrency_neverExceedsSimultaneousDownloads() = runBlocking<Unit> {
         withTimeout(10_000) {
-            val novelId = "nov_concurrent_10"
-            insertTestNovelAndChapters(novelId, 10)
+            val source1 = TestWorkerSource("source_c1")
+            val source2 = TestWorkerSource("source_c2")
+            SourceManager.registerSource(source1)
+            SourceManager.registerSource(source2)
+            try {
+                val novel1 = NovelEntity(
+                    id = "nov_c1",
+                    title = "Novel 1",
+                    author = "Author",
+                    description = "Desc",
+                    sourceId = source1.id,
+                    sourceName = source1.name,
+                    status = "Ongoing"
+                )
+                val novel2 = NovelEntity(
+                    id = "nov_c2",
+                    title = "Novel 2",
+                    author = "Author",
+                    description = "Desc",
+                    sourceId = source2.id,
+                    sourceName = source2.name,
+                    status = "Ongoing"
+                )
+                novelDao.insertIgnore(novel1)
+                novelDao.insertIgnore(novel2)
 
-            repository.settingsRepository.updateDownloadSettings {
-                it.copy(simultaneousDownloads = 2)
+                chapterDao.insertIgnore((1..5).map { idx ->
+                    ChapterEntity(novelId = "nov_c1", id = "ch_c1_$idx", title = "Chapter $idx", chapterIndex = idx)
+                })
+                chapterDao.insertIgnore((1..5).map { idx ->
+                    ChapterEntity(novelId = "nov_c2", id = "ch_c2_$idx", title = "Chapter $idx", chapterIndex = idx)
+                })
+
+                repository.settingsRepository.updateDownloadSettings {
+                    it.copy(simultaneousDownloads = 2)
+                }
+
+                downloadEngine.enqueueChapters("nov_c1", (1..5).map { "ch_c1_$it" })
+                downloadEngine.enqueueChapters("nov_c2", (1..5).map { "ch_c2_$it" })
+
+                val worker = TestListenableWorkerBuilder<DownloadQueueWorker>(context).build()
+                val result = worker.doWork()
+
+                assertTrue(result is ListenableWorker.Result.Success)
+                // With per-source limit = 1, each source's concurrent calls is at most 1
+                assertTrue("Source 1 max concurrent calls was ${source1.maxConcurrentCalls}, expected <= 1", source1.maxConcurrentCalls <= 1)
+                assertTrue("Source 2 max concurrent calls was ${source2.maxConcurrentCalls}, expected <= 1", source2.maxConcurrentCalls <= 1)
+                assertEquals(10, downloadQueueDao.countByStatus("COMPLETED"))
+            } finally {
+                SourceManager.unregisterSource(source1.id)
+                SourceManager.unregisterSource(source2.id)
             }
-
-            downloadEngine.enqueueChapters(novelId, (1..10).map { "ch_$it" })
-
-            val worker = TestListenableWorkerBuilder<DownloadQueueWorker>(context).build()
-            val result = worker.doWork()
-
-            assertTrue(result is ListenableWorker.Result.Success)
-            assertTrue(
-                "Max concurrent calls was ${fakeSource.maxConcurrentCalls}, expected <= 2",
-                fakeSource.maxConcurrentCalls <= 2
-            )
-            assertTrue(
-                "Expected concurrent execution, got ${fakeSource.maxConcurrentCalls}",
-                fakeSource.maxConcurrentCalls >= 1
-            )
-            assertEquals(10, downloadQueueDao.countByStatus("COMPLETED"))
         }
     }
 
@@ -1212,6 +1246,365 @@ class DownloadEngineAndWorkerTest {
             downloadEngine.downloadCoordinator.onWorkerStopped(runId)
             restartJob.join()
             assertTrue("restartWorker completed after worker stopped", restartJob.isCompleted)
+        }
+    }
+
+    @Test
+    fun perSourceInFlight_neverExceedsLimit() = runBlocking<Unit> {
+        withTimeout(10_000) {
+            val novelId = "nov_per_source_limit"
+            insertTestNovelAndChapters(novelId, 4)
+
+            // Allow up to 3 simultaneous downloads overall
+            repository.settingsRepository.updateDownloadSettings {
+                it.copy(simultaneousDownloads = 3)
+            }
+
+            fakeSource.maxConcurrentCalls = 0
+            downloadEngine.enqueueChapters(novelId, listOf("ch_1", "ch_2", "ch_3", "ch_4"))
+
+            val worker = TestListenableWorkerBuilder<DownloadQueueWorker>(context).build()
+            val result = worker.doWork()
+
+            assertTrue(result is ListenableWorker.Result.Success)
+            // Even though simultaneousDownloads is 3, all chapters share 1 source, so max in-flight per source is 1
+            assertEquals(1, fakeSource.maxConcurrentCalls)
+            assertEquals(4, downloadQueueDao.countByStatus("COMPLETED"))
+        }
+    }
+
+    @Test
+    fun backoff_doesNotOccupySlot() = runBlocking<Unit> {
+        withTimeout(10_000) {
+            val source2 = TestWorkerSource("test_source_2")
+            SourceManager.registerSource(source2)
+            try {
+                // Novel 1 uses fakeSource ("test_source")
+                val novel1 = NovelEntity("nov_slot_1", "Novel 1", "Author", "Desc", fakeSource.id, fakeSource.name, "Ongoing")
+                novelDao.insertIgnore(novel1)
+                chapterDao.insertIgnore(ChapterEntity("nov_slot_1", "ch_1", "Chapter 1", 1))
+
+                // Novel 2 uses source2 ("test_source_2")
+                val novel2 = NovelEntity("nov_slot_2", "Novel 2", "Author", "Desc", source2.id, source2.name, "Ongoing")
+                novelDao.insertIgnore(novel2)
+                chapterDao.insertIgnore(ChapterEntity("nov_slot_2", "ch_2", "Chapter 2", 1))
+
+                // Make novel 1 fail so it enters backoff
+                fakeSource.failChapters.add("ch_1")
+
+                // Settings: 2 simultaneous slots
+                repository.settingsRepository.updateDownloadSettings {
+                    it.copy(simultaneousDownloads = 2)
+                }
+
+                downloadEngine.enqueueChapters("nov_slot_1", listOf("ch_1"))
+                downloadEngine.enqueueChapters("nov_slot_2", listOf("ch_2"))
+
+                val worker = TestListenableWorkerBuilder<DownloadQueueWorker>(context).build()
+                val result = worker.doWork()
+
+                assertTrue(result is ListenableWorker.Result.Success)
+                // Novel 2's chapter 2 succeeded without waiting for Novel 1's retries to block slots
+                assertEquals("COMPLETED", downloadQueueDao.getItem("nov_slot_2", "ch_2")?.status)
+                assertEquals("FAILED", downloadQueueDao.getItem("nov_slot_1", "ch_1")?.status)
+            } finally {
+                SourceManager.unregisterSource(source2.id)
+            }
+        }
+    }
+
+    @Test
+    fun rowsWaitingForNotBefore_keepWorkerAlive() = runBlocking<Unit> {
+        withTimeout(10_000) {
+            val novelId = "nov_wait_alive"
+            insertTestNovelAndChapters(novelId, 1)
+
+            var fetchCount = 0
+            val dynamicSource = object : NovelSource {
+                override val id = "dynamic_source"
+                override val name = "Dynamic Source"
+                override val language = "en"
+                override val version = "1.0.0"
+                override val description = "Dynamic"
+                override val isLocal = false
+                override suspend fun getPopularNovels(page: Int): List<Novel> = emptyList()
+                override suspend fun searchNovels(query: String, page: Int): List<Novel> = emptyList()
+                override suspend fun getNovelDetails(novelId: String): Novel = Novel(novelId, "Title", "Author", null, "Desc", listOf(), "Ongoing", id, name)
+                override suspend fun getChapterList(novelId: String): List<Chapter> = emptyList()
+                override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent {
+                    fetchCount++
+                    if (fetchCount == 1) {
+                        throw IOException("Temporary network error on attempt 1")
+                    }
+                    return ChapterContent(chapterId, novelId, "Title", listOf("Success text"), isDownloaded = true)
+                }
+            }
+            SourceManager.registerSource(dynamicSource)
+            try {
+                val novel = NovelEntity(novelId, "Dynamic Novel", "Author", "Desc", dynamicSource.id, dynamicSource.name, "Ongoing")
+                novelDao.insertIgnore(novel)
+                chapterDao.insertIgnore(ChapterEntity(novelId, "ch_1", "Chapter 1", 1))
+
+                downloadEngine.enqueueChapters(novelId, listOf("ch_1"))
+
+                val worker = TestListenableWorkerBuilder<DownloadQueueWorker>(context).build()
+                val result = worker.doWork()
+
+                assertTrue(result is ListenableWorker.Result.Success)
+                assertEquals(2, fetchCount)
+                val item = downloadQueueDao.getItem(novelId, "ch_1")
+                assertEquals("COMPLETED", item?.status)
+                assertEquals(1, item?.retryCount)
+            } finally {
+                SourceManager.unregisterSource(dynamicSource.id)
+            }
+        }
+    }
+
+    @Test
+    fun unpickableQueuedRow_markedFailed_andDoesNotKeepWorkerAlive() = runBlocking<Unit> {
+        withTimeout(10_000) {
+            // Case 1: Missing novel row
+            downloadQueueDao.insertIgnore(DownloadQueueEntity("missing_novel", "ch_1", status = "QUEUED", queuedAt = 1000L))
+
+            // Case 2: Novel exists, but chapter row missing
+            val novel = NovelEntity(
+                id = "nov_missing_ch",
+                title = "Novel",
+                author = "Author",
+                description = "Desc",
+                sourceId = fakeSource.id,
+                sourceName = fakeSource.name,
+                status = "Ongoing"
+            )
+            novelDao.insertIgnore(novel)
+            downloadQueueDao.insertIgnore(DownloadQueueEntity("nov_missing_ch", "missing_chapter_id", status = "QUEUED", queuedAt = 2000L))
+
+            // Case 3: Novel and chapter exist, but source is not registered
+            val unregisteredNovel = NovelEntity(
+                id = "nov_unreg_src",
+                title = "Novel Unregistered",
+                author = "Author",
+                description = "Desc",
+                sourceId = "non_existent_source_xyz",
+                sourceName = "Unregistered",
+                status = "Ongoing"
+            )
+            novelDao.insertIgnore(unregisteredNovel)
+            chapterDao.insertIgnore(listOf(ChapterEntity(novelId = "nov_unreg_src", id = "ch_unreg_1", title = "Ch 1", chapterIndex = 1)))
+            downloadQueueDao.insertIgnore(DownloadQueueEntity("nov_unreg_src", "ch_unreg_1", status = "QUEUED", queuedAt = 3000L))
+
+            val worker = TestListenableWorkerBuilder<DownloadQueueWorker>(context).build()
+            val result = worker.doWork()
+
+            assertTrue(result is ListenableWorker.Result.Success)
+
+            val item1 = downloadQueueDao.getItem("missing_novel", "ch_1")
+            assertEquals("FAILED", item1?.status)
+            assertTrue(item1?.errorMessage?.contains("Novel row missing") == true)
+
+            val item2 = downloadQueueDao.getItem("nov_missing_ch", "missing_chapter_id")
+            assertEquals("FAILED", item2?.status)
+            assertTrue(item2?.errorMessage?.contains("Chapter row missing") == true)
+
+            val item3 = downloadQueueDao.getItem("nov_unreg_src", "ch_unreg_1")
+            assertEquals("FAILED", item3?.status)
+            assertTrue(item3?.errorMessage?.contains("Source not registered") == true)
+
+            assertEquals(0, downloadQueueDao.countActiveRemaining())
+        }
+    }
+
+    @Test
+    fun cancelChapter_reallyCancelsAndWritesNothing() = runBlocking<Unit> {
+        withTimeout(10_000) {
+            val novelId = "nov_cancel_real"
+            val fetchStarted = CompletableDeferred<Unit>()
+            val allowFetchFinish = CompletableDeferred<Unit>()
+
+            val slowSource = object : NovelSource {
+                override val id = "slow_cancel_source"
+                override val name = "Slow Source"
+                override val language = "en"
+                override val version = "1.0"
+                override val description = "Slow source for cancel test"
+                override val isLocal = false
+                override suspend fun getPopularNovels(page: Int): List<Novel> = emptyList()
+                override suspend fun searchNovels(query: String, page: Int): List<Novel> = emptyList()
+                override suspend fun getNovelDetails(novelId: String): Novel = Novel(novelId, "Title", "Author", sourceId = id, sourceName = name)
+                override suspend fun getChapterList(novelId: String): List<Chapter> = emptyList()
+                override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent {
+                    fetchStarted.complete(Unit)
+                    allowFetchFinish.await()
+                    return ChapterContent(chapterId, novelId, "Title", listOf("Text"))
+                }
+            }
+            SourceManager.registerSource(slowSource)
+            try {
+                val novel = NovelEntity(
+                    id = novelId,
+                    title = "Cancel Novel",
+                    author = "Author",
+                    description = "Desc",
+                    sourceId = slowSource.id,
+                    sourceName = slowSource.name,
+                    status = "Ongoing"
+                )
+                novelDao.insertIgnore(novel)
+                chapterDao.insertIgnore(listOf(
+                    ChapterEntity(novelId = novelId, id = "ch_1", title = "Ch 1", chapterIndex = 1),
+                    ChapterEntity(novelId = novelId, id = "ch_2", title = "Ch 2", chapterIndex = 2)
+                ))
+
+                downloadEngine.enqueueChapters(novelId, listOf("ch_1"))
+
+                // Launch worker in background
+                val workerJob = launch(Dispatchers.IO) {
+                    val worker = TestListenableWorkerBuilder<DownloadQueueWorker>(context).build()
+                    worker.doWork()
+                }
+
+                // Wait until download has started fetching
+                fetchStarted.await()
+
+                // Cancel chapter while it's in-flight
+                val cancelJob = launch(Dispatchers.IO) {
+                    downloadEngine.cancelChapter(novelId, "ch_1")
+                }
+
+                // Now unblock the source fetch
+                allowFetchFinish.complete(Unit)
+
+                cancelJob.join()
+                workerJob.join()
+
+                // Verify chapter row in Room was never set to DOWNLOADED
+                val chapterEntity = chapterDao.getChapterById(novelId, "ch_1")
+                assertEquals("NONE", chapterEntity?.storageTier)
+
+                // Verify queue item was deleted
+                assertNull(downloadQueueDao.getItem(novelId, "ch_1"))
+
+                // Verify no download file exists
+                val content = repository.chapterStorage.read(novelId, "ch_1", "DOWNLOADED", "INTERNAL")
+                assertNull(content)
+            } finally {
+                SourceManager.unregisterSource(slowSource.id)
+            }
+        }
+    }
+
+    @Test
+    fun cancellingOneWaiter_doesNotCancelSharedNetworkFetch() = runBlocking<Unit> {
+        withTimeout(10_000) {
+            val novelId = "nov_singleflight_cancel"
+            val fetchStarted = CompletableDeferred<Unit>()
+            val allowFetchFinish = CompletableDeferred<Unit>()
+            val sourceCalls = AtomicInteger(0)
+
+            val slowSource = object : NovelSource {
+                override val id = "slow_waiter_source"
+                override val name = "Slow Waiter Source"
+                override val language = "en"
+                override val version = "1.0"
+                override val description = "Slow source"
+                override val isLocal = false
+                override suspend fun getPopularNovels(page: Int): List<Novel> = emptyList()
+                override suspend fun searchNovels(query: String, page: Int): List<Novel> = emptyList()
+                override suspend fun getNovelDetails(novelId: String): Novel = Novel(novelId, "Title", "Author", sourceId = id, sourceName = name)
+                override suspend fun getChapterList(novelId: String): List<Chapter> = emptyList()
+                override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent {
+                    sourceCalls.incrementAndGet()
+                    fetchStarted.complete(Unit)
+                    allowFetchFinish.await()
+                    return ChapterContent(chapterId, novelId, "Title", listOf("Single flight text"))
+                }
+            }
+            SourceManager.registerSource(slowSource)
+            try {
+                val novel = NovelEntity(
+                    id = novelId,
+                    title = "Shared Fetch Novel",
+                    author = "Author",
+                    description = "Desc",
+                    sourceId = slowSource.id,
+                    sourceName = slowSource.name,
+                    status = "Ongoing"
+                )
+                novelDao.insertIgnore(novel)
+                chapterDao.insertIgnore(listOf(
+                    ChapterEntity(novelId = novelId, id = "ch_1", title = "Ch 1", chapterIndex = 1)
+                ))
+
+                // Waiter 1
+                val waiter1 = async(Dispatchers.IO) {
+                    repository.chapterRepository.getChapterContent(novelId, "ch_1")
+                }
+
+                fetchStarted.await()
+
+                // Waiter 2 attaches to the same in-flight fetch
+                val waiter2 = async(Dispatchers.IO) {
+                    repository.chapterRepository.getChapterContent(novelId, "ch_1")
+                }
+
+                // Cancel Waiter 1
+                waiter1.cancel()
+
+                // Unblock network fetch
+                allowFetchFinish.complete(Unit)
+
+                // Waiter 2 must succeed
+                val result2 = waiter2.await()
+                assertEquals("Single flight text", result2.paragraphs.first())
+                assertEquals(1, sourceCalls.get())
+            } finally {
+                SourceManager.unregisterSource(slowSource.id)
+            }
+        }
+    }
+
+    @Test
+    fun followUpRuns_reportBatchCompletedCount() = runBlocking<Unit> {
+        withTimeout(10_000) {
+            val novelId = "nov_batch_runs"
+            insertTestNovelAndChapters(novelId, 4)
+
+            repository.settingsRepository.updateNotificationSettings {
+                it.copy(notifyOnDownload = true)
+            }
+
+            // Enqueue all 4 chapters
+            downloadEngine.enqueueChapters(novelId, (1..4).map { "ch_$it" })
+
+            val coordinator = repository.chapterRepository.downloadCoordinator
+            assertEquals(0, coordinator.getBatchCompletedCount())
+
+            // Simulate run 1: downloads 2 chapters, but is interrupted (e.g. maxWorkerDuration)
+            DownloadQueueWorker.maxWorkerDurationOverrideMs = 150L
+            val worker1 = TestListenableWorkerBuilder<DownloadQueueWorker>(context).build()
+            worker1.doWork()
+
+            val run1Completed = downloadQueueDao.countByStatus("COMPLETED")
+            assertTrue("Expected some chapters completed in run 1", run1Completed > 0)
+            assertEquals(run1Completed, coordinator.getBatchCompletedCount())
+
+            // Simulate run 2: completes remaining chapters
+            DownloadQueueWorker.maxWorkerDurationOverrideMs = null
+            val worker2 = TestListenableWorkerBuilder<DownloadQueueWorker>(context).build()
+            worker2.doWork()
+
+            assertEquals(4, downloadQueueDao.countByStatus("COMPLETED"))
+
+            // Verify notification received total batch count (4)
+            val notifications = notificationDao.getNotificationsFlow().first()
+            val downloadNotif = notifications.firstOrNull { it.type == NotificationTypes.DOWNLOAD }
+            assertNotNull(downloadNotif)
+            assertTrue("Notification should report 4 chapters: ${downloadNotif?.message}", downloadNotif?.message?.contains("4 chapters") == true)
+
+            // Verify coordinator batch counter is reset to 0 once queue is completely empty
+            assertEquals(0, downloadQueueDao.countActiveRemaining())
+            assertEquals(0, coordinator.getBatchCompletedCount())
         }
     }
 }

@@ -29,6 +29,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -340,6 +341,7 @@ class ChapterRepository(
             }
             if (existingContent != null) {
                 val fileHash = storageResolver.sha256(chapter.id)
+                coroutineContext.ensureActive()
                 val rowsUpdated = chapterDao.updateTierToDownloaded(
                     novelId = novel.id,
                     id = chapter.id,
@@ -360,6 +362,7 @@ class ChapterRepository(
             if (chapterCache.contains(novel.id, chapter.id)) {
                 val cached = chapterCache.read(novel.id, chapter.id)
                 if (cached != null) {
+                    coroutineContext.ensureActive()
                     try {
                         chapterStorage.writeToDownloads(cached.copy(isDownloaded = true), targetLocation)
                     } catch (e: Exception) {
@@ -367,12 +370,14 @@ class ChapterRepository(
                         if (targetLocation != "INTERNAL") {
                             emitStorageWarning("Failed to write to custom storage ($e). Falling back to internal storage.")
                             targetLocation = "INTERNAL"
+                            coroutineContext.ensureActive()
                             chapterStorage.writeToDownloads(cached.copy(isDownloaded = true), "INTERNAL")
                         } else {
                             throw e
                         }
                     }
                     val fileHash = storageResolver.sha256(chapter.id)
+                    coroutineContext.ensureActive()
                     val rowsUpdated = chapterDao.updateTierToDownloaded(
                         novelId = novel.id,
                         id = chapter.id,
@@ -418,6 +423,7 @@ class ChapterRepository(
 
         // Post-fetch write and CAS under leaf lock
         withLeafLock(novel.id, chapter.id) {
+            coroutineContext.ensureActive()
             val currentRow = chapterDao.getChapter(novel.id, chapter.id)
             if (currentRow == null) {
                 try {
@@ -429,6 +435,7 @@ class ChapterRepository(
                 return@withLeafLock DownloadResult.Success
             }
 
+            coroutineContext.ensureActive()
             try {
                 chapterStorage.writeToDownloads(content.copy(isDownloaded = true), targetLocation)
             } catch (e: Exception) {
@@ -441,6 +448,7 @@ class ChapterRepository(
                     emitStorageWarning("Failed to write to custom storage ($e). Falling back to internal storage.")
                     targetLocation = "INTERNAL"
                     try {
+                        coroutineContext.ensureActive()
                         chapterStorage.writeToDownloads(content.copy(isDownloaded = true), "INTERNAL")
                     } catch (inner: Exception) {
                         if (inner is CancellationException) throw inner
@@ -456,6 +464,7 @@ class ChapterRepository(
             }
 
             val fileHash = storageResolver.sha256(chapter.id)
+            coroutineContext.ensureActive()
             val rowsUpdated = chapterDao.updateTierToDownloaded(
                 novelId = novel.id,
                 id = chapter.id,
@@ -497,8 +506,8 @@ class ChapterRepository(
             downloadQueueDao.deleteForNovel(novelId)
         }
         try {
-            // 2. Outside lock: wait for in-flight tasks for this novel
-            downloadCoordinator.awaitAllChapterJobsForNovel(novelId)
+            // 2. Outside lock: cancel and wait for in-flight tasks for this novel
+            downloadCoordinator.cancelChapterJobsForNovel(novelId)
 
             // 3. Delete files & reset tiers
             val downloaded = chapterDao.getDownloadedChapters(novelId)
@@ -523,10 +532,11 @@ class ChapterRepository(
         downloadCoordinator.mutex.withLock {
             downloadCoordinator.isDeletingAll.incrementAndGet()
             downloadQueueDao.clearQueue()
+            downloadCoordinator.resetBatchCompletedCount()
         }
         try {
-            // 2. Outside lock: wait for all in-flight tasks
-            downloadCoordinator.awaitAllChapterJobs()
+            // 2. Outside lock: cancel and wait for all in-flight tasks
+            downloadCoordinator.cancelAllChapterJobs()
 
             // 3. Delete files & reset tiers
             val allDownloaded = chapterDao.getAllDownloadedChapters()
@@ -563,7 +573,7 @@ class ChapterRepository(
             downloadQueueDao.deleteForNovel(novelId)
         }
         try {
-            downloadCoordinator.awaitAllChapterJobsForNovel(novelId)
+            downloadCoordinator.cancelChapterJobsForNovel(novelId)
             novelDao.deleteById(novelId)
             chapterStorage.removeNovelCompletely(novelId, isEpub = isEpub, locations = locations)
             chapterCache.deleteNovel(novelId)

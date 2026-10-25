@@ -12,6 +12,7 @@ import android.webkit.WebViewClient
 import com.example.data.model.ChapterContent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
@@ -30,6 +31,8 @@ object WebChapterScraper {
     const val MAX_POOL_CAP = 2
     @Volatile
     private var maxPooledWebViews = 2
+
+    private val activeWebViewSemaphore = Semaphore(2)
 
     fun configurePoolCapacity(simultaneousDownloads: Int) {
         maxPooledWebViews = min(simultaneousDownloads, MAX_POOL_CAP).coerceAtLeast(1)
@@ -126,8 +129,11 @@ object WebChapterScraper {
         novelId: String = "",
         chapterId: String = url,
         titleFallback: String = "Chapter"
-    ): ChapterContent = withContext(Dispatchers.Main) {
-        withTimeout(25_000L) {
+    ): ChapterContent {
+        activeWebViewSemaphore.acquire()
+        return try {
+            withContext(Dispatchers.Main) {
+                withTimeout(25_000L) {
             suspendCancellableCoroutine { continuation ->
                 var webView: WebView? = null
                 val handler = Handler(Looper.getMainLooper())
@@ -255,5 +261,8 @@ object WebChapterScraper {
                 }
             }
         }
+    } finally {
+        activeWebViewSemaphore.release()
     }
+}
 }

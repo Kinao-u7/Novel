@@ -50,6 +50,17 @@ class DownloadQueueWorker(
         @androidx.annotation.VisibleForTesting
         @Volatile
         var maxWorkerDurationOverrideMs: Long? = null
+
+        @androidx.annotation.VisibleForTesting
+        @Volatile
+        var backoffBaseMsOverride: Long? = null
+
+        @androidx.annotation.VisibleForTesting
+        @Volatile
+        var maxPerSourceConcurrencyOverride: Int? = null
+
+        const val DEFAULT_MAX_PER_SOURCE_CONCURRENCY = 1
+        const val MIN_SOURCE_REQUEST_SPACING_MS = 200L
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -98,7 +109,9 @@ class DownloadQueueWorker(
             val maxConcurrent = settings.simultaneousDownloads.coerceIn(1, 5)
             WebChapterScraper.configurePoolCapacity(maxConcurrent)
 
+            val chapterNotBefore = ConcurrentHashMap<Pair<String, String>, Long>()
             val sourceNextAllowedAt = ConcurrentHashMap<String, Long>()
+            val sourceInFlight = ConcurrentHashMap<String, AtomicInteger>()
             val semaphore = Semaphore(maxConcurrent)
             val activeJobs = java.util.Collections.synchronizedList(mutableListOf<Job>())
 
@@ -121,6 +134,10 @@ class DownloadQueueWorker(
                         break
                     }
 
+                    synchronized(activeJobs) {
+                        activeJobs.removeAll { it.isCompleted }
+                    }
+
                     semaphore.acquire()
 
                     if (isStopped) {
@@ -129,26 +146,89 @@ class DownloadQueueWorker(
                     }
 
                     val now = System.currentTimeMillis()
-                    val candidates = downloadQueueDao.getNextQueuedBatch(10)
+                    val candidates = downloadQueueDao.getNextQueuedBatch(100)
+                    val maxPerSource = maxPerSourceConcurrencyOverride ?: DEFAULT_MAX_PER_SOURCE_CONCURRENCY
 
                     var chosenItem: com.example.data.local.db.entity.DownloadQueueEntity? = null
                     var chosenNovel: com.example.data.local.db.entity.NovelEntity? = null
                     var chosenSourceId: String? = null
-                    var minThrottleWaitMs: Long? = null
+                    var minWaitMs: Long? = null
 
                     for (candidate in candidates) {
                         val novelEntity = novelDao.getNovelById(candidate.novelId)
                         if (novelEntity == null) {
-                            downloadQueueDao.delete(candidate.novelId, candidate.chapterId)
+                            chapterNotBefore.remove(Pair(candidate.novelId, candidate.chapterId))
+                            downloadQueueDao.updateStatusIfExpected(
+                                novelId = candidate.novelId,
+                                chapterId = candidate.chapterId,
+                                status = "FAILED",
+                                expectedStatus = "QUEUED",
+                                errorMessage = "Novel row missing: ${candidate.novelId}"
+                            )
                             continue
                         }
+
+                        val chapterEntity = chapterDao.getChapterById(candidate.novelId, candidate.chapterId)
+                        if (chapterEntity == null) {
+                            chapterNotBefore.remove(Pair(candidate.novelId, candidate.chapterId))
+                            downloadQueueDao.updateStatusIfExpected(
+                                novelId = candidate.novelId,
+                                chapterId = candidate.chapterId,
+                                status = "FAILED",
+                                expectedStatus = "QUEUED",
+                                errorMessage = "Chapter row missing: ${candidate.chapterId}"
+                            )
+                            continue
+                        }
+
                         val sourceId = novelEntity.sourceId
-                        val nextAllowed = sourceNextAllowedAt[sourceId] ?: 0L
-                        if (nextAllowed > now) {
-                            val waitMs = nextAllowed - now
-                            if (minThrottleWaitMs == null || waitMs < minThrottleWaitMs) {
-                                minThrottleWaitMs = waitMs
+                        val source = SourceManager.getSourceById(sourceId)
+                        if (source == null) {
+                            chapterNotBefore.remove(Pair(candidate.novelId, candidate.chapterId))
+                            downloadQueueDao.updateStatusIfExpected(
+                                novelId = candidate.novelId,
+                                chapterId = candidate.chapterId,
+                                status = "FAILED",
+                                expectedStatus = "QUEUED",
+                                errorMessage = "Source not registered: $sourceId"
+                            )
+                            continue
+                        }
+
+                        if (chapterEntity.storageTier == "DOWNLOADED" || chapterEntity.storageTier == "EPUB") {
+                            chapterNotBefore.remove(Pair(candidate.novelId, candidate.chapterId))
+                            downloadQueueDao.updateStatusIfExpected(
+                                novelId = candidate.novelId,
+                                chapterId = candidate.chapterId,
+                                status = "COMPLETED",
+                                expectedStatus = "QUEUED"
+                            )
+                            continue
+                        }
+
+                        // 1. Chapter not-before check
+                        val chNotBefore = chapterNotBefore[Pair(candidate.novelId, candidate.chapterId)] ?: 0L
+                        if (chNotBefore > now) {
+                            val waitMs = chNotBefore - now
+                            if (minWaitMs == null || waitMs < minWaitMs) {
+                                minWaitMs = waitMs
                             }
+                            continue
+                        }
+
+                        // 2. Source not-before / spacing check
+                        val srcNotBefore = sourceNextAllowedAt[sourceId] ?: 0L
+                        if (srcNotBefore > now) {
+                            val waitMs = srcNotBefore - now
+                            if (minWaitMs == null || waitMs < minWaitMs) {
+                                minWaitMs = waitMs
+                            }
+                            continue
+                        }
+
+                        // 3. Per-source concurrency check
+                        val currentInFlight = sourceInFlight[sourceId]?.get() ?: 0
+                        if (currentInFlight >= maxPerSource) {
                             continue
                         }
 
@@ -169,20 +249,39 @@ class DownloadQueueWorker(
 
                     if (chosenItem == null) {
                         semaphore.release()
-                        if (minThrottleWaitMs != null) {
-                            delay(minThrottleWaitMs.coerceIn(50L, 500L))
+                        val hasActiveJobs = synchronized(activeJobs) {
+                            activeJobs.removeAll { it.isCompleted }
+                            activeJobs.isNotEmpty()
+                        }
+
+                        if (minWaitMs != null) {
+                            if (!hasActiveJobs) {
+                                // When the only remaining rows are waiting for a not-before time, sleep until earliest one outside any lock
+                                delay(minWaitMs.coerceAtLeast(10L))
+                            } else {
+                                delay(minWaitMs.coerceIn(10L, 100L))
+                            }
                             continue
                         }
 
-                        // No candidates: check under coordinator lock if queue is truly empty
+                        if (hasActiveJobs) {
+                            delay(50L)
+                            continue
+                        }
+
+                        // No candidates, no waiting rows, no active jobs: check under coordinator lock if queue is truly empty
                         val shouldExit = coordinator.mutex.withLock {
                             val remainingQueued = downloadQueueDao.countByStatus("QUEUED")
-                            remainingQueued == 0
+                            val remainingDownloading = downloadQueueDao.countByStatus("DOWNLOADING")
+                            val nowCheck = System.currentTimeMillis()
+                            val anyWaiting = chapterNotBefore.values.any { it > nowCheck } ||
+                                             sourceNextAllowedAt.values.any { it > nowCheck }
+                            remainingQueued == 0 && remainingDownloading == 0 && !anyWaiting
                         }
                         if (shouldExit) {
                             break
                         }
-                        delay(100L)
+                        delay(50L)
                         continue
                     }
 
@@ -190,18 +289,51 @@ class DownloadQueueWorker(
                     val novelEntity = chosenNovel!!
                     val sourceId = chosenSourceId
 
+                    // Keep a minimum spacing between request starts per source even with throttling off
+                    val spacing = if (throttleDelayOverrideMs != null) {
+                        throttleDelayOverrideMs!!
+                    } else {
+                        MIN_SOURCE_REQUEST_SPACING_MS
+                    }
+                    if (spacing > 0L) {
+                        sourceNextAllowedAt[sourceId] = System.currentTimeMillis() + spacing
+                    }
+
+                    sourceInFlight.computeIfAbsent(sourceId) { AtomicInteger(0) }.incrementAndGet()
+
                     val job = launch {
                         try {
                             if (isStopped) return@launch
 
                             val chapterEntity = chapterDao.getChapterById(item.novelId, item.chapterId)
                             if (chapterEntity == null) {
-                                downloadQueueDao.delete(item.novelId, item.chapterId)
+                                chapterNotBefore.remove(Pair(item.novelId, item.chapterId))
+                                downloadQueueDao.updateStatusAndRetryIfDownloading(
+                                    novelId = item.novelId,
+                                    chapterId = item.chapterId,
+                                    status = "FAILED",
+                                    retryCount = item.retryCount,
+                                    errorMessage = "Chapter row missing: ${item.chapterId}"
+                                )
+                                return@launch
+                            }
+
+                            val source = SourceManager.getSourceById(sourceId)
+                            if (source == null) {
+                                chapterNotBefore.remove(Pair(item.novelId, item.chapterId))
+                                downloadQueueDao.updateStatusAndRetryIfDownloading(
+                                    novelId = item.novelId,
+                                    chapterId = item.chapterId,
+                                    status = "FAILED",
+                                    retryCount = item.retryCount,
+                                    errorMessage = "Source not registered: $sourceId"
+                                )
                                 return@launch
                             }
 
                             if (chapterEntity.storageTier == "DOWNLOADED") {
                                 downloadQueueDao.updateStatusIfExpected(item.novelId, item.chapterId, "COMPLETED", "DOWNLOADING")
+                                chapterNotBefore.remove(Pair(item.novelId, item.chapterId))
                                 return@launch
                             }
 
@@ -217,6 +349,8 @@ class DownloadQueueWorker(
                                 is com.example.data.download.DownloadResult.Success -> {
                                     downloadQueueDao.updateStatusIfExpected(item.novelId, item.chapterId, "COMPLETED", "DOWNLOADING")
                                     downloadedCountThisSession.incrementAndGet()
+                                    coordinator.incrementBatchCompleted()
+                                    chapterNotBefore.remove(Pair(item.novelId, item.chapterId))
 
                                     // Apply per-source throttle delay after success if enabled
                                     if (settings.throttlingEnabled && sourceId != null) {
@@ -235,16 +369,18 @@ class DownloadQueueWorker(
                                     }
                                 }
                                 is com.example.data.download.DownloadResult.RateLimited -> {
-                                    val retryAfter = result.retryAfterMs ?: run {
-                                        val nextRetry = item.retryCount + 1
-                                        (1000L * (1 shl nextRetry)).coerceAtMost(16_000L)
-                                    }
-                                    if (sourceId != null) {
-                                        sourceNextAllowedAt[sourceId] = System.currentTimeMillis() + retryAfter
-                                    }
                                     val nextRetry = item.retryCount + 1
+                                    val baseMs = backoffBaseMsOverride ?: 1000L
+                                    val backoffMs = result.retryAfterMs ?: run {
+                                        val capMs = if (backoffBaseMsOverride != null) baseMs * 16 else 16_000L
+                                        (baseMs * (1 shl nextRetry)).coerceAtMost(capMs)
+                                    }
+                                    val notBefore = System.currentTimeMillis() + backoffMs
+                                    chapterNotBefore[Pair(item.novelId, item.chapterId)] = notBefore
+                                    if (sourceId != null) {
+                                        sourceNextAllowedAt[sourceId] = notBefore
+                                    }
                                     if (nextRetry < MAX_RETRY_COUNT) {
-                                        delay(retryAfter.coerceAtMost(2000L))
                                         downloadQueueDao.updateStatusAndRetryIfDownloading(
                                             novelId = item.novelId,
                                             chapterId = item.chapterId,
@@ -253,6 +389,7 @@ class DownloadQueueWorker(
                                             errorMessage = result.message
                                         )
                                     } else {
+                                        chapterNotBefore.remove(Pair(item.novelId, item.chapterId))
                                         downloadQueueDao.updateStatusAndRetryIfDownloading(
                                             novelId = item.novelId,
                                             chapterId = item.chapterId,
@@ -264,9 +401,15 @@ class DownloadQueueWorker(
                                 }
                                 is com.example.data.download.DownloadResult.Network -> {
                                     val nextRetry = item.retryCount + 1
+                                    val baseMs = backoffBaseMsOverride ?: 1000L
+                                    val capMs = if (backoffBaseMsOverride != null) baseMs * 16 else 16_000L
+                                    val backoffMs = (baseMs * (1 shl nextRetry)).coerceAtMost(capMs)
+                                    val notBefore = System.currentTimeMillis() + backoffMs
+                                    chapterNotBefore[Pair(item.novelId, item.chapterId)] = notBefore
+                                    if (sourceId != null) {
+                                        sourceNextAllowedAt[sourceId] = notBefore
+                                    }
                                     if (nextRetry < MAX_RETRY_COUNT) {
-                                        val backoffMs = (1000L * (1 shl nextRetry)).coerceAtMost(16_000L)
-                                        delay(backoffMs.coerceAtMost(2000L))
                                         downloadQueueDao.updateStatusAndRetryIfDownloading(
                                             novelId = item.novelId,
                                             chapterId = item.chapterId,
@@ -275,6 +418,7 @@ class DownloadQueueWorker(
                                             errorMessage = result.message
                                         )
                                     } else {
+                                        chapterNotBefore.remove(Pair(item.novelId, item.chapterId))
                                         downloadQueueDao.updateStatusAndRetryIfDownloading(
                                             novelId = item.novelId,
                                             chapterId = item.chapterId,
@@ -285,6 +429,7 @@ class DownloadQueueWorker(
                                     }
                                 }
                                 is com.example.data.download.DownloadResult.Parse -> {
+                                    chapterNotBefore.remove(Pair(item.novelId, item.chapterId))
                                     downloadQueueDao.updateStatusAndRetryIfDownloading(
                                         novelId = item.novelId,
                                         chapterId = item.chapterId,
@@ -294,6 +439,7 @@ class DownloadQueueWorker(
                                     )
                                 }
                                 is com.example.data.download.DownloadResult.SourceUnavailable -> {
+                                    chapterNotBefore.remove(Pair(item.novelId, item.chapterId))
                                     downloadQueueDao.updateStatusAndRetryIfDownloading(
                                         novelId = item.novelId,
                                         chapterId = item.chapterId,
@@ -303,6 +449,7 @@ class DownloadQueueWorker(
                                     )
                                 }
                                 is com.example.data.download.DownloadResult.StorageFull -> {
+                                    chapterNotBefore.remove(Pair(item.novelId, item.chapterId))
                                     downloadQueueDao.updateStatusAndRetryIfDownloading(
                                         novelId = item.novelId,
                                         chapterId = item.chapterId,
@@ -312,6 +459,7 @@ class DownloadQueueWorker(
                                     )
                                 }
                                 is com.example.data.download.DownloadResult.StorageUnavailable -> {
+                                    chapterNotBefore.remove(Pair(item.novelId, item.chapterId))
                                     downloadQueueDao.updateStatusAndRetryIfDownloading(
                                         novelId = item.novelId,
                                         chapterId = item.chapterId,
@@ -321,6 +469,7 @@ class DownloadQueueWorker(
                                     )
                                 }
                                 is com.example.data.download.DownloadResult.ChapterMissing -> {
+                                    chapterNotBefore.remove(Pair(item.novelId, item.chapterId))
                                     downloadQueueDao.updateStatusAndRetryIfDownloading(
                                         novelId = item.novelId,
                                         chapterId = item.chapterId,
@@ -336,13 +485,18 @@ class DownloadQueueWorker(
                             val totalForRun = completedCount + remaining
                             trySetForeground(progress = completedCount, total = totalForRun, novelTitle = novelEntity.title)
                         } finally {
+                            if (sourceId != null) {
+                                sourceInFlight[sourceId]?.decrementAndGet()
+                            }
                             semaphore.release()
                         }
                     }
 
                     coordinator.registerChapterJob(item.novelId, item.chapterId, job)
-                    activeJobs.add(job)
-                    activeJobs.removeAll { it.isCompleted }
+                    synchronized(activeJobs) {
+                        activeJobs.add(job)
+                        activeJobs.removeAll { it.isCompleted }
+                    }
                 }
 
                 // Wait for all in-flight jobs launched in this session to finish
@@ -391,7 +545,7 @@ class DownloadQueueWorker(
 
                 // Post completion notification only if notifyOnDownload is enabled, worker was not stopped, and follow-up was not scheduled
                 val notifyOnDownload = settingsRepository.notificationSettings.value.notifyOnDownload
-                val completed = downloadedCountThisSession.get()
+                val completed = coordinator.getBatchCompletedCount()
                 if (!isStopped && !followUpScheduled && notifyOnDownload && completed > 0) {
                     DownloadNotificationHelper.postCompletionNotification(applicationContext, completed, notifyOnDownload = true)
                     try {
@@ -408,6 +562,10 @@ class DownloadQueueWorker(
                         if (e is CancellationException) throw e
                         Log.w("DownloadQueueWorker", "Error inserting notification", e)
                     }
+                }
+
+                if (!followUpScheduled && downloadQueueDao.countActiveRemaining() == 0) {
+                    coordinator.resetBatchCompletedCount()
                 }
             }
         }

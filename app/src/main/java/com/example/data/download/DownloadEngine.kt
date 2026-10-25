@@ -260,23 +260,24 @@ class DownloadEngine(
         downloadCoordinator.mutex.withLock {
             downloadQueueDao.delete(novelId, chapterId)
         }
-        downloadCoordinator.awaitChapterJobs(listOf(Pair(novelId, chapterId)))
+        downloadCoordinator.cancelChapterJob(novelId, chapterId)
     }
 
     suspend fun cancelNovel(novelId: String) = withContext(Dispatchers.IO) {
         downloadCoordinator.mutex.withLock {
             downloadQueueDao.deleteForNovel(novelId)
         }
-        downloadCoordinator.awaitAllChapterJobsForNovel(novelId)
+        downloadCoordinator.cancelChapterJobsForNovel(novelId)
     }
 
     suspend fun cancelAll() = withContext(Dispatchers.IO) {
         downloadCoordinator.mutex.withLock {
             downloadQueueDao.clearQueue()
+            downloadCoordinator.resetBatchCompletedCount()
         }
         cancelWorker()
         downloadCoordinator.awaitWorkerStopped()
-        downloadCoordinator.awaitAllChapterJobs()
+        downloadCoordinator.cancelAllChapterJobs()
     }
 
     suspend fun retryFailed() = withContext(Dispatchers.IO) {
