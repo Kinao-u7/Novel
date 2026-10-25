@@ -28,6 +28,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
@@ -334,8 +335,15 @@ class SafStorageAndReconcilerTest {
             // Simulate SAF folder being unwritable
             fakeFileStore.isSafWritable = false
 
+            val warnings = mutableListOf<String>()
+            val collector = launch(Dispatchers.Unconfined) {
+                chapterRepository.storageWarnings.collect { warnings.add(it) }
+            }
+
             // Download chapter
             val success = chapterRepository.downloadChapter(novel, chapter)
+            collector.cancel()
+
             assertTrue("Download must succeed even if SAF is unwritable (falls back to internal)", success.isSuccess)
 
             // Verify Room row records storage_location = "INTERNAL"
@@ -349,8 +357,10 @@ class SafStorageAndReconcilerTest {
             assertTrue("Internal file must exist", internalFile.exists())
 
             // Verify warning event was emitted
-            val warning = chapterRepository.storageWarnings.first()
-            assertTrue("Warning event must mention unwritable or fallback", warning.contains("unwritable") || warning.contains("Falling back"))
+            assertTrue(
+                "Warning event must mention unwritable or fallback",
+                warnings.any { it.contains("unwritable") || it.contains("Falling back") }
+            )
         }
     }
 
