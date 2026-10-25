@@ -191,6 +191,30 @@ class DownloadEngineAndWorkerTest {
         rating = rating
     )
 
+    private fun testNovel(
+        id: String = "nov_1",
+        title: String = "Test Novel",
+        author: String = "Author",
+        coverUrl: String? = null,
+        description: String = "Desc",
+        genres: List<String> = emptyList(),
+        status: String = "Ongoing",
+        sourceId: String = "test_source",
+        sourceName: String = "Test Source",
+        inLibrary: Boolean = true
+    ): Novel = Novel(
+        id = id,
+        title = title,
+        author = author,
+        coverUrl = coverUrl,
+        description = description,
+        genres = genres,
+        status = status,
+        sourceId = sourceId,
+        sourceName = sourceName,
+        inLibrary = inLibrary
+    )
+
     private suspend fun insertTestNovelAndChapters(novelId: String = "nov_1", chapterCount: Int = 3) {
         val novel = NovelEntity(
             id = novelId,
@@ -1280,12 +1304,28 @@ class DownloadEngineAndWorkerTest {
             SourceManager.registerSource(source2)
             try {
                 // Novel 1 uses fakeSource ("test_source")
-                val novel1 = NovelEntity("nov_slot_1", "Novel 1", "Author", "Desc", fakeSource.id, fakeSource.name, "Ongoing")
+                val novel1 = testNovelEntity(
+                    id = "nov_slot_1",
+                    title = "Novel 1",
+                    author = "Author",
+                    description = "Desc",
+                    sourceId = fakeSource.id,
+                    sourceName = fakeSource.name,
+                    status = "Ongoing"
+                )
                 novelDao.insertIgnore(novel1)
                 chapterDao.insertIgnore(ChapterEntity("nov_slot_1", "ch_1", "Chapter 1", 1))
 
                 // Novel 2 uses source2 ("test_source_2")
-                val novel2 = NovelEntity("nov_slot_2", "Novel 2", "Author", "Desc", source2.id, source2.name, "Ongoing")
+                val novel2 = testNovelEntity(
+                    id = "nov_slot_2",
+                    title = "Novel 2",
+                    author = "Author",
+                    description = "Desc",
+                    sourceId = source2.id,
+                    sourceName = source2.name,
+                    status = "Ongoing"
+                )
                 novelDao.insertIgnore(novel2)
                 chapterDao.insertIgnore(ChapterEntity("nov_slot_2", "ch_2", "Chapter 2", 1))
 
@@ -1329,7 +1369,15 @@ class DownloadEngineAndWorkerTest {
                 override val isLocal = false
                 override suspend fun getPopularNovels(page: Int): List<Novel> = emptyList()
                 override suspend fun searchNovels(query: String, page: Int): List<Novel> = emptyList()
-                override suspend fun getNovelDetails(novelId: String): Novel = Novel(novelId, "Title", "Author", null, "Desc", listOf(), "Ongoing", id, name)
+                override suspend fun getNovelDetails(novelId: String): Novel = testNovel(
+                    id = novelId,
+                    title = "Title",
+                    author = "Author",
+                    description = "Desc",
+                    sourceId = id,
+                    sourceName = name,
+                    status = "Ongoing"
+                )
                 override suspend fun getChapterList(novelId: String): List<Chapter> = emptyList()
                 override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent {
                     fetchCount++
@@ -1341,7 +1389,15 @@ class DownloadEngineAndWorkerTest {
             }
             SourceManager.registerSource(dynamicSource)
             try {
-                val novel = NovelEntity(novelId, "Dynamic Novel", "Author", "Desc", dynamicSource.id, dynamicSource.name, "Ongoing")
+                val novel = testNovelEntity(
+                    id = novelId,
+                    title = "Dynamic Novel",
+                    author = "Author",
+                    description = "Desc",
+                    sourceId = dynamicSource.id,
+                    sourceName = dynamicSource.name,
+                    status = "Ongoing"
+                )
                 novelDao.insertIgnore(novel)
                 chapterDao.insertIgnore(ChapterEntity(novelId, "ch_1", "Chapter 1", 1))
 
@@ -1431,7 +1487,14 @@ class DownloadEngineAndWorkerTest {
                 override val isLocal = false
                 override suspend fun getPopularNovels(page: Int): List<Novel> = emptyList()
                 override suspend fun searchNovels(query: String, page: Int): List<Novel> = emptyList()
-                override suspend fun getNovelDetails(novelId: String): Novel = Novel(novelId, "Title", "Author", sourceId = id, sourceName = name)
+                override suspend fun getNovelDetails(novelId: String): Novel = testNovel(
+                    id = novelId,
+                    title = "Title",
+                    author = "Author",
+                    description = "Desc",
+                    sourceId = id,
+                    sourceName = name
+                )
                 override suspend fun getChapterList(novelId: String): List<Chapter> = emptyList()
                 override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent {
                     fetchStarted.complete(Unit)
@@ -1511,7 +1574,14 @@ class DownloadEngineAndWorkerTest {
                 override val isLocal = false
                 override suspend fun getPopularNovels(page: Int): List<Novel> = emptyList()
                 override suspend fun searchNovels(query: String, page: Int): List<Novel> = emptyList()
-                override suspend fun getNovelDetails(novelId: String): Novel = Novel(novelId, "Title", "Author", sourceId = id, sourceName = name)
+                override suspend fun getNovelDetails(novelId: String): Novel = testNovel(
+                    id = novelId,
+                    title = "Title",
+                    author = "Author",
+                    description = "Desc",
+                    sourceId = id,
+                    sourceName = name
+                )
                 override suspend fun getChapterList(novelId: String): List<Chapter> = emptyList()
                 override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent {
                     sourceCalls.incrementAndGet()
