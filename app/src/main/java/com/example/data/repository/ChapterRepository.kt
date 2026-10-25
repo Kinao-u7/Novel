@@ -322,7 +322,13 @@ class ChapterRepository(
         // Disk-first & promote checks under leaf lock
         val preFetchResult: DownloadResult? = withLeafLock(novel.id, chapter.id) {
             val currentRow = chapterDao.getChapter(novel.id, chapter.id)
-            if (currentRow?.storageTier == "DOWNLOADED") {
+            if (currentRow == null) {
+                try {
+                    chapterStorage.deleteDownloadChapter(novel.id, chapter.id, targetLocation)
+                } catch (_: Exception) {}
+                return@withLeafLock DownloadResult.ChapterMissing(novel.id, chapter.id)
+            }
+            if (currentRow.storageTier == "DOWNLOADED") {
                 return@withLeafLock DownloadResult.Success
             }
 
@@ -334,13 +340,20 @@ class ChapterRepository(
             }
             if (existingContent != null) {
                 val fileHash = storageResolver.sha256(chapter.id)
-                chapterDao.updateTierToDownloaded(
+                val rowsUpdated = chapterDao.updateTierToDownloaded(
                     novelId = novel.id,
                     id = chapter.id,
                     storageLocation = targetLocation,
                     fileHash = fileHash
                 )
-                return@withLeafLock DownloadResult.Success
+                if (rowsUpdated > 0) {
+                    return@withLeafLock DownloadResult.Success
+                } else {
+                    try {
+                        chapterStorage.deleteDownloadChapter(novel.id, chapter.id, targetLocation)
+                    } catch (_: Exception) {}
+                    return@withLeafLock DownloadResult.ChapterMissing(novel.id, chapter.id)
+                }
             }
 
             // Promote check: if chapter is in cache, copy to download location (no network)
@@ -368,8 +381,13 @@ class ChapterRepository(
                     )
                     if (rowsUpdated > 0) {
                         chapterCache.delete(novel.id, chapter.id)
+                        return@withLeafLock DownloadResult.Success
+                    } else {
+                        try {
+                            chapterStorage.deleteDownloadChapter(novel.id, chapter.id, targetLocation)
+                        } catch (_: Exception) {}
+                        return@withLeafLock DownloadResult.ChapterMissing(novel.id, chapter.id)
                     }
-                    return@withLeafLock DownloadResult.Success
                 }
             }
 
@@ -401,7 +419,13 @@ class ChapterRepository(
         // Post-fetch write and CAS under leaf lock
         withLeafLock(novel.id, chapter.id) {
             val currentRow = chapterDao.getChapter(novel.id, chapter.id)
-            if (currentRow?.storageTier == "DOWNLOADED") {
+            if (currentRow == null) {
+                try {
+                    chapterStorage.deleteDownloadChapter(novel.id, chapter.id, targetLocation)
+                } catch (_: Exception) {}
+                return@withLeafLock DownloadResult.ChapterMissing(novel.id, chapter.id)
+            }
+            if (currentRow.storageTier == "DOWNLOADED") {
                 return@withLeafLock DownloadResult.Success
             }
 
@@ -440,8 +464,13 @@ class ChapterRepository(
             )
             if (rowsUpdated > 0) {
                 chapterCache.delete(novel.id, chapter.id)
+                DownloadResult.Success
+            } else {
+                try {
+                    chapterStorage.deleteDownloadChapter(novel.id, chapter.id, targetLocation)
+                } catch (_: Exception) {}
+                DownloadResult.ChapterMissing(novel.id, chapter.id)
             }
-            DownloadResult.Success
         }
     }
 

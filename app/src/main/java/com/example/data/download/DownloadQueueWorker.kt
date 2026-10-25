@@ -320,6 +320,15 @@ class DownloadQueueWorker(
                                         errorMessage = "Storage unavailable: ${result.location} - ${result.message}"
                                     )
                                 }
+                                is com.example.data.download.DownloadResult.ChapterMissing -> {
+                                    downloadQueueDao.updateStatusAndRetryIfDownloading(
+                                        novelId = item.novelId,
+                                        chapterId = item.chapterId,
+                                        status = "FAILED",
+                                        retryCount = item.retryCount,
+                                        errorMessage = "Chapter row missing: ${result.chapterId}"
+                                    )
+                                }
                             }
 
                             val completedCount = downloadQueueDao.countByStatus("COMPLETED")

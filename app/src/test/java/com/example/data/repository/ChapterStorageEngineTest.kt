@@ -1777,4 +1777,27 @@ class ChapterStorageEngineTest {
         assertTrue("Result should be StorageFull, was $result", result is DownloadResult.StorageFull)
         assertEquals(0L, (result as DownloadResult.StorageFull).availableBytes)
     }
+
+    @Test
+    fun downloadChapter_whenChapterRowMissing_returnsChapterMissingAndLeavesNoFile() = runBlocking<Unit> {
+        val novelId = "nov_missing_row"
+        val chapterId = "ch_missing_row"
+        insertTestNovel(novelId)
+        // Note: Do not insert any ChapterEntity row into database
+        val novel = database.novelDao().getNovelById(novelId)!!.toModel()
+        val chapter = Chapter(
+            id = chapterId,
+            novelId = novelId,
+            title = "Missing Chapter",
+            chapterIndex = 1
+        )
+
+        val result = chapterRepository.downloadChapter(novel, chapter)
+        assertTrue("Result should be ChapterMissing, was $result", result is DownloadResult.ChapterMissing)
+        assertEquals(novelId, (result as DownloadResult.ChapterMissing).novelId)
+        assertEquals(chapterId, result.chapterId)
+
+        val downloadFile = storageResolver.getDownloadChapterFile(novelId, chapterId)
+        assertFalse("No file should remain in the download location", downloadFile.exists())
+    }
 }

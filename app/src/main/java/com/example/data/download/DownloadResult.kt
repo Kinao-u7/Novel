@@ -8,6 +8,7 @@ sealed class DownloadResult {
     data class SourceUnavailable(val sourceId: String) : DownloadResult()
     data class StorageFull(val availableBytes: Long, val requiredBytes: Long) : DownloadResult()
     data class StorageUnavailable(val location: String, val message: String) : DownloadResult()
+    data class ChapterMissing(val novelId: String, val chapterId: String) : DownloadResult()
 
     val isSuccess: Boolean get() = this is Success
 }

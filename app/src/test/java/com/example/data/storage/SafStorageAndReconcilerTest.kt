@@ -315,6 +315,16 @@ class SafStorageAndReconcilerTest {
         withTimeout(10_000L) {
             val novel = insertTestNovel("novel_saf_unwritable")
             val chapter = Chapter("ch_saf_1", novel.id, "Ch 1", 1)
+            database.chapterDao().insertIgnore(
+                ChapterEntity(
+                    novelId = novel.id,
+                    id = chapter.id,
+                    title = chapter.title,
+                    chapterIndex = chapter.chapterIndex,
+                    storageTier = "NONE",
+                    storageLocation = "INTERNAL"
+                )
+            )
 
             // Configure custom download location
             settingsRepository.updateDownloadSettings {
@@ -349,6 +359,16 @@ class SafStorageAndReconcilerTest {
         withTimeout(10_000L) {
             val novel = insertTestNovel("novel_saf_loc")
             val chapter = Chapter("ch_saf_loc_1", novel.id, "Ch Loc 1", 1)
+            database.chapterDao().insertIgnore(
+                ChapterEntity(
+                    novelId = novel.id,
+                    id = chapter.id,
+                    title = chapter.title,
+                    chapterIndex = chapter.chapterIndex,
+                    storageTier = "NONE",
+                    storageLocation = "INTERNAL"
+                )
+            )
 
             // First location
             val initialTree = "content://saf/tree/folder_a"
@@ -584,6 +604,18 @@ class SafStorageAndReconcilerTest {
             val chapters = (1..10).map { idx ->
                 Chapter("ch_conc_$idx", novel.id, "Ch $idx", idx)
             }
+            database.chapterDao().insertIgnore(
+                chapters.map { ch ->
+                    ChapterEntity(
+                        novelId = novel.id,
+                        id = ch.id,
+                        title = ch.title,
+                        chapterIndex = ch.chapterIndex,
+                        storageTier = "NONE",
+                        storageLocation = "INTERNAL"
+                    )
+                }
+            )
 
             // Execute concurrent downloads to the same SAF location
             val results = coroutineScope {
