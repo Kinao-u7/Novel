@@ -4,6 +4,7 @@ import com.example.data.model.CustomNovelSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 object SourceManager {
     private val webNovelSource = WebNovelSource()
@@ -40,17 +41,15 @@ object SourceManager {
     }
 
     fun registerSource(source: NovelSource) {
-        val current = _sources.value.toMutableList()
-        if (current.none { it.id == source.id }) {
-            current.add(source)
-            _sources.value = current
-        }
+        // Keep default sources safe from accidental removal / overwrite
+        if (source.id == webNovelSource.id || source.id == classicsSource.id) return
+        _sources.update { list -> list.filterNot { it.id == source.id } + source }
     }
 
     fun unregisterSource(sourceId: String) {
         // Keep default sources safe from accidental removal
         if (sourceId == webNovelSource.id || sourceId == classicsSource.id) return
-        _sources.value = _sources.value.filterNot { it.id == sourceId }
+        _sources.update { list -> list.filterNot { it.id == sourceId } }
         if (_activeSourceId.value == sourceId) {
             _activeSourceId.value = webNovelSource.id
         }

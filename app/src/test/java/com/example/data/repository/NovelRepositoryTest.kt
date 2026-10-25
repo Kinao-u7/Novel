@@ -65,6 +65,9 @@ class NovelRepositoryTest {
 
     @After
     fun tearDown() {
+        SourceManager.unregisterSource("test_refresh_src")
+        SourceManager.unregisterSource("test_read_src")
+        SourceManager.unregisterSource("failing_test_source")
         repository.shutdownForTesting()
         NovelDatabaseHolder.clearInstanceForTesting()
         database.close()

@@ -149,6 +149,7 @@ class DownloadEngineAndWorkerTest {
 
     @After
     fun tearDown() {
+        SourceManager.unregisterSource(fakeSource.id)
         DownloadQueueWorker.throttleDelayOverrideMs = null
         DownloadEngineProvider.setRepositoryForTesting(null)
         repository.shutdownForTesting()
