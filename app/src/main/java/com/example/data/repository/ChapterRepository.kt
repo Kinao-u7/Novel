@@ -257,10 +257,13 @@ class ChapterRepository(
         val fileHash = storageResolver.sha256(chapterId)
 
         withLeafLock(novelId, chapterId) {
+            coroutineContext.ensureActive()
             if (isDownloadedMissing) {
                 // Self-healing: write back as DOWNLOADED in original location
                 val downloadedContent = rawContent.copy(isDownloaded = true)
+                coroutineContext.ensureActive()
                 chapterStorage.writeToDownloads(downloadedContent, savedLocation)
+                coroutineContext.ensureActive()
                 chapterDao.updateTierToDownloaded(
                     novelId = novelId,
                     id = chapterId,

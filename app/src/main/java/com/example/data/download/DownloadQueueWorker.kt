@@ -18,11 +18,13 @@ import com.example.data.local.db.toModel
 import com.example.data.source.SourceManager
 import com.example.data.source.webscrape.WebChapterScraper
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
@@ -302,9 +304,10 @@ class DownloadQueueWorker(
 
                     sourceInFlight.computeIfAbsent(sourceId) { AtomicInteger(0) }.incrementAndGet()
 
-                    val job = launch {
+                    val job = launch(start = CoroutineStart.LAZY) {
                         try {
                             if (isStopped) return@launch
+                            coroutineContext.ensureActive()
 
                             val chapterEntity = chapterDao.getChapterById(item.novelId, item.chapterId)
                             if (chapterEntity == null) {
@@ -338,6 +341,8 @@ class DownloadQueueWorker(
                                 return@launch
                             }
 
+                            coroutineContext.ensureActive()
+
                             val result: com.example.data.download.DownloadResult = try {
                                 chapterRepository.downloadChapter(novelEntity.toModel(), chapterEntity.toModel())
                             } catch (e: Exception) {
@@ -346,8 +351,11 @@ class DownloadQueueWorker(
                                 com.example.data.download.DownloadResult.Network(e.message ?: "Download exception", e)
                             }
 
+                            coroutineContext.ensureActive()
+
                             when (result) {
                                 is com.example.data.download.DownloadResult.Success -> {
+                                    coroutineContext.ensureActive()
                                     downloadQueueDao.updateStatusIfExpected(item.novelId, item.chapterId, "COMPLETED", "DOWNLOADING")
                                     downloadedCountThisSession.incrementAndGet()
                                     coordinator.incrementBatchCompleted()
@@ -492,6 +500,7 @@ class DownloadQueueWorker(
                         activeJobs.add(job)
                         activeJobs.removeAll { it.isCompleted }
                     }
+                    job.start()
                 }
 
                 // Wait for all in-flight jobs launched in this session to finish
