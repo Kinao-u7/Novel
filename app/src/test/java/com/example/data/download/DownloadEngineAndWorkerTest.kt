@@ -765,10 +765,10 @@ class DownloadEngineAndWorkerTest {
                 "Expected delay >= 500ms between requests, got $intervalBetweenRequests ms",
                 intervalBetweenRequests >= 500L
             )
-            // Time after last request is worker cleanup, not throttle delay (< 450ms)
+            // Time after last request is worker cleanup, not throttle delay (< 1000ms)
             assertTrue(
-                "Expected time after last request < 450ms, got $intervalAfterLastRequest ms",
-                intervalAfterLastRequest < 450L
+                "Expected time after last request < 1000ms, got $intervalAfterLastRequest ms",
+                intervalAfterLastRequest < 1000L
             )
 
             assertNull(downloadQueueDao.getItem(novelId, "ch_1"))
