@@ -1618,6 +1618,8 @@ class DownloadEngineAndWorkerTest {
                     repository.chapterRepository.getChapterContent(novelId, "ch_1")
                 }
 
+                delay(300)
+
                 // Cancel Waiter 1
                 waiter1.cancel()
 
