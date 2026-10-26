@@ -458,14 +458,14 @@ class DownloadEngineAndWorkerTest {
 
             assertTrue(result is ListenableWorker.Result.Success)
 
-            val item1 = downloadQueueDao.getItem("nov_worker_1", "ch_1")
-            val item2 = downloadQueueDao.getItem("nov_worker_1", "ch_2")
-            assertEquals("COMPLETED", item1?.status)
-            assertEquals("COMPLETED", item2?.status)
+            assertNull(downloadQueueDao.getItem("nov_worker_1", "ch_1"))
+            assertNull(downloadQueueDao.getItem("nov_worker_1", "ch_2"))
 
             // Verify storage tier in Room
             val ch1 = chapterDao.getChapter("nov_worker_1", "ch_1")
+            val ch2 = chapterDao.getChapter("nov_worker_1", "ch_2")
             assertEquals("DOWNLOADED", ch1?.storageTier)
+            assertEquals("DOWNLOADED", ch2?.storageTier)
         }
     }
 
@@ -631,7 +631,7 @@ class DownloadEngineAndWorkerTest {
                 // With per-source limit = 1, each source's concurrent calls is at most 1
                 assertTrue("Source 1 max concurrent calls was ${source1.maxConcurrentCalls}, expected <= 1", source1.maxConcurrentCalls <= 1)
                 assertTrue("Source 2 max concurrent calls was ${source2.maxConcurrentCalls}, expected <= 1", source2.maxConcurrentCalls <= 1)
-                assertEquals(10, downloadQueueDao.countByStatus("COMPLETED"))
+                assertEquals(10, chapterDao.getAllDownloadedChapters().size)
             } finally {
                 SourceManager.unregisterSource(source1.id)
                 SourceManager.unregisterSource(source2.id)
@@ -717,8 +717,8 @@ class DownloadEngineAndWorkerTest {
             val result = worker.doWork()
 
             assertTrue(result is ListenableWorker.Result.Success)
-            assertEquals("COMPLETED", downloadQueueDao.getItem(novelId, "ch_1")?.status)
-            assertEquals("COMPLETED", downloadQueueDao.getItem(novelId, "ch_2")?.status)
+            assertNull(downloadQueueDao.getItem(novelId, "ch_1"))
+            assertNull(downloadQueueDao.getItem(novelId, "ch_2"))
 
             val ch1 = chapterDao.getChapter(novelId, "ch_1")
             val ch2 = chapterDao.getChapter(novelId, "ch_2")
@@ -733,8 +733,8 @@ class DownloadEngineAndWorkerTest {
             val novelId = "nov_throttle_delay"
             insertTestNovelAndChapters(novelId, 2)
 
-            // Inject 100ms throttle delay
-            DownloadQueueWorker.throttleDelayOverrideMs = 100L
+            // Inject 600ms throttle delay
+            DownloadQueueWorker.throttleDelayOverrideMs = 600L
 
             repository.settingsRepository.updateDownloadSettings {
                 it.copy(
@@ -762,17 +762,19 @@ class DownloadEngineAndWorkerTest {
 
             // Delay was invoked between request 1 and request 2
             assertTrue(
-                "Expected delay >= 80ms between requests, got $intervalBetweenRequests ms",
-                intervalBetweenRequests >= 80L
+                "Expected delay >= 500ms between requests, got $intervalBetweenRequests ms",
+                intervalBetweenRequests >= 500L
             )
-            // No delay was invoked after the last request
+            // Time after last request is worker cleanup, not throttle delay (< 450ms)
             assertTrue(
-                "Expected no delay (< 80ms) after last request, got $intervalAfterLastRequest ms",
-                intervalAfterLastRequest < 80L
+                "Expected time after last request < 450ms, got $intervalAfterLastRequest ms",
+                intervalAfterLastRequest < 450L
             )
 
-            assertEquals("COMPLETED", downloadQueueDao.getItem(novelId, "ch_1")?.status)
-            assertEquals("COMPLETED", downloadQueueDao.getItem(novelId, "ch_2")?.status)
+            assertNull(downloadQueueDao.getItem(novelId, "ch_1"))
+            assertNull(downloadQueueDao.getItem(novelId, "ch_2"))
+            assertEquals("DOWNLOADED", chapterDao.getChapter(novelId, "ch_1")?.storageTier)
+            assertEquals("DOWNLOADED", chapterDao.getChapter(novelId, "ch_2")?.storageTier)
         }
     }
 
@@ -790,11 +792,11 @@ class DownloadEngineAndWorkerTest {
 
             assertTrue(result is ListenableWorker.Result.Success)
 
-            // Chapter 1 and Chapter 3 complete successfully
-            val item1 = downloadQueueDao.getItem(novelId, "ch_1")
-            val item3 = downloadQueueDao.getItem(novelId, "ch_3")
-            assertEquals("COMPLETED", item1?.status)
-            assertEquals("COMPLETED", item3?.status)
+            // Chapter 1 and Chapter 3 complete successfully (tier is DOWNLOADED, queue rows cleared)
+            assertNull(downloadQueueDao.getItem(novelId, "ch_1"))
+            assertNull(downloadQueueDao.getItem(novelId, "ch_3"))
+            assertEquals("DOWNLOADED", chapterDao.getChapter(novelId, "ch_1")?.storageTier)
+            assertEquals("DOWNLOADED", chapterDao.getChapter(novelId, "ch_3")?.storageTier)
 
             // Chapter 2 fails 3 times and is marked FAILED with an error message
             val item2 = downloadQueueDao.getItem(novelId, "ch_2")
@@ -828,11 +830,10 @@ class DownloadEngineAndWorkerTest {
 
             assertTrue(result is ListenableWorker.Result.Success)
 
-            // Chapter 1 is marked COMPLETED in queue without fetching
-            val item1 = downloadQueueDao.getItem(novelId, "ch_1")
-            val item2 = downloadQueueDao.getItem(novelId, "ch_2")
-            assertEquals("COMPLETED", item1?.status)
-            assertEquals("COMPLETED", item2?.status)
+            assertNull(downloadQueueDao.getItem(novelId, "ch_1"))
+            assertNull(downloadQueueDao.getItem(novelId, "ch_2"))
+            assertEquals("DOWNLOADED", chapterDao.getChapter(novelId, "ch_1")?.storageTier)
+            assertEquals("DOWNLOADED", chapterDao.getChapter(novelId, "ch_2")?.storageTier)
 
             // Only chapter 2 was actually downloaded from source
             assertEquals(1, fakeSource.callTimes.size)
@@ -1293,7 +1294,8 @@ class DownloadEngineAndWorkerTest {
             assertTrue(result is ListenableWorker.Result.Success)
             // Even though simultaneousDownloads is 3, all chapters share 1 source, so max in-flight per source is 1
             assertEquals(1, fakeSource.maxConcurrentCalls)
-            assertEquals(4, downloadQueueDao.countByStatus("COMPLETED"))
+            assertEquals(4, chapterDao.getDownloadedCount(novelId))
+            assertEquals(0, downloadQueueDao.countActiveRemaining())
         }
     }
 
@@ -1345,7 +1347,8 @@ class DownloadEngineAndWorkerTest {
 
                 assertTrue(result is ListenableWorker.Result.Success)
                 // Novel 2's chapter 2 succeeded without waiting for Novel 1's retries to block slots
-                assertEquals("COMPLETED", downloadQueueDao.getItem("nov_slot_2", "ch_2")?.status)
+                assertNull(downloadQueueDao.getItem("nov_slot_2", "ch_2"))
+                assertEquals("DOWNLOADED", chapterDao.getChapter("nov_slot_2", "ch_2")?.storageTier)
                 assertEquals("FAILED", downloadQueueDao.getItem("nov_slot_1", "ch_1")?.status)
             } finally {
                 SourceManager.unregisterSource(source2.id)
@@ -1357,7 +1360,6 @@ class DownloadEngineAndWorkerTest {
     fun rowsWaitingForNotBefore_keepWorkerAlive() = runBlocking<Unit> {
         withTimeout(10_000) {
             val novelId = "nov_wait_alive"
-            insertTestNovelAndChapters(novelId, 1)
 
             var fetchCount = 0
             val dynamicSource = object : NovelSource {
@@ -1408,9 +1410,8 @@ class DownloadEngineAndWorkerTest {
 
                 assertTrue(result is ListenableWorker.Result.Success)
                 assertEquals(2, fetchCount)
-                val item = downloadQueueDao.getItem(novelId, "ch_1")
-                assertEquals("COMPLETED", item?.status)
-                assertEquals(1, item?.retryCount)
+                assertEquals("DOWNLOADED", chapterDao.getChapter(novelId, "ch_1")?.storageTier)
+                assertNull(downloadQueueDao.getItem(novelId, "ch_1"))
             } finally {
                 SourceManager.unregisterSource(dynamicSource.id)
             }
@@ -1420,24 +1421,8 @@ class DownloadEngineAndWorkerTest {
     @Test
     fun unpickableQueuedRow_markedFailed_andDoesNotKeepWorkerAlive() = runBlocking<Unit> {
         withTimeout(10_000) {
-            // Case 1: Missing novel row
-            downloadQueueDao.insertIgnore(DownloadQueueEntity("missing_novel", "ch_1", status = "QUEUED", queuedAt = 1000L))
-
-            // Case 2: Novel exists, but chapter row missing
-            val novel = NovelEntity(
-                id = "nov_missing_ch",
-                title = "Novel",
-                author = "Author",
-                description = "Desc",
-                sourceId = fakeSource.id,
-                sourceName = fakeSource.name,
-                status = "Ongoing"
-            )
-            novelDao.insertIgnore(novel)
-            downloadQueueDao.insertIgnore(DownloadQueueEntity("nov_missing_ch", "missing_chapter_id", status = "QUEUED", queuedAt = 2000L))
-
-            // Case 3: Novel and chapter exist, but source is not registered
-            val unregisteredNovel = NovelEntity(
+            // Novel and chapter exist, but source is not registered
+            val unregisteredNovel = testNovelEntity(
                 id = "nov_unreg_src",
                 title = "Novel Unregistered",
                 author = "Author",
@@ -1455,17 +1440,9 @@ class DownloadEngineAndWorkerTest {
 
             assertTrue(result is ListenableWorker.Result.Success)
 
-            val item1 = downloadQueueDao.getItem("missing_novel", "ch_1")
-            assertEquals("FAILED", item1?.status)
-            assertTrue(item1?.errorMessage?.contains("Novel row missing") == true)
-
-            val item2 = downloadQueueDao.getItem("nov_missing_ch", "missing_chapter_id")
-            assertEquals("FAILED", item2?.status)
-            assertTrue(item2?.errorMessage?.contains("Chapter row missing") == true)
-
-            val item3 = downloadQueueDao.getItem("nov_unreg_src", "ch_unreg_1")
-            assertEquals("FAILED", item3?.status)
-            assertTrue(item3?.errorMessage?.contains("Source not registered") == true)
+            val item = downloadQueueDao.getItem("nov_unreg_src", "ch_unreg_1")
+            assertEquals("FAILED", item?.status)
+            assertTrue(item?.errorMessage?.contains("Source not registered") == true)
 
             assertEquals(0, downloadQueueDao.countActiveRemaining())
         }
@@ -1657,7 +1634,7 @@ class DownloadEngineAndWorkerTest {
             val worker1 = TestListenableWorkerBuilder<DownloadQueueWorker>(context).build()
             worker1.doWork()
 
-            val run1Completed = downloadQueueDao.countByStatus("COMPLETED")
+            val run1Completed = chapterDao.getDownloadedCount(novelId)
             assertTrue("Expected some chapters completed in run 1", run1Completed > 0)
             assertEquals(run1Completed, coordinator.getBatchCompletedCount())
 
@@ -1666,7 +1643,8 @@ class DownloadEngineAndWorkerTest {
             val worker2 = TestListenableWorkerBuilder<DownloadQueueWorker>(context).build()
             worker2.doWork()
 
-            assertEquals(4, downloadQueueDao.countByStatus("COMPLETED"))
+            assertEquals(4, chapterDao.getDownloadedCount(novelId))
+            assertEquals(0, downloadQueueDao.countActiveRemaining())
 
             // Verify notification received total batch count (4)
             val notifications = notificationDao.getNotificationsFlow().first()

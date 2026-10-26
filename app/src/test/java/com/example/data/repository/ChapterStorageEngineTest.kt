@@ -1715,6 +1715,8 @@ class ChapterStorageEngineTest {
                         chapterRepository.getChapterContent(novelId, chapterId)
                     }
 
+                    delay(300)
+
                     // Release the fetch gate so the blocked fetch can complete
                     releaseFetch.complete(Unit)
 

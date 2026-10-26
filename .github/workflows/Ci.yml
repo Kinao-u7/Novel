@@ -47,9 +47,13 @@ jobs:
           for f in sorted(glob.glob("app/build/test-results/testDebugUnitTest/*.xml")):
               for tc in ET.parse(f).getroot().iter("testcase"):
                   for fl in list(tc.findall("failure")) + list(tc.findall("error")):
-                      msg = (fl.get("message") or "").replace("\n", " ")[:300]
+                      msg = (fl.get("message") or "").replace("\n", " ").replace("<", "[").replace(">", "]")[:300]
                       cls = (tc.get("classname") or "").split(".")[-1]
                       print(f"- {cls}.{tc.get('name')}: {msg}")
+                      for line in (fl.text or "").splitlines():
+                          if "com.example" in line:
+                              print(f"  {line.strip()}")
+                              break
                       n += 1
           print(f"Total failed: {n}")
           EOF
