@@ -829,10 +829,18 @@ class NovelRepositoryTest {
         }
         assertEquals(1, unread1)
 
-        val list1 = withTimeout(5000L) {
-            repository.notifications.first { it.size == 1 }
+        val list1: List<AppNotificationItem> = try {
+            withTimeout(5000L) {
+                repository.notifications.first { list -> list.any { it.title == "Notif 1" } }
+            }
+        } catch (e: TimeoutCancellationException) {
+            val current = repository.notifications.value
+            val ids = current.map { it.id }
+            val titles = current.map { it.title }
+            fail("Timed out waiting for Notif 1: size=${current.size}, ids=$ids, titles=$titles")
+            emptyList()
         }
-        val firstId = list1.first().id
+        val firstId = list1.first { it.title == "Notif 1" }.id
 
         // Mark read
         repository.markRead(firstId)

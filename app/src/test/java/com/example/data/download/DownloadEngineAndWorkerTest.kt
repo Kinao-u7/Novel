@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.Configuration
+import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ListenableWorker
 import androidx.work.NetworkType
@@ -159,6 +160,7 @@ class DownloadEngineAndWorkerTest {
         repository.shutdownForTesting()
         NovelRepository.resetInstanceForTesting()
         NovelDatabaseHolder.clearInstanceForTesting()
+        WorkManager.getInstance(context).cancelAllWork()
         database.close()
         DownloadCoordinator.resetInstanceForTesting()
     }
@@ -223,7 +225,8 @@ class DownloadEngineAndWorkerTest {
             description = "Desc",
             sourceId = fakeSource.id,
             sourceName = fakeSource.name,
-            status = "Ongoing"
+            status = "Ongoing",
+            inLibrary = true
         )
         novelDao.insertIgnore(novel)
 
@@ -596,7 +599,8 @@ class DownloadEngineAndWorkerTest {
                     description = "Desc",
                     sourceId = source1.id,
                     sourceName = source1.name,
-                    status = "Ongoing"
+                    status = "Ongoing",
+                    inLibrary = true
                 )
                 val novel2 = NovelEntity(
                     id = "nov_c2",
@@ -605,7 +609,8 @@ class DownloadEngineAndWorkerTest {
                     description = "Desc",
                     sourceId = source2.id,
                     sourceName = source2.name,
-                    status = "Ongoing"
+                    status = "Ongoing",
+                    inLibrary = true
                 )
                 novelDao.insertIgnore(novel1)
                 novelDao.insertIgnore(novel2)
@@ -668,8 +673,6 @@ class DownloadEngineAndWorkerTest {
     @Test
     fun wifiOnly_true_usesUnmeteredConstraint_andFalse_usesConnected() = runBlocking<Unit> {
         withTimeout(10_000) {
-            val testDriver = WorkManagerTestInitHelper.getTestDriver(context)
-
             // Case 1: wifiOnly = true -> UNMETERED constraint
             repository.settingsRepository.updateDownloadSettings { it.copy(wifiOnly = true) }
             downloadEngine.restartWorker()
@@ -682,7 +685,6 @@ class DownloadEngineAndWorkerTest {
                 NetworkType.UNMETERED,
                 workInfoTrue!!.constraints.requiredNetworkType
             )
-            testDriver?.setAllConstraintsMet(workInfoTrue.id)
 
             // Case 2: wifiOnly = false -> CONNECTED constraint
             repository.settingsRepository.updateDownloadSettings { it.copy(wifiOnly = false) }
@@ -696,7 +698,6 @@ class DownloadEngineAndWorkerTest {
                 NetworkType.CONNECTED,
                 workInfoFalse!!.constraints.requiredNetworkType
             )
-            testDriver?.setAllConstraintsMet(workInfoFalse.id)
         }
     }
 
@@ -909,7 +910,11 @@ class DownloadEngineAndWorkerTest {
             DownloadQueueWorker.maxWorkerDurationOverrideMs = 0L
             try {
                 // Pre-enqueue existing unique work under WORK_NAME so KEEP would drop the follow-up
+                val constraints = Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
                 val initialRequest = OneTimeWorkRequestBuilder<DownloadQueueWorker>()
+                    .setConstraints(constraints)
                     .addTag(DownloadEngine.TAG_DOWNLOAD)
                     .build()
                 WorkManager.getInstance(context).enqueueUniqueWork(
@@ -917,7 +922,6 @@ class DownloadEngineAndWorkerTest {
                     ExistingWorkPolicy.REPLACE,
                     initialRequest
                 )
-                WorkManagerTestInitHelper.getTestDriver(context)?.setAllConstraintsMet(initialRequest.id)
 
                 val worker = TestListenableWorkerBuilder<DownloadQueueWorker>(context).build()
                 val result = worker.doWork()
@@ -1488,7 +1492,8 @@ class DownloadEngineAndWorkerTest {
                     description = "Desc",
                     sourceId = slowSource.id,
                     sourceName = slowSource.name,
-                    status = "Ongoing"
+                    status = "Ongoing",
+                    inLibrary = true
                 )
                 novelDao.insertIgnore(novel)
                 chapterDao.insertIgnore(listOf(
@@ -1512,10 +1517,11 @@ class DownloadEngineAndWorkerTest {
                     downloadEngine.cancelChapter(novelId, "ch_1")
                 }
 
+                cancelJob.join()
+
                 // Now unblock the source fetch
                 allowFetchFinish.complete(Unit)
 
-                cancelJob.join()
                 workerJob.join()
 
                 // Verify chapter row in Room was never set to DOWNLOADED
@@ -1576,7 +1582,8 @@ class DownloadEngineAndWorkerTest {
                     description = "Desc",
                     sourceId = slowSource.id,
                     sourceName = slowSource.name,
-                    status = "Ongoing"
+                    status = "Ongoing",
+                    inLibrary = true
                 )
                 novelDao.insertIgnore(novel)
                 chapterDao.insertIgnore(listOf(
