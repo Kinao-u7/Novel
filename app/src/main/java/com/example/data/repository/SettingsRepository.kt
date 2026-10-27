@@ -235,13 +235,15 @@ class SettingsRepository private constructor(
     }
 
     suspend fun setLibraryGridView(isGrid: Boolean) {
-        val updated = _settings.value.copy(isLibraryGridView = isGrid)
+        val mode = if (isGrid) LibraryViewMode.GRID else LibraryViewMode.LIST
+        val updated = _settings.value.copy(library = _settings.value.library.copy(viewMode = mode))
         _settings.value = updated
         scheduleDebouncedWrite()
     }
 
     fun setLibraryGridViewSync(isGrid: Boolean) {
-        val updated = _settings.value.copy(isLibraryGridView = isGrid)
+        val mode = if (isGrid) LibraryViewMode.GRID else LibraryViewMode.LIST
+        val updated = _settings.value.copy(library = _settings.value.library.copy(viewMode = mode))
         _settings.value = updated
         scheduleDebouncedWrite()
     }
