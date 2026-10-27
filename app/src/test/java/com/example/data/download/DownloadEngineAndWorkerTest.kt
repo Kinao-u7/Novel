@@ -415,7 +415,7 @@ class DownloadEngineAndWorkerTest {
             insertTestNovelAndChapters("nov_auto", 5)
 
             // Starting after chapter index 2, requested count 2 -> chapters 3 and 4
-            val result = downloadEngine.autoDownloadNext("nov_auto", fromChapterIndex = 2, count = 2)
+            val result = downloadEngine.autoDownloadNext(novelId = "nov_auto", fromChapterIndex = 2, count = 2)
 
             assertEquals(2, result.enqueuedCount)
             assertEquals(listOf("ch_3", "ch_4"), result.enqueuedChapterIds)
@@ -441,7 +441,7 @@ class DownloadEngineAndWorkerTest {
             downloadQueueDao.insertIgnore(DownloadQueueEntity("nov_auto_skip", "ch_4", status = "QUEUED"))
 
             // After index 2, request count 2 -> ch_3 is DOWNLOADED, ch_4 is QUEUED, so only ch_5 is eligible
-            val result = downloadEngine.autoDownloadNext("nov_auto_skip", fromChapterIndex = 2, count = 2)
+            val result = downloadEngine.autoDownloadNext(novelId = "nov_auto_skip", fromChapterIndex = 2, count = 2)
 
             assertEquals(1, result.enqueuedCount)
             assertEquals(listOf("ch_5"), result.enqueuedChapterIds)

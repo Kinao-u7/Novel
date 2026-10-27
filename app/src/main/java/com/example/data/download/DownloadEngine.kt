@@ -215,7 +215,11 @@ class DownloadEngine(
      * Enqueues the next [count] chapters after [fromChapterIndex] that are not already DOWNLOADED or EPUB,
      * and not already in the download queue.
      */
-    suspend fun autoDownloadNext(novelId: String, fromChapterIndex: Int, count: Int): EnqueueResult = withContext(Dispatchers.IO) {
+    suspend fun autoDownloadNext(
+        novelId: String,
+        fromChapterIndex: Int,
+        count: Int = settingsRepository.downloadSettings.value.autoDownloadAhead
+    ): EnqueueResult = withContext(Dispatchers.IO) {
         if (count <= 0) {
             return@withContext EnqueueResult(emptyList(), emptyList())
         }

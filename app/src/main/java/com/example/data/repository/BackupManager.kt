@@ -161,7 +161,7 @@ class BackupManager(
                     put("wifiOnly", ds.wifiOnly)
                     put("allowMobileData", ds.allowMobileData)
                     put("simultaneousDownloads", ds.simultaneousDownloads)
-                    put("autoDownloadNext", ds.autoDownloadNext)
+                    put("autoDownloadAhead", ds.autoDownloadAhead)
                     put("throttlingEnabled", ds.throttlingEnabled)
                     put("throttleBatchSize", ds.throttleBatchSize)
                     put("throttleDelaySeconds", ds.throttleDelaySeconds.toDouble())
@@ -318,9 +318,17 @@ class BackupManager(
                 if (setObj.has("downloadSettings")) {
                     val ds = setObj.getJSONObject("downloadSettings")
                     val currentDs = preferencesManager.downloadSettings.value
+                    val ahead = if (ds.has("autoDownloadAhead")) {
+                        ds.optInt("autoDownloadAhead", currentDs.autoDownloadAhead)
+                    } else if (ds.has("autoDownloadNext")) {
+                        if (ds.optBoolean("autoDownloadNext", false)) 3 else 0
+                    } else {
+                        currentDs.autoDownloadAhead
+                    }
                     val newDs = currentDs.copy(
                         wifiOnly = ds.optBoolean("wifiOnly", currentDs.wifiOnly),
                         allowMobileData = ds.optBoolean("allowMobileData", currentDs.allowMobileData),
+                        autoDownloadAhead = ahead,
                         throttlingEnabled = ds.optBoolean("throttlingEnabled", currentDs.throttlingEnabled),
                         throttleBatchSize = ds.optInt("throttleBatchSize", currentDs.throttleBatchSize),
                         throttleDelaySeconds = ds.optDouble("throttleDelaySeconds", currentDs.throttleDelaySeconds.toDouble()).toFloat(),

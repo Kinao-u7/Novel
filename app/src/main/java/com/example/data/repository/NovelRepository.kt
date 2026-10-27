@@ -464,8 +464,16 @@ class NovelRepository(
     suspend fun downloadNovel(novelId: String): EnqueueResult =
         downloadEngine.enqueueNovel(novelId)
 
-    suspend fun autoDownloadNext(novelId: String, fromChapterIndex: Int, count: Int): EnqueueResult =
-        downloadEngine.autoDownloadNext(novelId, fromChapterIndex, count)
+    suspend fun autoDownloadNext(
+        novelId: String,
+        fromChapterIndex: Int,
+        count: Int = settingsRepository.downloadSettings.value.autoDownloadAhead
+    ): EnqueueResult =
+        downloadEngine.autoDownloadNext(
+            novelId = novelId,
+            fromChapterIndex = fromChapterIndex,
+            count = count
+        )
 
     suspend fun pauseDownloadQueue() = downloadEngine.pauseQueue()
     suspend fun resumeDownloadQueue() = downloadEngine.resumeQueue()

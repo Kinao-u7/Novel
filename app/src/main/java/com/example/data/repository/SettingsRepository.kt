@@ -6,9 +6,14 @@ import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import com.example.data.model.AppSettings
 import com.example.data.model.AppThemeMode
+import com.example.data.model.BackupSettings
+import com.example.data.model.CultivationSettings
 import com.example.data.model.DownloadSettings
 import com.example.data.model.FontType
+import com.example.data.model.LibrarySettings
+import com.example.data.model.LibraryViewMode
 import com.example.data.model.NotificationSettings
+import com.example.data.model.ProfileSettings
 import com.example.data.model.ReaderFontWeight
 import com.example.data.model.ReaderSettings
 import com.example.data.model.ReaderTextAlign
@@ -98,10 +103,30 @@ class SettingsRepository private constructor(
         .distinctUntilChanged()
         .stateIn(repoScope, SharingStarted.Eagerly, _settings.value.notifications)
 
-    val isLibraryGridView: StateFlow<Boolean> = _settings
-        .map { it.isLibraryGridView }
+    val librarySettings: StateFlow<LibrarySettings> = _settings
+        .map { it.library }
         .distinctUntilChanged()
-        .stateIn(repoScope, SharingStarted.Eagerly, _settings.value.isLibraryGridView)
+        .stateIn(repoScope, SharingStarted.Eagerly, _settings.value.library)
+
+    val cultivationSettings: StateFlow<CultivationSettings> = _settings
+        .map { it.cultivation }
+        .distinctUntilChanged()
+        .stateIn(repoScope, SharingStarted.Eagerly, _settings.value.cultivation)
+
+    val backupSettings: StateFlow<BackupSettings> = _settings
+        .map { it.backup }
+        .distinctUntilChanged()
+        .stateIn(repoScope, SharingStarted.Eagerly, _settings.value.backup)
+
+    val profileSettings: StateFlow<ProfileSettings> = _settings
+        .map { it.profile }
+        .distinctUntilChanged()
+        .stateIn(repoScope, SharingStarted.Eagerly, _settings.value.profile)
+
+    val isLibraryGridView: StateFlow<Boolean> = _settings
+        .map { it.library.viewMode == LibraryViewMode.GRID }
+        .distinctUntilChanged()
+        .stateIn(repoScope, SharingStarted.Eagerly, _settings.value.library.viewMode == LibraryViewMode.GRID)
 
     // --- MUTATION METHODS ---
 
@@ -263,14 +288,15 @@ class SettingsRepository private constructor(
         }
     }
 
-    // --- INITIAL LOADING & LEGACY PREFS MIGRATION ---
+    // --- INITIAL LOADING ---
 
     private fun loadInitialSettings(): AppSettings {
         if (settingsFile.exists()) {
             try {
                 val raw = settingsFile.readText()
                 if (raw.isNotBlank()) {
-                    return json.decodeFromString(AppSettings.serializer(), raw)
+                    val decoded = json.decodeFromString(AppSettings.serializer(), raw)
+                    return sanitizeSettings(decoded)
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
@@ -284,115 +310,48 @@ class SettingsRepository private constructor(
             }
         }
 
-        // Fallback to legacy SharedPreferences if existing file does not exist
-        return migrateFromLegacyPrefs()
-    }
-
-    private fun migrateFromLegacyPrefs(): AppSettings {
-        val prefs = appContext.getSharedPreferences("novel_reader_prefs", Context.MODE_PRIVATE)
-        if (!prefs.contains("reader_theme") && !prefs.contains("app_theme_mode") && !prefs.contains("dl_wifi_only")) {
-            return AppSettings()
-        }
-
-        return try {
-            val themeModeName = prefs.getString("app_theme_mode", AppThemeMode.DARK.name) ?: AppThemeMode.DARK.name
-            val themeMode = runCatching { AppThemeMode.valueOf(themeModeName) }.getOrDefault(AppThemeMode.DARK)
-            val accentHex = prefs.getString("app_accent_hex", "#DEB887") ?: "#DEB887"
-            val useDynamic = prefs.getBoolean("app_use_dynamic_color", false)
-            val themeSettings = ThemeSettings(
-                themeMode = themeMode,
-                accentColorHex = accentHex,
-                useDynamicColor = useDynamic
-            )
-
-            val readerThemeName = prefs.getString("reader_theme", ReaderTheme.SEPIA.name) ?: ReaderTheme.SEPIA.name
-            val readerTheme = runCatching { ReaderTheme.valueOf(readerThemeName) }.getOrDefault(ReaderTheme.SEPIA)
-            val fontName = prefs.getString("reader_font", FontType.SERIF.name) ?: FontType.SERIF.name
-            val font = runCatching { FontType.valueOf(fontName) }.getOrDefault(FontType.SERIF)
-            val weightName = prefs.getString("reader_font_weight", ReaderFontWeight.NORMAL.name) ?: ReaderFontWeight.NORMAL.name
-            val weight = runCatching { ReaderFontWeight.valueOf(weightName) }.getOrDefault(ReaderFontWeight.NORMAL)
-            val alignName = prefs.getString("reader_text_align", ReaderTextAlign.JUSTIFIED.name) ?: ReaderTextAlign.JUSTIFIED.name
-            val textAlign = runCatching { ReaderTextAlign.valueOf(alignName) }.getOrDefault(ReaderTextAlign.JUSTIFIED)
-            val modeName = prefs.getString("reader_mode", ReadingMode.CONTINUOUS.name) ?: ReadingMode.CONTINUOUS.name
-            val readingMode = runCatching { ReadingMode.valueOf(modeName) }.getOrDefault(ReadingMode.CONTINUOUS)
-            val toolbarPosName = prefs.getString("reader_toolbar_pos", ToolbarPosition.BOTTOM.name) ?: ToolbarPosition.BOTTOM.name
-            val toolbarPos = runCatching { ToolbarPosition.valueOf(toolbarPosName) }.getOrDefault(ToolbarPosition.BOTTOM)
-
-            val defaultActions = listOf("prev_chapter", "next_chapter", "toc", "tts", "bookmark", "display")
-            val savedActionsStr = prefs.getString("reader_toolbar_actions", null)
-            val actions = if (!savedActionsStr.isNullOrBlank()) {
-                savedActionsStr.split(",").filter { it.isNotBlank() }
-            } else {
-                defaultActions
-            }
-
-            val readerSettings = ReaderSettings(
-                theme = readerTheme,
-                fontSizeSp = prefs.getInt("reader_font_size", 18),
-                fontWeight = weight,
-                lineSpacingMultiplier = prefs.getFloat("reader_line_spacing", 1.6f),
-                paragraphSpacingDp = prefs.getInt("reader_para_spacing", 12),
-                letterSpacingSp = prefs.getFloat("reader_letter_spacing", 0f),
-                textAlign = textAlign,
-                horizontalMarginDp = prefs.getInt("reader_horizontal_margin", 20),
-                verticalMarginDp = prefs.getInt("reader_vertical_margin", 20),
-                contentWidthPercent = prefs.getInt("reader_content_width_pct", 100),
-                paragraphIndentation = prefs.getBoolean("reader_para_indent", false),
-                fontType = font,
-                readingMode = readingMode,
-                autoScrollSpeed = prefs.getInt("reader_auto_scroll_speed", 0),
-                keepScreenOn = prefs.getBoolean("reader_keep_screen_on", true),
-                toolbarPosition = toolbarPos,
-                showStatusBar = prefs.getBoolean("reader_show_status_bar", true),
-                enabledToolbarActions = actions,
-                globalTermReplacementsEnabled = prefs.getBoolean("reader_global_replacements", true),
-                ttsSpeechRate = prefs.getFloat("reader_tts_speed", 1.0f),
-                ttsPitch = prefs.getFloat("reader_tts_pitch", 1.0f),
-                ttsVoice = prefs.getString("reader_tts_voice", null),
-                saveReadingPosition = prefs.getBoolean("reader_save_pos", true)
-            )
-
-            val downloadSettings = DownloadSettings(
-                wifiOnly = prefs.getBoolean("dl_wifi_only", true),
-                allowMobileData = prefs.getBoolean("dl_allow_mobile", false),
-                simultaneousDownloads = prefs.getInt("dl_simultaneous", 3),
-                autoDownloadNext = prefs.getBoolean("dl_auto_next", false),
-                customDownloadLocationUri = prefs.getString("dl_custom_location_uri", null),
-                customDownloadLocationDisplayName = prefs.getString("dl_custom_location_display", null),
-                throttlingEnabled = prefs.getBoolean("dl_throttling_enabled", false),
-                throttleBatchSize = prefs.getInt("dl_throttle_batch_size", 5),
-                throttleDelaySeconds = prefs.getFloat("dl_throttle_delay_sec", 2.0f),
-                throttleRandomJitter = prefs.getBoolean("dl_throttle_random_jitter", true)
-            )
-
-            val notificationSettings = NotificationSettings(
-                notifyOnDownload = prefs.getBoolean("notif_download", true),
-                notifyOnNovelUpdate = prefs.getBoolean("notif_update", true)
-            )
-
-            val isGrid = prefs.getBoolean("library_is_grid_view", true)
-
-            val initial = AppSettings(
-                reader = readerSettings,
-                theme = themeSettings,
-                downloads = downloadSettings,
-                notifications = notificationSettings,
-                isLibraryGridView = isGrid
-            )
-
-            repoScope.launch {
-                persistSettings(initial)
-            }
-            initial
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            e.printStackTrace()
-            AppSettings()
-        }
+        return sanitizeSettings(AppSettings())
     }
 
     companion object {
         const val SETTINGS_FILE_NAME = "app_settings.json"
+        private val ALLOWED_AUTO_DOWNLOAD_AHEAD = listOf(0, 1, 3, 5, 10)
+
+        fun coerceAutoDownloadAhead(value: Int): Int {
+            return ALLOWED_AUTO_DOWNLOAD_AHEAD.minByOrNull { kotlin.math.abs(it - value) } ?: 3
+        }
+
+        fun sanitizeSettings(settings: AppSettings): AppSettings {
+            val coercedAhead = coerceAutoDownloadAhead(settings.downloads.autoDownloadAhead)
+            val coercedGoal = settings.cultivation.dailyGoalMinutes.coerceIn(5, 120)
+            val coercedReminder = settings.cultivation.reminderMinutesOfDay.coerceIn(0, 1439)
+
+            val updatedDownloads = if (settings.downloads.autoDownloadAhead == coercedAhead) {
+                settings.downloads
+            } else {
+                settings.downloads.copy(autoDownloadAhead = coercedAhead)
+            }
+
+            val updatedCultivation = if (settings.cultivation.dailyGoalMinutes == coercedGoal &&
+                settings.cultivation.reminderMinutesOfDay == coercedReminder
+            ) {
+                settings.cultivation
+            } else {
+                settings.cultivation.copy(
+                    dailyGoalMinutes = coercedGoal,
+                    reminderMinutesOfDay = coercedReminder
+                )
+            }
+
+            return if (updatedDownloads === settings.downloads && updatedCultivation === settings.cultivation) {
+                settings
+            } else {
+                settings.copy(
+                    downloads = updatedDownloads,
+                    cultivation = updatedCultivation
+                )
+            }
+        }
 
         @Volatile
         private var instance: SettingsRepository? = null

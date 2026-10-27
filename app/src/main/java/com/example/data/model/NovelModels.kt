@@ -121,7 +121,8 @@ data class ReaderSettings(
     val ttsSpeechRate: Float = 1.0f,
     val ttsPitch: Float = 1.0f,
     val ttsVoice: String? = null,
-    val saveReadingPosition: Boolean = true
+    val saveReadingPosition: Boolean = true,
+    val volumeKeysScroll: Boolean = false
 ) {
     val isJustified: Boolean
         get() = textAlign == ReaderTextAlign.JUSTIFIED
@@ -157,6 +158,7 @@ data class ReaderSettings(
         ttsPitch: Float = this.ttsPitch,
         ttsVoice: String? = this.ttsVoice,
         saveReadingPosition: Boolean = this.saveReadingPosition,
+        volumeKeysScroll: Boolean = this.volumeKeysScroll,
         isJustified: Boolean? = null,
         marginType: MarginType? = null
     ): ReaderSettings {
@@ -193,7 +195,8 @@ data class ReaderSettings(
             ttsSpeechRate = ttsSpeechRate,
             ttsPitch = ttsPitch,
             ttsVoice = ttsVoice,
-            saveReadingPosition = saveReadingPosition
+            saveReadingPosition = saveReadingPosition,
+            volumeKeysScroll = volumeKeysScroll
         )
     }
 }
@@ -203,7 +206,7 @@ data class DownloadSettings(
     val wifiOnly: Boolean = true,
     val allowMobileData: Boolean = false,
     val simultaneousDownloads: Int = 3,
-    val autoDownloadNext: Boolean = false,
+    val autoDownloadAhead: Int = 3,
     // Custom Download Location (SAF tree uri)
     val customDownloadLocationUri: String? = null,
     val customDownloadLocationDisplayName: String? = null,
@@ -213,7 +216,69 @@ data class DownloadSettings(
     val throttleDelaySeconds: Float = 2.0f, // configurable delay duration
     val throttleRandomJitter: Boolean = true, // randomized jitter to delay timing
     // LRU Cache Size Cap (MB)
-    val cacheSizeCapMb: Int = 250
+    val cacheSizeCapMb: Int = 250,
+    val deleteAfterReading: Boolean = false
+)
+
+@Serializable
+enum class DefaultShelf(val displayName: String) {
+    ALL("All"),
+    READING("Reading"),
+    SAVED("Saved")
+}
+
+@Serializable
+enum class LibraryViewMode(val displayName: String) {
+    GRID("Grid"),
+    LIST("List")
+}
+typealias ViewMode = LibraryViewMode
+
+@Serializable
+enum class LibrarySort(val displayName: String) {
+    RECENTLY_READ("Recently Read"),
+    TITLE("Title"),
+    PROGRESS("Progress"),
+    TOTAL_CHAPTERS("Total Chapters")
+}
+typealias LibrarySortOrder = LibrarySort
+
+@Serializable
+data class LibrarySettings(
+    val updateOnLaunch: Boolean = true,
+    val showUnreadBadges: Boolean = true,
+    val defaultShelf: DefaultShelf = DefaultShelf.ALL,
+    val viewMode: LibraryViewMode = LibraryViewMode.GRID,
+    val sort: LibrarySort = LibrarySort.RECENTLY_READ
+)
+
+@Serializable
+enum class AutoBackup(val displayName: String) {
+    OFF("Off"),
+    DAILY("Daily"),
+    WEEKLY("Weekly")
+}
+
+@Serializable
+data class BackupSettings(
+    val autoBackup: AutoBackup = AutoBackup.WEEKLY,
+    val lastBackupAtMillis: Long = 0L
+)
+
+@Serializable
+data class CultivationSettings(
+    val qiRewards: Boolean = true,
+    val breakthroughEffects: Boolean = true,
+    val haptics: Boolean = true,
+    val reduceMotion: Boolean = false,
+    val dailyGoalMinutes: Int = 20,
+    val reminderEnabled: Boolean = true,
+    val reminderMinutesOfDay: Int = 1230 // 20:30 (8:30 PM)
+)
+
+@Serializable
+data class ProfileSettings(
+    val displayName: String = "Reader"
 )
 
 data class BackupCategories(
@@ -237,8 +302,14 @@ data class AppSettings(
     val theme: ThemeSettings = ThemeSettings(),
     val downloads: DownloadSettings = DownloadSettings(),
     val notifications: NotificationSettings = NotificationSettings(),
-    val isLibraryGridView: Boolean = true
-)
+    val library: LibrarySettings = LibrarySettings(),
+    val cultivation: CultivationSettings = CultivationSettings(),
+    val backup: BackupSettings = BackupSettings(),
+    val profile: ProfileSettings = ProfileSettings()
+) {
+    val isLibraryGridView: Boolean
+        get() = library.viewMode == LibraryViewMode.GRID
+}
 
 data class AppNotificationItem(
     val id: String = java.util.UUID.randomUUID().toString(),
