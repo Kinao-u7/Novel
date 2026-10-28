@@ -48,6 +48,11 @@ Append this to `docs/ARCHITECTURE.md`. These rules apply to every stage and ever
 24. **FileProvider paths are narrow** (a cache subfolder only).
 25. **Validate archive entries** (zip-slip) before extracting. Never restore a folder permission that is no longer granted.
 
+## System integrity & design system
+
+26. **Non-UI logic reads source of truth.** Non-UI logic (repositories, download engine, worker, storage resolver) must read settings directly from `settingsRepository.settings.value.<group>`, never from derived StateFlows (e.g. `downloadSettings.value`), which are intended for UI consumers and can lag behind state updates.
+27. **Screens use theme tokens and shared components.** No hardcoded colors, dp/sp or font families. All screens ported from designs must strictly use MaterialTheme tokens (colors, typography, shapes) and shared components.
+
 ## Done means
 
 - `./gradlew assembleDebug` passes, the app launches and `./gradlew test` is green.

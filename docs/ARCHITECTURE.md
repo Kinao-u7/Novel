@@ -89,9 +89,107 @@ cacheDir/ (Android may clear it)
 - Stage 4a status: StorageResolver, ChapterStorage and ChapterRepository operate on INTERNAL storage only (`filesDir`). Custom SAF folder writes and reads are deferred to Stage 4b.
 - A custom SAF folder is a real location, not a mirror: downloads go to `NovelReader/downloads/{novelId}/{sha256}.json` under the SAF tree, and `chapters.storage_location` records where each file lives. Changing the folder never orphans old files. If permission is revoked, new writes fall back to `INTERNAL`. Cache the SAF directory handle, never call `findFile` per chapter.
 
-## 5. Settings (already implemented in Stage 1a)
+## 5. Settings
 
-`SettingsRepository` stores each settings group as one serialized JSON object (`ignoreUnknownKeys`, `coerceInputValues`, `encodeDefaults`), written atomically, with a `.corrupted` backup. Source of truth for fields is `SettingsModels.kt`. Decisions: one field per concept (`textAlign` replaces `isJustified`, `horizontalMarginDp` replaces `marginType`, `wifiOnly` replaces `allowMobileData`); defaults are Sepia reader theme, accent `#DEB887`, serif font, `wifiOnly = true`, concurrency 2, throttle delay 2.0s with jitter, `cacheSizeCapMb = 250`, default toolbar of at most 5 actions. `AppSettings` holds `libraryViewMode`, `librarySort`, `lastSeenChangelogVersion`, `setupStoragePromptShown`. Reset preserves `customDownloadLocationUri` and its display name.
+`SettingsRepository` manages app configuration stored as a single serialized JSON file (`settings.json` under `filesDir`), with crash resilience: atomic writes via a temporary file (`.tmp`) and rename, a fallback `.corrupted` backup, debounced disk writes (300ms) to prevent I/O thrashing, and execution strictly off the main thread (`Dispatchers.IO`). Serializer configuration uses `Json { ignoreUnknownKeys = true; coerceInputValues = true; encodeDefaults = true; prettyPrint = true }`.
+
+### Architecture: Settings vs. Room
+Settings stay in one JSON file (not Room, not DataStore). Contrast with Room relational tables: settings are whole-object, crash-resilient, with zero-migration schema evolution (adding fields with defaults requires no database schema migrations, and missing keys in older JSON deserialize to their defaults). Non-UI logic (repositories, download engine, workers, storage resolver) must always read the source of truth directly from `settingsRepository.settings.value.<group>`, never through the derived StateFlows, which are for UI consumers and can lag behind state updates (Rule 26, Amendment x).
+
+### Theme & Typography Mapping
+- **App Themes:** `AppThemeMode` values map directly to the design system:
+  - `DARK` = Ink (default)
+  - `AMOLED` = Black
+  - `SEPIA` = Paper
+  - `LIGHT` = White
+  - `SYSTEM` = Match system theme
+- **Accent Colors:** Hex string `accentColorHex` (`#DEB887` default); UI offers presets such as Jade (`#10B981` / `#7cf2c3`), Amber/Gold (`#F59E0B` / `#f3cb83`), Rose (`#EC4899` / `#ff9ec4`), Azure (`#0284C7` / `#8fd0ff`).
+- **Typography:** `FontType` (`SERIF` default, `SANS`, `MONOSPACE`, `ROUNDED`).
+
+### Settings Groups & Defaults (from `NovelModels.kt`)
+`AppSettings` is composed of 8 modular settings groups (plus `bottomBar` planned per Amendment y):
+
+1. **reader (`ReaderSettings`):**
+   - `theme: ReaderTheme = ReaderTheme.SEPIA`
+   - `fontSizeSp: Int = 18`
+   - `fontWeight: ReaderFontWeight = ReaderFontWeight.NORMAL`
+   - `lineSpacingMultiplier: Float = 1.6f`
+   - `paragraphSpacingDp: Int = 12`
+   - `letterSpacingSp: Float = 0f`
+   - `textAlign: ReaderTextAlign = ReaderTextAlign.JUSTIFIED`
+   - `horizontalMarginDp: Int = 20`
+   - `verticalMarginDp: Int = 20`
+   - `contentWidthPercent: Int = 100`
+   - `paragraphIndentation: Boolean = false`
+   - `fontType: FontType = FontType.SERIF`
+   - `readingMode: ReadingMode = ReadingMode.CONTINUOUS`
+   - `autoScrollSpeed: Int = 0` (0 = off, 1–5 = speed)
+   - `keepScreenOn: Boolean = true`
+   - `toolbarPosition: ToolbarPosition = ToolbarPosition.BOTTOM`
+   - `showStatusBar: Boolean = true`
+   - `enabledToolbarActions: List<String> = listOf("prev_chapter", "next_chapter", "toc", "tts", "bookmark", "display")`
+   - `globalTermReplacementsEnabled: Boolean = true`
+   - `ttsSpeechRate: Float = 1.0f`
+   - `ttsPitch: Float = 1.0f`
+   - `ttsVoice: String? = null`
+   - `saveReadingPosition: Boolean = true`
+   - `volumeKeysScroll: Boolean = false`
+
+2. **theme (`ThemeSettings`):**
+   - `themeMode: AppThemeMode = AppThemeMode.DARK` (Ink)
+   - `accentColorHex: String = "#DEB887"`
+   - `useDynamicColor: Boolean = false`
+
+3. **downloads (`DownloadSettings`):**
+   - `wifiOnly: Boolean = true`
+   - `allowMobileData: Boolean = false`
+   - `simultaneousDownloads: Int = 3` (cross-source concurrency, range 1–5)
+   - `autoDownloadAhead: Int = 3` (coerced on load/update to nearest of 0, 1, 3, 5, 10)
+   - `customDownloadLocationUri: String? = null`
+   - `customDownloadLocationDisplayName: String? = null`
+   - `throttlingEnabled: Boolean = false`
+   - `throttleBatchSize: Int = 5`
+   - `throttleDelaySeconds: Float = 2.0f`
+   - `throttleRandomJitter: Boolean = true`
+   - `cacheSizeCapMb: Int = 250`
+   - `deleteAfterReading: Boolean = false`
+
+4. **notifications (`NotificationSettings`):**
+   - `notifyOnDownload: Boolean = true`
+   - `notifyOnNovelUpdate: Boolean = true`
+
+5. **library (`LibrarySettings`):**
+   - `updateOnLaunch: Boolean = true`
+   - `showUnreadBadges: Boolean = true`
+   - `defaultShelf: DefaultShelf = DefaultShelf.ALL` (`ALL`, `READING`, `SAVED`)
+   - `viewMode: LibraryViewMode = LibraryViewMode.GRID` (`GRID`, `LIST`)
+   - `sort: LibrarySort = LibrarySort.RECENTLY_READ` (`RECENTLY_READ`, `TITLE`, `PROGRESS`, `TOTAL_CHAPTERS`)
+
+6. **cultivation (`CultivationSettings`):**
+   - `qiRewards: Boolean = true`
+   - `breakthroughEffects: Boolean = true`
+   - `haptics: Boolean = true`
+   - `reduceMotion: Boolean = false`
+   - `dailyGoalMinutes: Int = 20` (coerced on load/update to 5..120)
+   - `reminderEnabled: Boolean = true`
+   - `reminderMinutesOfDay: Int = 1230` (20:30 / 8:30 PM, coerced on load/update to 0..1439)
+
+7. **backup (`BackupSettings`):**
+   - `autoBackup: AutoBackup = AutoBackup.WEEKLY` (`OFF`, `DAILY`, `WEEKLY`)
+   - `lastBackupAtMillis: Long = 0L`
+
+8. **profile (`ProfileSettings`):**
+   - `displayName: String = "Reader"`
+
+9. **bottomBar (`BottomBarSettings`):**
+   - Planned / to be added: configured in `settings.bottomBar.tabs` (Amendment y).
+
+### Reset Behavior
+Calling `resetAllSettings()` resets all groups to their defaults while preserving four user-configured state fields:
+- `downloads.customDownloadLocationUri`
+- `downloads.customDownloadLocationDisplayName`
+- `profile.displayName`
+- `backup.lastBackupAtMillis`
 
 ## 6. Layers
 
@@ -99,17 +197,40 @@ UI → ViewModels → Repositories/engines → Room, `StorageResolver`/`ChapterS
 
 ## 7. Navigation
 
-Navigation Compose 2.8+ with `@Serializable` routes carrying IDs only: `Library`, `Browse`, `Downloads`, `Stats`, `NovelDetail(novelId)`, `Reader(novelId, chapterIndex)` (index, because chapter ids are URLs), `Settings(subPage)`, `WebBrowser(initialUrl)`. Each screen has a ViewModel using `SavedStateHandle`. Never pass `Novel` objects between screens.
+Navigation Compose 2.8+ with `@Serializable` type-safe routes carrying IDs only. Each screen has a ViewModel using `SavedStateHandle`. Never pass `Novel` or domain model objects between screens.
+
+### Primary Destination Tabs
+The bottom navigation bar displays 4 of the following 5 primary tabs, customizable in settings (Amendment y):
+1. **Library:** User novel library with shelves, filters, sort, and search. Pinned to the bottom bar.
+2. **Discover:** Sources, browse, and extensions catalog (replaces legacy `Browse`). Swappable tab slot.
+3. **Cultivate:** Reading stats, cultivation realms, Qi progress, and daily reading goals (replaces legacy `Stats`). Swappable tab slot.
+4. **Downloads:** Download queue manager, active worker status, paused/completed items, and storage management. Swappable tab slot.
+5. **Profile:** Reader profile and settings dashboard (`Profile(subPage)`, replaces legacy `Settings`). Pinned to the bottom bar.
+
+### Secondary Routes
+- `NovelDetail(novelId)`: Detailed novel view, metadata, chapter list, and actions.
+- `Reader(novelId, chapterIndex)`: Reader interface (uses chapter index because chapter IDs can be URLs).
+- `BrowseSource(sourceId)`: Source-specific browsing, search, and latest listings.
+- `WebBrowser(initialUrl)`: In-app browser for web novel inspection, cloudflare solving, or source login.
 
 ## 8. Storage tiers, cache and downloads
 
-- `storage_tier` (`NONE`, `DOWNLOADED`, `EPUB`) says whether permanent content exists. Reading never marks a chapter downloaded.
+- `storage_tier` (`NONE`, `DOWNLOADED`, `EPUB`) records whether permanent content exists. Reading never marks a chapter downloaded.
 - Reader cache is untracked: chapters read online are written (temp file, then rename) to `cacheDir/chapters/{novelId}/{sha256}.json`. Room does not record them. Cap: `cacheSizeCapMb`. After a write, if the folder exceeds the cap, delete the least recently modified files until under it; a cache read refreshes the file's modified time. One mutex serializes trimming. A missing or unreadable cache file is a miss: delete it and refetch.
 - Reader order: `EPUB`, then `DOWNLOADED`, then cache, then network, with single-flight per chapter. A reader fetch and a download of the same chapter share one in-flight fetch (single-flight).
-- Downloads: written to the download location; tier set to `DOWNLOADED` with a compare-and-set (expected previous `NONE` or `DOWNLOADED`). Disk first: if a valid file already exists at the target, only set the tier. If the chapter is in the cache, copy it to the download location (no network) and delete the cache copy.
+- Downloads: written to the download location; tier set to `DOWNLOADED` with a compare-and-set (expected previous `NONE` or `DOWNLOADED`). Disk first: if a valid file already exists at the target, only set the tier. Downloaded chapters (`DOWNLOADED` or `EPUB` tier) are never re-downloaded. If the chapter is in the cache, copy it to the download location (no network) and delete the cache copy.
 - Delete downloads resets `DOWNLOADED` rows to `NONE` and deletes files, never `EPUB`; the cache is untouched. Clear cache deletes the cache folder only. Removing a novel from the app deletes its cache folder (`cacheDir/chapters/{novelId}`).
 - Startup cleans only `staging/` (files older than 10 minutes). No cache reconciliation. `CacheReconciler` is replaced by a minimal staging cleanup.
-- Downloads: one WorkManager `CoroutineWorker` (foreground, `dataSync`) drains `download_queue` ordered by `queued_at`. `NetworkType.UNMETERED` when `wifiOnly`. Concurrency from settings (default 2) with a WebView pool of the same size. Throttle with delay and jitter. Handle timeouts, HTTP 429 and network errors, with retry.
+- Downloads execution & concurrency:
+  - Managed by `DownloadQueueWorker` (WorkManager foreground `CoroutineWorker`, `dataSync` foreground service type) draining `download_queue` ordered by `queued_at`. `NetworkType.UNMETERED` enforced when `wifiOnly` is enabled.
+  - **Source-level politeness:** strictly 1 chapter per source at a time (constant `DEFAULT_MAX_PER_SOURCE_CONCURRENCY = 1`).
+  - **Cross-source concurrency:** read from settings (`simultaneousDownloads`, default 3, range 1–5).
+  - **WebView pool:** at most 2 active WebViews at a time across all sources (`MAX_POOL_CAP = 2`, managed via `WebChapterScraper.configurePoolCapacity` and `Semaphore(2)`).
+  - **Request spacing:** comes ONLY from throttle settings (`throttlingEnabled`, `throttleBatchSize`, `throttleDelaySeconds`, `throttleRandomJitter`; baseline minimum spacing per source is 200ms).
+  - **Retries & Backoff:** 3 attempts max (`MAX_RETRY_COUNT = 3`) with exponential backoff (2s, 4s, 8s via `baseMs * (1 shl nextRetry)`). Retries do NOT hold the worker concurrency slot: the in-flight chapter job completes and releases its semaphore permit immediately, setting a `notBefore` timestamp on the queue row.
+  - **Typed `DownloadResult`:** Structured result class reporting `Success`, `RateLimited` (HTTP 429 with retry-after backoff), `Network` (network errors / timeouts), `Parse`, `SourceUnavailable`, `StorageFull`, `StorageUnavailable`, and `ChapterMissing`. Cancellation throws `CancellationException` and aborts immediately without saving files or failing the queue row.
+  - **DownloadCoordinator:** owns the mutex (`mutex: Mutex`) coordinating worker start/stop lifecycle, registering active chapter jobs, preventing concurrent work during deletions, and managing source-level locks.
+  - **Queue cleanup:** completed queue rows are cleared automatically when the queue becomes idle (no active or paused items remaining).
 
 ## 9. Backup format
 
@@ -128,24 +249,41 @@ Room (runtime, ktx, compiler via KSP), Navigation Compose, lifecycle ViewModel C
 
 Every stage ends with: the app compiling and launching, tests passing, and a summary (files changed, what was NOT changed, temporary adapters and the stage that deletes each, manual test checklist). Stop after each stage.
 
-1. **1a Settings** (done): `SettingsRepository`, serializable settings models.
-2. **1b Room database.** Split in two:
-   - **1b-1:** entities, DAOs, database, converters, Robolectric tests. Not wired into the app.
-   - **1b-2:** `NovelRepository` uses Room (library, chapter metadata, read state, bookmarks, term replacements, custom sources, notifications). Delete `LibraryManager`. Thin temporary adapters for old code that still needs it.
-3. **2a** `AppContainer`, `NovelApplication` and the type-safe `NavHost`.
-4. **4** Storage engine: `StorageResolver`, `ChapterStorage`, `ChapterCache` (untracked reader cache), cache-folder tests. Delete `StorageManager`.
-5. **2b** ViewModels: Library, Detail, Downloads, Settings (and the remove-from-library confirm with a delete-files option).
-6. **3** Reader and real stats: `ReaderViewModel`, every `ReaderSettings` field visibly wired, the Reader checklist from `docs/CARRYOVER.md`.
-7. **5** Download engine (WorkManager, notification permission, foreground service type, WebView pool). Delete `DownloadManager`.
-8. **6** Backup and restore (format above).
-9. **7a to 7h** Per-screen carry-over fixes from `docs/CARRYOVER.md`: Library, Detail and options, Browse, WebBrowser, Downloads, Settings/History/Stats/Profile/What's New, Theme and design system, EPUB parser and scraper scripts. Also delete `ConfirmNovelScreen.kt` and the first-run dummy seeding.
+### Status
+
+#### Completed
+- **1a Settings:** `SettingsRepository`, serializable settings models.
+- **1b Room database:**
+  - **1b-1:** entities, DAOs, `NovelDatabase`, converters, Robolectric test suite.
+  - **1b-2:** `NovelRepository` uses Room (library, chapter metadata, read state, bookmarks, term replacements, custom sources, notifications). Deleted `LibraryManager`.
+- **4 Storage engine:** `StorageResolver`, `ChapterStorage`, `ChapterCache` (untracked reader cache, 4a internal storage, cache-folder tests). Deleted `StorageManager`.
+- **5 Download engine:**
+  - **5b:** `DownloadEngine`, `DownloadCoordinator` mutex, WorkManager enqueueing.
+  - **5c:** `DownloadQueueWorker` (foreground service with `dataSync`, notification permission handling, source politeness, WebView pool capacity). Deleted `DownloadManager`.
+- **Settings Backend:** Modular groups (`reader`, `theme`, `downloads`, `notifications`, `library`, `cultivation`, `backup`, `profile`), atomic `.tmp` rename with `.corrupted` backup, debounced writes, direct `settings.value.<group>` reads for non-UI logic.
+
+#### Next
+- **2a Container & Navigation:** `AppContainer`, `NovelApplication`, and type-safe `NavHost` with 4 customizable tabs (Amendment y).
+- **1c Small Fixes:** Residual cleanup and minor bugfixes across data repositories.
+- **Screens Ported from HTML Designs:** Production UI screens ported with shared theme tokens and components (Rule 27):
+  - Discover (sources catalog, extensions)
+  - Profile (profile settings, app preferences)
+  - Library (grid/list, shelf tabs, sort/filter)
+  - NovelDetail (metadata, chapter list, batch actions)
+  - Reader (custom styling, gestures, TTS, TOC)
+  - Cultivate (reading stats, cultivation realms, Qi rewards)
+- **Stage 3 Reader & Real Stats:** `ReaderViewModel`, wiring of ReaderSettings fields exposed by design (Amendment d), cultivation stats tracking (Amendment u), and retiring `PreferencesManager`.
+- **Stage 6 Backup & Restore:** Complete JSON/zip backup format, preview, replace/merge, zip-slip validation.
+- **Extensions:** Isolated post-screens feature: sandboxed runtime (JS or Wasm), user-added repos (Amendment w).
+- **Optional Download Simplification:** Refinement of download queue operations based on screen feedback.
+- **Release Stage:** Drop `fallbackToDestructiveMigration()`, author real Room migrations, enable code shrinker (R8), and perform final production release audits.
 
 ## 13. Amendments (all approved)
 
 - **a.** The app compiles and runs after every stage; replaced managers are bridged by documented temporary adapters, deleted in the stage that replaces their last consumer.
 - **b.** Browse novels persist with `in_library = 0` and are purged on startup when unused (section 3).
 - **c.** `POST_NOTIFICATIONS` request and the `dataSync` foreground service manifest entries belong to Stage 5.
-- **d.** In Stage 3 every `ReaderSettings` field must visibly work in the Reader and be editable in the reader sheet and in Settings.
+- **d.** In Stage 3, wire the ReaderSettings fields exposed by the designs into the Reader and Profile/Settings; omit what the design does not use (relaxing the requirement to wire unused fields).
 - **e.** Stats safeguards (section 10).
 - **f.** Json options as in section 5. Room `exportSchema = true`.
 - **g.** Backup and security rules (section 9).
@@ -172,11 +310,16 @@ Every stage ends with: the app compiling and launching, tests passing, and a sum
 - **q.** An unknown source throws SourceUnavailable (no active-source fallback).
    getChapterList always rethrows CancellationException and other fetch errors.
 - **r.** novels.rating NULL = unrated; the domain model uses Float?; the UI hides null (and 0f).
-- **s.** Current package layout differs from section 2: data/download/ (not download/),
-   data/source/ (not data/remote/source/), BackupManager and SettingsRepository live
-   under data/repository/. Reconcile in Stage 7h or update section 2.
+- **s.** Current package layout is accepted as the permanent structure (do not move files):
+   `data/download/` (not `download/`), `data/source/` (not `data/remote/source/`), and
+   `BackupManager` and `SettingsRepository` live under `data/repository/`.
 - **t.** The reader cache is untracked (no Room column, no tier), and Stage 4 is amended
    accordingly (LRU tests become cache-folder tests).
+- **u.** Qi is awarded at the end of a chapter on the unread->read transition only, never by "mark all read"; stored in a small Room table.
+- **v.** Inline choices in the UI where space allows; sheets only for confirmations or long lists; extract a shared component only when a second screen needs it (no preemptive abstraction).
+- **w.** Extensions are an isolated post-screens feature: sandboxed runtime, load JS or Wasm, user-added repos.
+- **x.** Non-UI logic (repositories, download engine, workers, storage resolver) must read `settings.value.<group>`, never derived flows (which are for UI consumers and can lag behind state updates).
+- **y.** Bottom bar is customizable: displays 4 of the 5 primary tabs, configured in `settings.bottomBar.tabs`. Library and Profile are pinned (always shown); the other 2 slots can be chosen from Discover, Cultivate, or Downloads.
 
 ## 14. Rules
 
