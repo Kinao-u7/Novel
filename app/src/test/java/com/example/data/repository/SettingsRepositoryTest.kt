@@ -13,6 +13,7 @@ import com.example.data.model.LibrarySettings
 import com.example.data.model.LibrarySort
 import com.example.data.model.LibraryViewMode
 import com.example.data.model.MarginType
+import com.example.data.model.NavTab
 import com.example.data.model.ProfileSettings
 import com.example.data.model.ReaderSettings
 import com.example.data.model.ReaderTextAlign
@@ -90,6 +91,12 @@ class SettingsRepositoryTest {
 
         // Profile defaults
         assertEquals("Reader", defaults.profile.displayName)
+
+        // Bottom bar defaults
+        assertEquals(
+            listOf(NavTab.LIBRARY, NavTab.DISCOVER, NavTab.CULTIVATE, NavTab.PROFILE),
+            defaults.bottomBar.tabs
+        )
     }
 
     @Test
@@ -379,6 +386,9 @@ class SettingsRepositoryTest {
         repo.updateReaderSettings {
             it.copy(fontSizeSp = 30)
         }
+        repo.updateBottomBarSettings {
+            it.copy(tabs = listOf(NavTab.LIBRARY, NavTab.DOWNLOADS, NavTab.CULTIVATE, NavTab.PROFILE))
+        }
 
         repo.resetAllSettings()
 
@@ -392,5 +402,9 @@ class SettingsRepositoryTest {
         assertEquals(3, reset.downloads.simultaneousDownloads)
         assertEquals(18, reset.reader.fontSizeSp)
         assertEquals(AutoBackup.WEEKLY, reset.backup.autoBackup)
+        assertEquals(
+            listOf(NavTab.LIBRARY, NavTab.DISCOVER, NavTab.CULTIVATE, NavTab.PROFILE),
+            reset.bottomBar.tabs
+        )
     }
 }

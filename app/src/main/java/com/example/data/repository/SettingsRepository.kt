@@ -7,8 +7,10 @@ import androidx.documentfile.provider.DocumentFile
 import com.example.data.model.AppSettings
 import com.example.data.model.AppThemeMode
 import com.example.data.model.BackupSettings
+import com.example.data.model.BottomBarSettings
 import com.example.data.model.CultivationSettings
 import com.example.data.model.DownloadSettings
+import com.example.data.model.NavTab
 import com.example.data.model.FontType
 import com.example.data.model.LibrarySettings
 import com.example.data.model.LibraryViewMode
@@ -122,6 +124,11 @@ class SettingsRepository private constructor(
         .map { it.profile }
         .distinctUntilChanged()
         .stateIn(repoScope, SharingStarted.Eagerly, _settings.value.profile)
+
+    val bottomBarSettings: StateFlow<BottomBarSettings> = _settings
+        .map { it.bottomBar }
+        .distinctUntilChanged()
+        .stateIn(repoScope, SharingStarted.Eagerly, _settings.value.bottomBar)
 
     val isLibraryGridView: StateFlow<Boolean> = _settings
         .map { it.library.viewMode == LibraryViewMode.GRID }
@@ -312,6 +319,22 @@ class SettingsRepository private constructor(
         scheduleDebouncedWrite()
     }
 
+    suspend fun updateBottomBarSettings(transform: (BottomBarSettings) -> BottomBarSettings) {
+        val updated = _settings.value.copy(bottomBar = transform(_settings.value.bottomBar))
+        _settings.value = sanitizeSettings(updated)
+        scheduleDebouncedWrite()
+    }
+
+    suspend fun updateBottomBarSettings(newSettings: BottomBarSettings) {
+        updateBottomBarSettings { newSettings }
+    }
+
+    fun updateBottomBarSettingsSync(newSettings: BottomBarSettings) {
+        val updated = _settings.value.copy(bottomBar = newSettings)
+        _settings.value = sanitizeSettings(updated)
+        scheduleDebouncedWrite()
+    }
+
     suspend fun resetAllSettings() {
         val currentDownloads = _settings.value.downloads
         val currentProfile = _settings.value.profile
@@ -407,10 +430,50 @@ class SettingsRepository private constructor(
             return ALLOWED_AUTO_DOWNLOAD_AHEAD.minByOrNull { kotlin.math.abs(it - value) } ?: 3
         }
 
+        val DEFAULT_BOTTOM_BAR_TABS = listOf(
+            NavTab.LIBRARY,
+            NavTab.DISCOVER,
+            NavTab.CULTIVATE,
+            NavTab.PROFILE
+        )
+
+        fun sanitizeBottomBarTabs(tabs: List<NavTab>): List<NavTab> {
+            val result = tabs.distinct().toMutableList()
+
+            // Ensure pinned tabs LIBRARY and PROFILE are present
+            if (NavTab.LIBRARY !in result) {
+                result.add(0, NavTab.LIBRARY)
+            }
+            if (NavTab.PROFILE !in result) {
+                result.add(NavTab.PROFILE)
+            }
+
+            // Fill from default order if fewer than 4 entries
+            for (tab in DEFAULT_BOTTOM_BAR_TABS) {
+                if (result.size >= 4) break
+                if (tab !in result) {
+                    result.add(tab)
+                }
+            }
+
+            // If more than 4 entries, drop extras from the end (preserving pinned tabs)
+            while (result.size > 4) {
+                val dropIdx = result.indexOfLast { it != NavTab.LIBRARY && it != NavTab.PROFILE }
+                if (dropIdx != -1) {
+                    result.removeAt(dropIdx)
+                } else {
+                    result.removeAt(result.lastIndex)
+                }
+            }
+
+            return result
+        }
+
         fun sanitizeSettings(settings: AppSettings): AppSettings {
             val coercedAhead = coerceAutoDownloadAhead(settings.downloads.autoDownloadAhead)
             val coercedGoal = settings.cultivation.dailyGoalMinutes.coerceIn(5, 120)
             val coercedReminder = settings.cultivation.reminderMinutesOfDay.coerceIn(0, 1439)
+            val coercedTabs = sanitizeBottomBarTabs(settings.bottomBar.tabs)
 
             val updatedDownloads = if (settings.downloads.autoDownloadAhead == coercedAhead) {
                 settings.downloads
@@ -429,12 +492,22 @@ class SettingsRepository private constructor(
                 )
             }
 
-            return if (updatedDownloads === settings.downloads && updatedCultivation === settings.cultivation) {
+            val updatedBottomBar = if (settings.bottomBar.tabs == coercedTabs) {
+                settings.bottomBar
+            } else {
+                settings.bottomBar.copy(tabs = coercedTabs)
+            }
+
+            return if (updatedDownloads === settings.downloads &&
+                updatedCultivation === settings.cultivation &&
+                updatedBottomBar === settings.bottomBar
+            ) {
                 settings
             } else {
                 settings.copy(
                     downloads = updatedDownloads,
-                    cultivation = updatedCultivation
+                    cultivation = updatedCultivation,
+                    bottomBar = updatedBottomBar
                 )
             }
         }

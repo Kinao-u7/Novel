@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nav_tab_library">Library</string>
+    <string name="nav_tab_discover">Discover</string>
+    <string name="nav_tab_cultivate">Cultivate</string>
+    <string name="nav_tab_downloads">Downloads</string>
+    <string name="nav_tab_profile">Profile</string>
+
+    <string name="screen_library_title">Library</string>
+    <string name="screen_discover_title">Discover</string>
+    <string name="screen_cultivate_title">Cultivate</string>
+    <string name="screen_downloads_title">Downloads</string>
+    <string name="screen_profile_title">Profile</string>
+    <string name="screen_novel_detail_title">Novel Detail: %1$s</string>
+    <string name="screen_reader_title">Reader: %1$s (Ch. %2$d)</string>
+    <string name="screen_browse_source_title">Browse: %1$s</string>
+    <string name="screen_web_browser_title">Web Browser</string>
+
+    <string name="library_novels_count">Novels in library: %1$d</string>
+    <string name="profile_hidden_tabs_header">More Destinations</string>
+    <string name="placeholder_description">Screen under construction</string>
+</resources>

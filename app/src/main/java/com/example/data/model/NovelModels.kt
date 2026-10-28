@@ -297,6 +297,25 @@ data class NotificationSettings(
 )
 
 @Serializable
+enum class NavTab {
+    LIBRARY,
+    DISCOVER,
+    CULTIVATE,
+    DOWNLOADS,
+    PROFILE
+}
+
+@Serializable
+data class BottomBarSettings(
+    val tabs: List<NavTab> = listOf(
+        NavTab.LIBRARY,
+        NavTab.DISCOVER,
+        NavTab.CULTIVATE,
+        NavTab.PROFILE
+    )
+)
+
+@Serializable
 data class AppSettings(
     val reader: ReaderSettings = ReaderSettings(),
     val theme: ThemeSettings = ThemeSettings(),
@@ -305,7 +324,8 @@ data class AppSettings(
     val library: LibrarySettings = LibrarySettings(),
     val cultivation: CultivationSettings = CultivationSettings(),
     val backup: BackupSettings = BackupSettings(),
-    val profile: ProfileSettings = ProfileSettings()
+    val profile: ProfileSettings = ProfileSettings(),
+    val bottomBar: BottomBarSettings = BottomBarSettings()
 ) {
     val isLibraryGridView: Boolean
         get() = library.viewMode == LibraryViewMode.GRID
