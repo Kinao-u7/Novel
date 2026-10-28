@@ -147,7 +147,7 @@ class SettingsRepository private constructor(
 
     suspend fun updateReaderSettings(transform: (ReaderSettings) -> ReaderSettings) {
         val updated = _settings.value.copy(reader = transform(_settings.value.reader))
-        _settings.value = updated
+        _settings.value = sanitizeSettings(updated)
         scheduleDebouncedWrite()
     }
 
@@ -157,13 +157,13 @@ class SettingsRepository private constructor(
 
     fun updateReaderSettingsSync(newSettings: ReaderSettings) {
         val updated = _settings.value.copy(reader = newSettings)
-        _settings.value = updated
+        _settings.value = sanitizeSettings(updated)
         scheduleDebouncedWrite()
     }
 
     suspend fun updateThemeSettings(transform: (ThemeSettings) -> ThemeSettings) {
         val updated = _settings.value.copy(theme = transform(_settings.value.theme))
-        _settings.value = updated
+        _settings.value = sanitizeSettings(updated)
         scheduleDebouncedWrite()
     }
 
@@ -173,13 +173,13 @@ class SettingsRepository private constructor(
 
     fun updateThemeSettingsSync(newSettings: ThemeSettings) {
         val updated = _settings.value.copy(theme = newSettings)
-        _settings.value = updated
+        _settings.value = sanitizeSettings(updated)
         scheduleDebouncedWrite()
     }
 
     suspend fun updateDownloadSettings(transform: (DownloadSettings) -> DownloadSettings) {
         val updated = _settings.value.copy(downloads = transform(_settings.value.downloads))
-        _settings.value = updated
+        _settings.value = sanitizeSettings(updated)
         scheduleDebouncedWrite()
     }
 
@@ -189,7 +189,7 @@ class SettingsRepository private constructor(
 
     fun updateDownloadSettingsSync(newSettings: DownloadSettings) {
         val updated = _settings.value.copy(downloads = newSettings)
-        _settings.value = updated
+        _settings.value = sanitizeSettings(updated)
         scheduleDebouncedWrite()
     }
 
@@ -220,7 +220,7 @@ class SettingsRepository private constructor(
 
     suspend fun updateNotificationSettings(transform: (NotificationSettings) -> NotificationSettings) {
         val updated = _settings.value.copy(notifications = transform(_settings.value.notifications))
-        _settings.value = updated
+        _settings.value = sanitizeSettings(updated)
         scheduleDebouncedWrite()
     }
 
@@ -230,30 +230,104 @@ class SettingsRepository private constructor(
 
     fun updateNotificationSettingsSync(newSettings: NotificationSettings) {
         val updated = _settings.value.copy(notifications = newSettings)
-        _settings.value = updated
+        _settings.value = sanitizeSettings(updated)
+        scheduleDebouncedWrite()
+    }
+
+    suspend fun updateLibrarySettings(transform: (LibrarySettings) -> LibrarySettings) {
+        val updated = _settings.value.copy(library = transform(_settings.value.library))
+        _settings.value = sanitizeSettings(updated)
+        scheduleDebouncedWrite()
+    }
+
+    suspend fun updateLibrarySettings(newSettings: LibrarySettings) {
+        updateLibrarySettings { newSettings }
+    }
+
+    fun updateLibrarySettingsSync(newSettings: LibrarySettings) {
+        val updated = _settings.value.copy(library = newSettings)
+        _settings.value = sanitizeSettings(updated)
         scheduleDebouncedWrite()
     }
 
     suspend fun setLibraryGridView(isGrid: Boolean) {
         val mode = if (isGrid) LibraryViewMode.GRID else LibraryViewMode.LIST
         val updated = _settings.value.copy(library = _settings.value.library.copy(viewMode = mode))
-        _settings.value = updated
+        _settings.value = sanitizeSettings(updated)
         scheduleDebouncedWrite()
     }
 
     fun setLibraryGridViewSync(isGrid: Boolean) {
         val mode = if (isGrid) LibraryViewMode.GRID else LibraryViewMode.LIST
         val updated = _settings.value.copy(library = _settings.value.library.copy(viewMode = mode))
-        _settings.value = updated
+        _settings.value = sanitizeSettings(updated)
+        scheduleDebouncedWrite()
+    }
+
+    suspend fun updateCultivationSettings(transform: (CultivationSettings) -> CultivationSettings) {
+        val updated = _settings.value.copy(cultivation = transform(_settings.value.cultivation))
+        _settings.value = sanitizeSettings(updated)
+        scheduleDebouncedWrite()
+    }
+
+    suspend fun updateCultivationSettings(newSettings: CultivationSettings) {
+        updateCultivationSettings { newSettings }
+    }
+
+    fun updateCultivationSettingsSync(newSettings: CultivationSettings) {
+        val updated = _settings.value.copy(cultivation = newSettings)
+        _settings.value = sanitizeSettings(updated)
+        scheduleDebouncedWrite()
+    }
+
+    suspend fun updateBackupSettings(transform: (BackupSettings) -> BackupSettings) {
+        val updated = _settings.value.copy(backup = transform(_settings.value.backup))
+        _settings.value = sanitizeSettings(updated)
+        scheduleDebouncedWrite()
+    }
+
+    suspend fun updateBackupSettings(newSettings: BackupSettings) {
+        updateBackupSettings { newSettings }
+    }
+
+    fun updateBackupSettingsSync(newSettings: BackupSettings) {
+        val updated = _settings.value.copy(backup = newSettings)
+        _settings.value = sanitizeSettings(updated)
+        scheduleDebouncedWrite()
+    }
+
+    suspend fun updateProfileSettings(transform: (ProfileSettings) -> ProfileSettings) {
+        val updated = _settings.value.copy(profile = transform(_settings.value.profile))
+        _settings.value = sanitizeSettings(updated)
+        scheduleDebouncedWrite()
+    }
+
+    suspend fun updateProfileSettings(newSettings: ProfileSettings) {
+        updateProfileSettings { newSettings }
+    }
+
+    fun updateProfileSettingsSync(newSettings: ProfileSettings) {
+        val updated = _settings.value.copy(profile = newSettings)
+        _settings.value = sanitizeSettings(updated)
         scheduleDebouncedWrite()
     }
 
     suspend fun resetAllSettings() {
         val currentDownloads = _settings.value.downloads
-        val defaultSettings = AppSettings(
-            downloads = DownloadSettings(
-                customDownloadLocationUri = currentDownloads.customDownloadLocationUri,
-                customDownloadLocationDisplayName = currentDownloads.customDownloadLocationDisplayName
+        val currentProfile = _settings.value.profile
+        val currentBackup = _settings.value.backup
+        val defaultSettings = sanitizeSettings(
+            AppSettings(
+                downloads = DownloadSettings(
+                    customDownloadLocationUri = currentDownloads.customDownloadLocationUri,
+                    customDownloadLocationDisplayName = currentDownloads.customDownloadLocationDisplayName
+                ),
+                profile = ProfileSettings(
+                    displayName = currentProfile.displayName
+                ),
+                backup = BackupSettings(
+                    lastBackupAtMillis = currentBackup.lastBackupAtMillis
+                )
             )
         )
         _settings.value = defaultSettings
@@ -262,10 +336,20 @@ class SettingsRepository private constructor(
 
     fun resetAllSettingsSync() {
         val currentDownloads = _settings.value.downloads
-        val defaultSettings = AppSettings(
-            downloads = DownloadSettings(
-                customDownloadLocationUri = currentDownloads.customDownloadLocationUri,
-                customDownloadLocationDisplayName = currentDownloads.customDownloadLocationDisplayName
+        val currentProfile = _settings.value.profile
+        val currentBackup = _settings.value.backup
+        val defaultSettings = sanitizeSettings(
+            AppSettings(
+                downloads = DownloadSettings(
+                    customDownloadLocationUri = currentDownloads.customDownloadLocationUri,
+                    customDownloadLocationDisplayName = currentDownloads.customDownloadLocationDisplayName
+                ),
+                profile = ProfileSettings(
+                    displayName = currentProfile.displayName
+                ),
+                backup = BackupSettings(
+                    lastBackupAtMillis = currentBackup.lastBackupAtMillis
+                )
             )
         )
         _settings.value = defaultSettings

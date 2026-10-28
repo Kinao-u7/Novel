@@ -108,7 +108,7 @@ class DownloadQueueWorker(
 
             trySetForeground(progress = startCompletedCount, total = initialTotal)
 
-            val settings = settingsRepository.downloadSettings.value
+            val settings = settingsRepository.settings.value.downloads
             val maxConcurrent = settings.simultaneousDownloads.coerceIn(1, 5)
             WebChapterScraper.configurePoolCapacity(maxConcurrent)
 
@@ -548,7 +548,7 @@ class DownloadQueueWorker(
                 }
 
                 // Post completion notification only if notifyOnDownload is enabled, worker was not stopped, and follow-up was not scheduled
-                val notifyOnDownload = settingsRepository.notificationSettings.value.notifyOnDownload
+                val notifyOnDownload = settingsRepository.settings.value.notifications.notifyOnDownload
                 val completed = coordinator.getBatchCompletedCount()
                 if (!isStopped && !followUpScheduled && notifyOnDownload && completed > 0) {
                     DownloadNotificationHelper.postCompletionNotification(applicationContext, completed, notifyOnDownload = true)

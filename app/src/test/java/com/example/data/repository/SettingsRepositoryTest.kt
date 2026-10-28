@@ -1,5 +1,7 @@
 package com.example.data.repository
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import com.example.data.model.AppSettings
 import com.example.data.model.AppThemeMode
 import com.example.data.model.AutoBackup
@@ -16,12 +18,17 @@ import com.example.data.model.ReaderSettings
 import com.example.data.model.ReaderTextAlign
 import com.example.data.model.ReaderTheme
 import com.example.data.model.ThemeSettings
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class SettingsRepositoryTest {
 
     private val json = Json {
@@ -325,5 +332,65 @@ class SettingsRepositoryTest {
         val sanitizedUnder = SettingsRepository.sanitizeSettings(underMinSettings)
         assertEquals(5, sanitizedUnder.cultivation.dailyGoalMinutes)
         assertEquals(0, sanitizedUnder.cultivation.reminderMinutesOfDay)
+    }
+
+    @Test
+    fun updateFunctions_coerceAutoDownloadAhead_dailyGoalMinutes_and_reminderMinutesOfDay() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repo = SettingsRepository.createForTest(context, Dispatchers.IO)
+
+        repo.updateDownloadSettings { it.copy(autoDownloadAhead = 7) }
+        assertEquals(5, repo.settings.value.downloads.autoDownloadAhead)
+
+        repo.updateCultivationSettings {
+            it.copy(dailyGoalMinutes = 200, reminderMinutesOfDay = 2500)
+        }
+        assertEquals(120, repo.settings.value.cultivation.dailyGoalMinutes)
+        assertEquals(1439, repo.settings.value.cultivation.reminderMinutesOfDay)
+
+        repo.updateCultivationSettings {
+            it.copy(dailyGoalMinutes = 2, reminderMinutesOfDay = -50)
+        }
+        assertEquals(5, repo.settings.value.cultivation.dailyGoalMinutes)
+        assertEquals(0, repo.settings.value.cultivation.reminderMinutesOfDay)
+    }
+
+    @Test
+    fun resetAllSettings_preservesCustomDownloadLocation_displayName_andLastBackup() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repo = SettingsRepository.createForTest(context, Dispatchers.IO)
+
+        repo.updateDownloadSettings {
+            it.copy(
+                customDownloadLocationUri = "content://saf/tree/test",
+                customDownloadLocationDisplayName = "MyFolder",
+                simultaneousDownloads = 5
+            )
+        }
+        repo.updateProfileSettings {
+            it.copy(displayName = "Daoist Master")
+        }
+        repo.updateBackupSettings {
+            it.copy(
+                autoBackup = AutoBackup.DAILY,
+                lastBackupAtMillis = 123456789L
+            )
+        }
+        repo.updateReaderSettings {
+            it.copy(fontSizeSp = 30)
+        }
+
+        repo.resetAllSettings()
+
+        val reset = repo.settings.value
+        assertEquals("content://saf/tree/test", reset.downloads.customDownloadLocationUri)
+        assertEquals("MyFolder", reset.downloads.customDownloadLocationDisplayName)
+        assertEquals("Daoist Master", reset.profile.displayName)
+        assertEquals(123456789L, reset.backup.lastBackupAtMillis)
+
+        // Other fields reset to default
+        assertEquals(3, reset.downloads.simultaneousDownloads)
+        assertEquals(18, reset.reader.fontSizeSp)
+        assertEquals(AutoBackup.WEEKLY, reset.backup.autoBackup)
     }
 }

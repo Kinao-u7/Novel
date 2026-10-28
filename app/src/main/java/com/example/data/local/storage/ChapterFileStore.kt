@@ -414,9 +414,9 @@ class SafChapterFileStore(
         isCalculatingSize.set(true)
         try {
             var total = 0L
-            val configuredUri = settingsRepository?.downloadSettings?.value?.customDownloadLocationUri
+            val configuredUri = settingsRepository?.settings?.value?.downloads?.customDownloadLocationUri
                 ?: try {
-                    SettingsRepository.getInstance(context).downloadSettings.value.customDownloadLocationUri
+                    SettingsRepository.getInstance(context).settings.value.downloads.customDownloadLocationUri
                 } catch (_: Exception) {
                     null
                 }

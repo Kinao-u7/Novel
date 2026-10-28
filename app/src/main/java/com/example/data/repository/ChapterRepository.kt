@@ -276,7 +276,7 @@ class ChapterRepository(
                 val cleanContent = rawContent.copy(isDownloaded = false)
                 chapterCache.write(cleanContent)
 
-                val capMb = settingsRepository.downloadSettings.value.cacheSizeCapMb
+                val capMb = settingsRepository.settings.value.downloads.cacheSizeCapMb
                 repositoryScope.launch {
                     try {
                         chapterCache.trim(capMb = capMb)
@@ -299,7 +299,7 @@ class ChapterRepository(
      * - Otherwise fetches via shared single-flight map and writes straight to downloads.
      */
     suspend fun downloadChapter(novel: Novel, chapter: Chapter): DownloadResult = withContext(ioDispatcher) {
-        val customUri = settingsRepository.downloadSettings.value.customDownloadLocationUri
+        val customUri = settingsRepository.settings.value.downloads.customDownloadLocationUri
         var targetLocation = if (!customUri.isNullOrBlank()) {
             val candidate = "SAF:$customUri"
             if (chapterStorage.isLocationWritable(candidate)) {

@@ -123,7 +123,7 @@ class BackupManager(
 
         if (categories.appSettings) {
             val settingsObj = JSONObject().apply {
-                val rs = preferencesManager.readerSettings.value
+                val rs = repository.settingsRepository.settings.value.reader
                 val rsObj = JSONObject().apply {
                     put("theme", rs.theme.name)
                     put("fontSizeSp", rs.fontSizeSp)
@@ -148,7 +148,7 @@ class BackupManager(
                 }
                 put("readerSettings", rsObj)
 
-                val ts = preferencesManager.themeSettings.value
+                val ts = repository.settingsRepository.settings.value.theme
                 val tsObj = JSONObject().apply {
                     put("themeMode", ts.themeMode.name)
                     put("accentColorHex", ts.accentColorHex)
@@ -156,7 +156,7 @@ class BackupManager(
                 }
                 put("themeSettings", tsObj)
 
-                val ds = preferencesManager.downloadSettings.value
+                val ds = repository.settingsRepository.settings.value.downloads
                 val dsObj = JSONObject().apply {
                     put("wifiOnly", ds.wifiOnly)
                     put("allowMobileData", ds.allowMobileData)
@@ -297,7 +297,7 @@ class BackupManager(
                 val setObj = root.getJSONObject("appSettings")
                 if (setObj.has("readerSettings")) {
                     val rs = setObj.getJSONObject("readerSettings")
-                    val currentRs = preferencesManager.readerSettings.value
+                    val currentRs = repository.settingsRepository.settings.value.reader
                     val newRs = currentRs.copy(
                         theme = runCatching { ReaderTheme.valueOf(rs.getString("theme")) }.getOrDefault(currentRs.theme),
                         fontSizeSp = rs.optInt("fontSizeSp", currentRs.fontSizeSp),
@@ -307,7 +307,7 @@ class BackupManager(
                 }
                 if (setObj.has("themeSettings")) {
                     val ts = setObj.getJSONObject("themeSettings")
-                    val currentTs = preferencesManager.themeSettings.value
+                    val currentTs = repository.settingsRepository.settings.value.theme
                     val newTs = currentTs.copy(
                         themeMode = runCatching { AppThemeMode.valueOf(ts.getString("themeMode")) }.getOrDefault(currentTs.themeMode),
                         accentColorHex = ts.optString("accentColorHex", currentTs.accentColorHex),
@@ -317,7 +317,7 @@ class BackupManager(
                 }
                 if (setObj.has("downloadSettings")) {
                     val ds = setObj.getJSONObject("downloadSettings")
-                    val currentDs = preferencesManager.downloadSettings.value
+                    val currentDs = repository.settingsRepository.settings.value.downloads
                     val ahead = if (ds.has("autoDownloadAhead")) {
                         ds.optInt("autoDownloadAhead", currentDs.autoDownloadAhead)
                     } else if (ds.has("autoDownloadNext")) {

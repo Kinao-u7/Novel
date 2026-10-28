@@ -289,7 +289,7 @@ class NovelRepository(
 
     // --- LIBRARY METHODS ---
 
-    fun isLibraryGridView(): Boolean = settingsRepository.isLibraryGridView.value
+    fun isLibraryGridView(): Boolean = settingsRepository.settings.value.isLibraryGridView
 
     fun setLibraryGridView(isGrid: Boolean) {
         settingsRepository.setLibraryGridViewSync(isGrid)
@@ -467,7 +467,7 @@ class NovelRepository(
     suspend fun autoDownloadNext(
         novelId: String,
         fromChapterIndex: Int,
-        count: Int = settingsRepository.downloadSettings.value.autoDownloadAhead
+        count: Int = settingsRepository.settings.value.downloads.autoDownloadAhead
     ): EnqueueResult =
         downloadEngine.autoDownloadNext(
             novelId = novelId,
@@ -869,7 +869,7 @@ class NovelRepository(
     suspend fun restoreBackupFromJson(jsonString: String): Boolean = backupManager.restoreBackupFromJson(jsonString)
 
     fun saveBackupToCustomStorage(jsonString: String, fileName: String): String? {
-        val customUriStr = preferencesManager.downloadSettings.value.customDownloadLocationUri
+        val customUriStr = settingsRepository.settings.value.downloads.customDownloadLocationUri
         return storageManager.saveBackupToCustomStorage(jsonString, fileName, customUriStr)
     }
 

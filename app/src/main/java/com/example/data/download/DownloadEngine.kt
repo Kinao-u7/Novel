@@ -218,7 +218,7 @@ class DownloadEngine(
     suspend fun autoDownloadNext(
         novelId: String,
         fromChapterIndex: Int,
-        count: Int = settingsRepository.downloadSettings.value.autoDownloadAhead
+        count: Int = settingsRepository.settings.value.downloads.autoDownloadAhead
     ): EnqueueResult = withContext(Dispatchers.IO) {
         if (count <= 0) {
             return@withContext EnqueueResult(emptyList(), emptyList())
@@ -304,7 +304,7 @@ class DownloadEngine(
     }
 
     fun scheduleWorker(appendOrReplace: Boolean = false) {
-        val wifiOnly = settingsRepository.downloadSettings.value.wifiOnly
+        val wifiOnly = settingsRepository.settings.value.downloads.wifiOnly
         val networkType = if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(networkType)
