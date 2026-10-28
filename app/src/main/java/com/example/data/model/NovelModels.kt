@@ -211,7 +211,7 @@ data class DownloadSettings(
     val customDownloadLocationUri: String? = null,
     val customDownloadLocationDisplayName: String? = null,
     // Download Request Throttling
-    val throttlingEnabled: Boolean = false,
+    val throttlingEnabled: Boolean = true,
     val throttleBatchSize: Int = 5, // requests before delay
     val throttleDelaySeconds: Float = 2.0f, // configurable delay duration
     val throttleRandomJitter: Boolean = true, // randomized jitter to delay timing

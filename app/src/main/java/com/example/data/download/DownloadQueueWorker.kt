@@ -63,7 +63,6 @@ class DownloadQueueWorker(
         var maxPerSourceConcurrencyOverride: Int? = null
 
         const val DEFAULT_MAX_PER_SOURCE_CONCURRENCY = 1
-        const val MIN_SOURCE_REQUEST_SPACING_MS = 200L
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -115,6 +114,7 @@ class DownloadQueueWorker(
             val chapterNotBefore = ConcurrentHashMap<Pair<String, String>, Long>()
             val sourceNextAllowedAt = ConcurrentHashMap<String, Long>()
             val sourceInFlight = ConcurrentHashMap<String, AtomicInteger>()
+            val sourceCompletedCount = ConcurrentHashMap<String, AtomicInteger>()
             val semaphore = Semaphore(maxConcurrent)
             val activeJobs = java.util.Collections.synchronizedList(mutableListOf<Job>())
 
@@ -292,16 +292,6 @@ class DownloadQueueWorker(
                     val novelEntity = chosenNovel!!
                     val sourceId = requireNotNull(chosenSourceId)
 
-                    // Keep a minimum spacing between request starts per source even with throttling off
-                    val spacing = if (throttleDelayOverrideMs != null) {
-                        throttleDelayOverrideMs!!
-                    } else {
-                        MIN_SOURCE_REQUEST_SPACING_MS
-                    }
-                    if (spacing > 0L) {
-                        sourceNextAllowedAt[sourceId] = System.currentTimeMillis() + spacing
-                    }
-
                     sourceInFlight.computeIfAbsent(sourceId) { AtomicInteger(0) }.incrementAndGet()
 
                     val job = launch(start = CoroutineStart.LAZY) {
@@ -361,19 +351,22 @@ class DownloadQueueWorker(
                                     coordinator.incrementBatchCompleted()
                                     chapterNotBefore.remove(Pair(item.novelId, item.chapterId))
 
-                                    // Apply per-source throttle delay after success if enabled
-                                    if (settings.throttlingEnabled) {
-                                        val delayOverride = throttleDelayOverrideMs
-                                        val computed = delayOverride ?: run {
-                                            var ms = (settings.throttleDelaySeconds * 1000).toLong()
-                                            if (settings.throttleRandomJitter) {
-                                                val jitterFactor = Random.nextDouble(0.5, 1.5)
-                                                ms = (ms * jitterFactor).toLong().coerceAtLeast(200L)
+                                    // Apply per-source throttle delay after every throttleBatchSize completed requests if enabled
+                                    if (settings.throttlingEnabled && settings.throttleBatchSize > 0) {
+                                        val completedForSource = sourceCompletedCount.computeIfAbsent(sourceId) { AtomicInteger(0) }.incrementAndGet()
+                                        if (completedForSource % settings.throttleBatchSize == 0) {
+                                            val delayOverride = throttleDelayOverrideMs
+                                            val computed = delayOverride ?: run {
+                                                var ms = (settings.throttleDelaySeconds * 1000).toLong()
+                                                if (settings.throttleRandomJitter) {
+                                                    val jitterFactor = Random.nextDouble(0.5, 1.5)
+                                                    ms = (ms * jitterFactor).toLong().coerceAtLeast(0L)
+                                                }
+                                                ms
                                             }
-                                            ms
-                                        }
-                                        if (computed > 0L) {
-                                            sourceNextAllowedAt[sourceId] = System.currentTimeMillis() + computed
+                                            if (computed > 0L) {
+                                                sourceNextAllowedAt[sourceId] = System.currentTimeMillis() + computed
+                                            }
                                         }
                                     }
                                 }

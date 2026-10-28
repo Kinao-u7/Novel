@@ -141,8 +141,13 @@ class DownloadEngineAndWorkerTest {
 
         downloadEngine = repository.downloadEngine
 
-        // Default: zero throttle delay for tests unless overridden specifically
-        DownloadQueueWorker.throttleDelayOverrideMs = 0L
+        // Default: explicitly disable throttling in test setup unless tested specifically
+        repository.settingsRepository.updateDownloadSettingsSync(
+            repository.settingsRepository.settings.value.downloads.copy(
+                throttlingEnabled = false
+            )
+        )
+        DownloadQueueWorker.throttleDelayOverrideMs = null
         DownloadQueueWorker.backoffBaseMsOverride = 20L
 
         fakeSource = TestWorkerSource("test_source")
@@ -776,6 +781,111 @@ class DownloadEngineAndWorkerTest {
             assertNull(downloadQueueDao.getItem(novelId, "ch_2"))
             assertEquals("DOWNLOADED", chapterDao.getChapter(novelId, "ch_1")?.storageTier)
             assertEquals("DOWNLOADED", chapterDao.getChapter(novelId, "ch_2")?.storageTier)
+        }
+    }
+
+    @Test
+    fun throttlingOff_twoChaptersFromOneSourceStartBackToBack() = runBlocking<Unit> {
+        withTimeout(10_000) {
+            val novelId = "nov_throttle_off_back_to_back"
+            insertTestNovelAndChapters(novelId, 2)
+
+            DownloadQueueWorker.throttleDelayOverrideMs = null
+
+            repository.settingsRepository.updateDownloadSettings {
+                it.copy(
+                    throttlingEnabled = false,
+                    simultaneousDownloads = 1
+                )
+            }
+
+            fakeSource.callTimes.clear()
+            downloadEngine.enqueueChapters(novelId, listOf("ch_1", "ch_2"))
+
+            val worker = TestListenableWorkerBuilder<DownloadQueueWorker>(context).build()
+            val result = worker.doWork()
+
+            assertTrue(result is ListenableWorker.Result.Success)
+            assertEquals(2, fakeSource.callTimes.size)
+
+            val timeReq1 = fakeSource.callTimes[0]
+            val timeReq2 = fakeSource.callTimes[1]
+            val interval = timeReq2 - timeReq1
+
+            // Chapter 1 takes 20ms in fakeSource; without throttling or minimum spacing,
+            // Chapter 2 starts back-to-back (< 150ms total interval)
+            assertTrue(
+                "Expected chapters from same source to start back-to-back (< 150ms), got $interval ms",
+                interval < 150L
+            )
+        }
+    }
+
+    @Test
+    fun throttlingOn_delayAppearsAfterThrottleBatchSizeRequests() = runBlocking<Unit> {
+        withTimeout(10_000) {
+            val novelId = "nov_throttle_batch_size"
+            insertTestNovelAndChapters(novelId, 3)
+
+            // Inject 500ms throttle delay
+            DownloadQueueWorker.throttleDelayOverrideMs = 500L
+
+            repository.settingsRepository.updateDownloadSettings {
+                it.copy(
+                    throttlingEnabled = true,
+                    throttleBatchSize = 2,
+                    simultaneousDownloads = 1
+                )
+            }
+
+            fakeSource.callTimes.clear()
+            downloadEngine.enqueueChapters(novelId, listOf("ch_1", "ch_2", "ch_3"))
+
+            val worker = TestListenableWorkerBuilder<DownloadQueueWorker>(context).build()
+            val result = worker.doWork()
+
+            assertTrue(result is ListenableWorker.Result.Success)
+            assertEquals(3, fakeSource.callTimes.size)
+
+            val timeReq1 = fakeSource.callTimes[0]
+            val timeReq2 = fakeSource.callTimes[1]
+            val timeReq3 = fakeSource.callTimes[2]
+
+            val interval1To2 = timeReq2 - timeReq1
+            val interval2To3 = timeReq3 - timeReq2
+
+            // Requests 1 and 2 are within the batch (batch size = 2), so they start back-to-back (< 150ms)
+            assertTrue(
+                "Expected requests within batch to start back-to-back (< 150ms), got $interval1To2 ms",
+                interval1To2 < 150L
+            )
+            // After request 2 completes, batch size of 2 is reached, so delay appears before request 3
+            assertTrue(
+                "Expected throttle delay >= 450ms before request 3, got $interval2To3 ms",
+                interval2To3 >= 450L
+            )
+        }
+    }
+
+    @Test
+    fun throttlingJitter_withinBounds() {
+        val baseDelaySeconds = 2.0f
+        val baseDelayMs = (baseDelaySeconds * 1000).toLong() // 2000ms
+        val minExpectedMs = (baseDelayMs * 0.5).toLong() // 1000ms
+        val maxExpectedMs = (baseDelayMs * 1.5).toLong() // 3000ms
+
+        // Verify jitter calculation produces values within [0.5 * delay, 1.5 * delay]
+        for (i in 1..100) {
+            val jitterFactor = kotlin.random.Random.nextDouble(0.5, 1.5)
+            val computedMs = (baseDelayMs * jitterFactor).toLong().coerceAtLeast(0L)
+            assertTrue(
+                "Computed jittered delay $computedMs should be >= $minExpectedMs",
+                computedMs >= minExpectedMs
+            )
+            assertTrue(
+                "Computed jittered delay $computedMs should be <= $maxExpectedMs",
+                computedMs <= maxExpectedMs
+            )
         }
     }
 

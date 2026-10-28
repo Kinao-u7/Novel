@@ -91,7 +91,7 @@ cacheDir/ (Android may clear it)
 
 ## 5. Settings
 
-`SettingsRepository` manages app configuration stored as a single serialized JSON file (`settings.json` under `filesDir`), with crash resilience: atomic writes via a temporary file (`.tmp`) and rename, a fallback `.corrupted` backup, debounced disk writes (300ms) to prevent I/O thrashing, and execution strictly off the main thread (`Dispatchers.IO`). Serializer configuration uses `Json { ignoreUnknownKeys = true; coerceInputValues = true; encodeDefaults = true; prettyPrint = true }`.
+`SettingsRepository` manages app configuration stored as a single serialized JSON file (`app_settings.json` under `filesDir`), with crash resilience: atomic writes via a temporary file (`.tmp`) and rename, a fallback `.corrupted` backup, debounced disk writes (300ms) to prevent I/O thrashing, and execution strictly off the main thread (`Dispatchers.IO`). Serializer configuration uses `Json { ignoreUnknownKeys = true; coerceInputValues = true; encodeDefaults = true; prettyPrint = true }`.
 
 ### Architecture: Settings vs. Room
 Settings stay in one JSON file (not Room, not DataStore). Contrast with Room relational tables: settings are whole-object, crash-resilient, with zero-migration schema evolution (adding fields with defaults requires no database schema migrations, and missing keys in older JSON deserialize to their defaults). Non-UI logic (repositories, download engine, workers, storage resolver) must always read the source of truth directly from `settingsRepository.settings.value.<group>`, never through the derived StateFlows, which are for UI consumers and can lag behind state updates (Rule 26, Amendment x).
@@ -103,7 +103,11 @@ Settings stay in one JSON file (not Room, not DataStore). Contrast with Room rel
   - `SEPIA` = Paper
   - `LIGHT` = White
   - `SYSTEM` = Match system theme
-- **Accent Colors:** Hex string `accentColorHex` (`#DEB887` default); UI offers presets such as Jade (`#10B981` / `#7cf2c3`), Amber/Gold (`#F59E0B` / `#f3cb83`), Rose (`#EC4899` / `#ff9ec4`), Azure (`#0284C7` / `#8fd0ff`).
+- **Accent Presets:**
+  - Jade: `#7cf2c3` (dark) / `#1f7a62` (light)
+  - Gold: `#f3cb83` (dark) / `#96691a` (light)
+  - Rose: `#ff9ec4` (dark) / `#b8416f` (light)
+  - Azure: `#8fd0ff` (dark) / `#1f6fa8` (light)
 - **Typography:** `FontType` (`SERIF` default, `SANS`, `MONOSPACE`, `ROUNDED`).
 
 ### Settings Groups & Defaults (from `NovelModels.kt`)
@@ -147,7 +151,7 @@ Settings stay in one JSON file (not Room, not DataStore). Contrast with Room rel
    - `autoDownloadAhead: Int = 3` (coerced on load/update to nearest of 0, 1, 3, 5, 10)
    - `customDownloadLocationUri: String? = null`
    - `customDownloadLocationDisplayName: String? = null`
-   - `throttlingEnabled: Boolean = false`
+   - `throttlingEnabled: Boolean = true`
    - `throttleBatchSize: Int = 5`
    - `throttleDelaySeconds: Float = 2.0f`
    - `throttleRandomJitter: Boolean = true`
@@ -226,8 +230,8 @@ The bottom navigation bar displays 4 of the following 5 primary tabs, customizab
   - **Source-level politeness:** strictly 1 chapter per source at a time (constant `DEFAULT_MAX_PER_SOURCE_CONCURRENCY = 1`).
   - **Cross-source concurrency:** read from settings (`simultaneousDownloads`, default 3, range 1–5).
   - **WebView pool:** at most 2 active WebViews at a time across all sources (`MAX_POOL_CAP = 2`, managed via `WebChapterScraper.configurePoolCapacity` and `Semaphore(2)`).
-  - **Request spacing:** comes ONLY from throttle settings (`throttlingEnabled`, `throttleBatchSize`, `throttleDelaySeconds`, `throttleRandomJitter`; baseline minimum spacing per source is 200ms).
-  - **Retries & Backoff:** 3 attempts max (`MAX_RETRY_COUNT = 3`) with exponential backoff (2s, 4s, 8s via `baseMs * (1 shl nextRetry)`). Retries do NOT hold the worker concurrency slot: the in-flight chapter job completes and releases its semaphore permit immediately, setting a `notBefore` timestamp on the queue row.
+  - **Request spacing:** comes ONLY from throttle settings (`throttlingEnabled`, `throttleBatchSize`, `throttleDelaySeconds`, `throttleRandomJitter`). With `throttlingEnabled = false` there is NO added delay.
+  - **Retries & Backoff:** retries set in-memory not-before times per chapter and per source (no queue-row column). 3 attempts max (`MAX_RETRY_COUNT = 3`) with exponential backoff (2s, 4s, 8s via `baseMs * (1 shl nextRetry)`). Retries do NOT hold the worker concurrency slot: the in-flight chapter job completes and releases its semaphore permit immediately.
   - **Typed `DownloadResult`:** Structured result class reporting `Success`, `RateLimited` (HTTP 429 with retry-after backoff), `Network` (network errors / timeouts), `Parse`, `SourceUnavailable`, `StorageFull`, `StorageUnavailable`, and `ChapterMissing`. Cancellation throws `CancellationException` and aborts immediately without saving files or failing the queue row.
   - **DownloadCoordinator:** owns the mutex (`mutex: Mutex`) coordinating worker start/stop lifecycle, registering active chapter jobs, preventing concurrent work during deletions, and managing source-level locks.
   - **Queue cleanup:** completed queue rows are cleared automatically when the queue becomes idle (no active or paused items remaining).
@@ -264,7 +268,7 @@ Every stage ends with: the app compiling and launching, tests passing, and a sum
 
 #### Next
 - **2a Container & Navigation:** `AppContainer`, `NovelApplication`, and type-safe `NavHost` with 4 customizable tabs (Amendment y).
-- **1c Small Fixes:** Residual cleanup and minor bugfixes across data repositories.
+- **1c Small Fixes:** reading position in Room only (remove the SharedPreferences copy in PreferencesManager and the flush bug where the debounce job cancels itself); atomic web-novel save (one transaction, throws on failure, refuses 0 chapters, WtrLabExtractor chapter fetch throws instead of returning an empty list); debounced library flow; delete migrateEpubCoversIfNeeded and the misleading libraryNovels.first() startup call; delete DAO methods that set a tier without a file if unused.
 - **Screens Ported from HTML Designs:** Production UI screens ported with shared theme tokens and components (Rule 27):
   - Discover (sources catalog, extensions)
   - Profile (profile settings, app preferences)
