@@ -1,0 +1,37 @@
+<resources>
+    <string name="library_title">Your Library</string>
+    <string name="library_greeting_morning">Good morning</string>
+    <string name="library_greeting_afternoon">Good afternoon</string>
+    <string name="library_greeting_evening">Good evening</string>
+    <string name="library_search_hint">Search titles or authors</string>
+    <string name="library_search_desc">Search</string>
+    <string name="library_filter_sort_desc">Filter and sort</string>
+    <string name="library_filter_sort_title">Filter &amp; sort</string>
+    <string name="library_sort_by">Sort by</string>
+    <string name="library_show">Show</string>
+    <string name="library_sort_recently_read">Recently read</string>
+    <string name="library_sort_title">Title</string>
+    <string name="library_sort_author">Author</string>
+    <string name="library_sort_chapters">Most chapters</string>
+    <string name="library_sort_rating">Highest rated</string>
+    <string name="library_filter_all">All</string>
+    <string name="library_filter_reading">Reading</string>
+    <string name="library_filter_finished">Finished</string>
+    <string name="library_continue_reading">Continue reading</string>
+    <string name="library_resume">RESUME</string>
+    <string name="library_your_shelf">Your shelf</string>
+    <string name="library_empty_title">Nothing here yet</string>
+    <string name="library_empty_subtitle">Try another category or filter.</string>
+    <string name="library_no_results">No novels match your filter or search query.</string>
+    <string name="library_reset_filters">Reset filters</string>
+    <string name="library_reset_button">RESET</string>
+    <string name="library_done_button">DONE</string>
+    <string name="library_new_category">+ New</string>
+    <string name="library_new_category_title">New category</string>
+    <string name="library_category_name_placeholder">Category name</string>
+    <string name="library_create">Create</string>
+    <string name="library_cancel">Cancel</string>
+    <string name="library_grid_view">Grid view</string>
+    <string name="library_list_view">List view</string>
+    <string name="library_default_reader_name">Reader</string>
+</resources>
