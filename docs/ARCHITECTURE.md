@@ -167,7 +167,7 @@ Settings stay in one JSON file (not Room, not DataStore). Contrast with Room rel
    - `showUnreadBadges: Boolean = true`
    - `defaultShelf: DefaultShelf = DefaultShelf.ALL` (`ALL`, `READING`, `SAVED`)
    - `viewMode: LibraryViewMode = LibraryViewMode.GRID` (`GRID`, `LIST`)
-   - `sort: LibrarySort = LibrarySort.RECENTLY_READ` (`RECENTLY_READ`, `TITLE`, `PROGRESS`, `TOTAL_CHAPTERS`)
+   - `sort: LibrarySort = LibrarySort.RECENTLY_READ` (`RECENTLY_READ`, `TITLE`, `AUTHOR`, `TOTAL_CHAPTERS`, `RATING`)
 
 6. **cultivation (`CultivationSettings`):**
    - `qiRewards: Boolean = true`

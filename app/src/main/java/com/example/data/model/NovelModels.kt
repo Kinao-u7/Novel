@@ -238,8 +238,9 @@ typealias ViewMode = LibraryViewMode
 enum class LibrarySort(val displayName: String) {
     RECENTLY_READ("Recently Read"),
     TITLE("Title"),
-    PROGRESS("Progress"),
-    TOTAL_CHAPTERS("Total Chapters")
+    AUTHOR("Author"),
+    TOTAL_CHAPTERS("Total Chapters"),
+    RATING("Rating")
 }
 typealias LibrarySortOrder = LibrarySort
 

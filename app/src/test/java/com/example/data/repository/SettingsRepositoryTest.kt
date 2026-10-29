@@ -407,4 +407,22 @@ class SettingsRepositoryTest {
             reset.bottomBar.tabs
         )
     }
+
+    @Test
+    fun librarySort_enumAndSerialization() {
+        val expectedEntries = listOf(
+            LibrarySort.RECENTLY_READ,
+            LibrarySort.TITLE,
+            LibrarySort.AUTHOR,
+            LibrarySort.TOTAL_CHAPTERS,
+            LibrarySort.RATING
+        )
+        assertEquals(expectedEntries, LibrarySort.entries)
+
+        for (sort in expectedEntries) {
+            val encoded = json.encodeToString(LibrarySort.serializer(), sort)
+            val decoded = json.decodeFromString(LibrarySort.serializer(), encoded)
+            assertEquals(sort, decoded)
+        }
+    }
 }
