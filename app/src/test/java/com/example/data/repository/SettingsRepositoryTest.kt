@@ -8,6 +8,7 @@ import com.example.data.model.AutoBackup
 import com.example.data.model.BackupSettings
 import com.example.data.model.CultivationSettings
 import com.example.data.model.DefaultShelf
+import com.example.data.model.DiscoverSettings
 import com.example.data.model.DownloadSettings
 import com.example.data.model.LibrarySettings
 import com.example.data.model.LibrarySort
@@ -97,6 +98,10 @@ class SettingsRepositoryTest {
             listOf(NavTab.LIBRARY, NavTab.DISCOVER, NavTab.CULTIVATE, NavTab.PROFILE),
             defaults.bottomBar.tabs
         )
+
+        // Discover defaults: empty pinnedSourceIds, empty enabledLanguages
+        assertEquals(emptyList<String>(), defaults.discover.pinnedSourceIds)
+        assertEquals(emptyList<String>(), defaults.discover.enabledLanguages)
     }
 
     @Test
@@ -389,6 +394,9 @@ class SettingsRepositoryTest {
         repo.updateBottomBarSettings {
             it.copy(tabs = listOf(NavTab.LIBRARY, NavTab.DOWNLOADS, NavTab.CULTIVATE, NavTab.PROFILE))
         }
+        repo.updateDiscoverSettings {
+            it.copy(pinnedSourceIds = listOf("pinned_1"), enabledLanguages = listOf("English"))
+        }
 
         repo.resetAllSettings()
 
@@ -406,6 +414,8 @@ class SettingsRepositoryTest {
             listOf(NavTab.LIBRARY, NavTab.DISCOVER, NavTab.CULTIVATE, NavTab.PROFILE),
             reset.bottomBar.tabs
         )
+        assertEquals(emptyList<String>(), reset.discover.pinnedSourceIds)
+        assertEquals(emptyList<String>(), reset.discover.enabledLanguages)
     }
 
     @Test
@@ -424,5 +434,69 @@ class SettingsRepositoryTest {
             val decoded = json.decodeFromString(LibrarySort.serializer(), encoded)
             assertEquals(sort, decoded)
         }
+    }
+
+    @Test
+    fun discoverSettings_serializationRoundTrip() {
+        val original = AppSettings(
+            discover = DiscoverSettings(
+                pinnedSourceIds = listOf("source-a", "source-b"),
+                enabledLanguages = listOf("English", "Japanese")
+            )
+        )
+        val encoded = json.encodeToString(AppSettings.serializer(), original)
+        val decoded = json.decodeFromString(AppSettings.serializer(), encoded)
+
+        assertEquals(listOf("source-a", "source-b"), decoded.discover.pinnedSourceIds)
+        assertEquals(listOf("English", "Japanese"), decoded.discover.enabledLanguages)
+    }
+
+    @Test
+    fun discoverSettings_oldJsonWithoutFieldLoadsDefaults() {
+        val oldJson = """
+            {
+                "reader": {
+                    "fontSizeSp": 20
+                },
+                "theme": {
+                    "accentColorHex": "#EA580C"
+                }
+            }
+        """.trimIndent()
+        val decoded = json.decodeFromString(AppSettings.serializer(), oldJson)
+        assertEquals(emptyList<String>(), decoded.discover.pinnedSourceIds)
+        assertEquals(emptyList<String>(), decoded.discover.enabledLanguages)
+    }
+
+    @Test
+    fun discoverSettings_sanitizing_removesDuplicates() {
+        val duplicateSettings = AppSettings(
+            discover = DiscoverSettings(
+                pinnedSourceIds = listOf("src-1", "src-2", "src-1"),
+                enabledLanguages = listOf("English", "Chinese", "English")
+            )
+        )
+        val sanitized = SettingsRepository.sanitizeSettings(duplicateSettings)
+        assertEquals(listOf("src-1", "src-2"), sanitized.discover.pinnedSourceIds)
+        assertEquals(listOf("English", "Chinese"), sanitized.discover.enabledLanguages)
+    }
+
+    @Test
+    fun discoverSettings_updateFlowsAndPersistence() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repo = SettingsRepository.createForTest(context, Dispatchers.IO)
+
+        assertEquals(emptyList<String>(), repo.discoverSettings.value.pinnedSourceIds)
+        assertEquals(emptyList<String>(), repo.discoverSettings.value.enabledLanguages)
+
+        repo.updateDiscoverSettings {
+            it.copy(
+                pinnedSourceIds = listOf("wtrlab", "classics"),
+                enabledLanguages = listOf("English")
+            )
+        }
+
+        assertEquals(listOf("wtrlab", "classics"), repo.discoverSettings.value.pinnedSourceIds)
+        assertEquals(listOf("English"), repo.discoverSettings.value.enabledLanguages)
     }
 }

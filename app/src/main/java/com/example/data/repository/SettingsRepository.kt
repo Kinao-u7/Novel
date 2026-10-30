@@ -9,6 +9,7 @@ import com.example.data.model.AppThemeMode
 import com.example.data.model.BackupSettings
 import com.example.data.model.BottomBarSettings
 import com.example.data.model.CultivationSettings
+import com.example.data.model.DiscoverSettings
 import com.example.data.model.DownloadSettings
 import com.example.data.model.NavTab
 import com.example.data.model.FontType
@@ -129,6 +130,11 @@ class SettingsRepository private constructor(
         .map { it.bottomBar }
         .distinctUntilChanged()
         .stateIn(repoScope, SharingStarted.Eagerly, _settings.value.bottomBar)
+
+    val discoverSettings: StateFlow<DiscoverSettings> = _settings
+        .map { it.discover }
+        .distinctUntilChanged()
+        .stateIn(repoScope, SharingStarted.Eagerly, _settings.value.discover)
 
     val isLibraryGridView: StateFlow<Boolean> = _settings
         .map { it.library.viewMode == LibraryViewMode.GRID }
@@ -335,6 +341,22 @@ class SettingsRepository private constructor(
         scheduleDebouncedWrite()
     }
 
+    suspend fun updateDiscoverSettings(transform: (DiscoverSettings) -> DiscoverSettings) {
+        val updated = _settings.value.copy(discover = transform(_settings.value.discover))
+        _settings.value = sanitizeSettings(updated)
+        scheduleDebouncedWrite()
+    }
+
+    suspend fun updateDiscoverSettings(newSettings: DiscoverSettings) {
+        updateDiscoverSettings { newSettings }
+    }
+
+    fun updateDiscoverSettingsSync(newSettings: DiscoverSettings) {
+        val updated = _settings.value.copy(discover = newSettings)
+        _settings.value = sanitizeSettings(updated)
+        scheduleDebouncedWrite()
+    }
+
     suspend fun resetAllSettings() {
         val currentDownloads = _settings.value.downloads
         val currentProfile = _settings.value.profile
@@ -474,6 +496,8 @@ class SettingsRepository private constructor(
             val coercedGoal = settings.cultivation.dailyGoalMinutes.coerceIn(5, 120)
             val coercedReminder = settings.cultivation.reminderMinutesOfDay.coerceIn(0, 1439)
             val coercedTabs = sanitizeBottomBarTabs(settings.bottomBar.tabs)
+            val coercedPinned = settings.discover.pinnedSourceIds.distinct()
+            val coercedLanguages = settings.discover.enabledLanguages.distinct()
 
             val updatedDownloads = if (settings.downloads.autoDownloadAhead == coercedAhead) {
                 settings.downloads
@@ -498,16 +522,29 @@ class SettingsRepository private constructor(
                 settings.bottomBar.copy(tabs = coercedTabs)
             }
 
+            val updatedDiscover = if (settings.discover.pinnedSourceIds == coercedPinned &&
+                settings.discover.enabledLanguages == coercedLanguages
+            ) {
+                settings.discover
+            } else {
+                settings.discover.copy(
+                    pinnedSourceIds = coercedPinned,
+                    enabledLanguages = coercedLanguages
+                )
+            }
+
             return if (updatedDownloads === settings.downloads &&
                 updatedCultivation === settings.cultivation &&
-                updatedBottomBar === settings.bottomBar
+                updatedBottomBar === settings.bottomBar &&
+                updatedDiscover === settings.discover
             ) {
                 settings
             } else {
                 settings.copy(
                     downloads = updatedDownloads,
                     cultivation = updatedCultivation,
-                    bottomBar = updatedBottomBar
+                    bottomBar = updatedBottomBar,
+                    discover = updatedDiscover
                 )
             }
         }

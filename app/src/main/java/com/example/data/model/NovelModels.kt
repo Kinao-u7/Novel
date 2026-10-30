@@ -317,6 +317,12 @@ data class BottomBarSettings(
 )
 
 @Serializable
+data class DiscoverSettings(
+    val pinnedSourceIds: List<String> = emptyList(),
+    val enabledLanguages: List<String> = emptyList()
+)
+
+@Serializable
 data class AppSettings(
     val reader: ReaderSettings = ReaderSettings(),
     val theme: ThemeSettings = ThemeSettings(),
@@ -326,7 +332,8 @@ data class AppSettings(
     val cultivation: CultivationSettings = CultivationSettings(),
     val backup: BackupSettings = BackupSettings(),
     val profile: ProfileSettings = ProfileSettings(),
-    val bottomBar: BottomBarSettings = BottomBarSettings()
+    val bottomBar: BottomBarSettings = BottomBarSettings(),
+    val discover: DiscoverSettings = DiscoverSettings()
 ) {
     val isLibraryGridView: Boolean
         get() = library.viewMode == LibraryViewMode.GRID

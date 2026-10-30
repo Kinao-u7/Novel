@@ -42,6 +42,7 @@ import androidx.navigation.toRoute
 import com.example.R
 import com.example.data.model.NavTab
 import com.example.di.LocalAppContainer
+import com.example.ui.screens.discover.DiscoverRoute
 
 private data class NavTabDef(
     val tab: NavTab,
@@ -156,9 +157,11 @@ fun AppNavHost(
             }
 
             composable<Discover> {
-                PlaceholderScreen(
-                    title = stringResource(R.string.screen_discover_title),
-                    subtitle = stringResource(R.string.placeholder_description)
+                DiscoverRoute(
+                    onOpenSource = { sourceId ->
+                        navController.navigate(BrowseSource(sourceId))
+                    },
+                    contentPadding = innerPadding
                 )
             }
 
