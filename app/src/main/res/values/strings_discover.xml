@@ -1,0 +1,37 @@
+<resources>
+    <string name="discover_header_eyebrow">SOURCES &amp; EXTENSIONS</string>
+    <string name="discover_title">Discover</string>
+    <string name="discover_search_desc">Search sources</string>
+    <string name="discover_settings_desc">Settings</string>
+    <string name="discover_search_hint">Search sources and extensions</string>
+    <string name="discover_tab_sources">Sources</string>
+    <string name="discover_tab_extensions">Extensions</string>
+    <string name="discover_empty_sources_title">No installed sources match.</string>
+    <string name="discover_empty_sources_subtitle_extensions">Add some from the Extensions tab.</string>
+    <string name="discover_section_pinned">Pinned</string>
+    <string name="discover_unpin_format">Unpin %1$s</string>
+    <string name="discover_pin_format">Pin %1$s</string>
+    <string name="discover_section_updates_pending">Updates pending</string>
+    <string name="discover_update_all">UPDATE ALL</string>
+    <string name="discover_section_installed">Installed</string>
+    <string name="discover_section_available">Available</string>
+    <string name="discover_empty_extensions">No extensions match your language settings.</string>
+    <string name="discover_add_repository_button">+ Add repository</string>
+    <string name="discover_action_install">INSTALL</string>
+    <string name="discover_action_update">UPDATE</string>
+    <string name="discover_action_installed">INSTALLED</string>
+    <string name="discover_badge_18_plus">18+</string>
+    <string name="discover_settings_title">Settings</string>
+    <string name="discover_settings_languages_title">Languages</string>
+    <string name="discover_settings_languages_desc">Choose which languages appear in Sources and Extensions.</string>
+    <string name="discover_settings_repositories_title">Repositories</string>
+    <string name="discover_settings_repositories_desc">Extensions are loaded from these sources. Only add repositories you trust.</string>
+    <string name="discover_settings_repository_index">Repository %1$d</string>
+    <string name="discover_settings_remove_repository_desc">Remove repository</string>
+    <string name="discover_settings_repo_url_hint">https://…/index.json</string>
+    <string name="discover_settings_repo_add">Add</string>
+    <string name="discover_uninstall_dialog_title">Remove %1$s?</string>
+    <string name="discover_uninstall_dialog_body">Novels you saved from this source stay in your library, but you will not be able to read new chapters until you reinstall it.</string>
+    <string name="discover_uninstall_confirm">Uninstall</string>
+    <string name="discover_uninstall_cancel">Cancel</string>
+</resources>
