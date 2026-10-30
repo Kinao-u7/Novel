@@ -21,7 +21,9 @@ import com.example.data.model.ReaderTextAlign
 import com.example.data.model.ReaderTheme
 import com.example.data.model.ThemeSettings
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -486,8 +488,8 @@ class SettingsRepositoryTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val repo = SettingsRepository.createForTest(context, Dispatchers.IO)
 
-        assertEquals(emptyList<String>(), repo.discoverSettings.value.pinnedSourceIds)
-        assertEquals(emptyList<String>(), repo.discoverSettings.value.enabledLanguages)
+        assertEquals(emptyList<String>(), repo.settings.value.discover.pinnedSourceIds)
+        assertEquals(emptyList<String>(), repo.settings.value.discover.enabledLanguages)
 
         repo.updateDiscoverSettings {
             it.copy(
@@ -496,7 +498,20 @@ class SettingsRepositoryTest {
             )
         }
 
-        assertEquals(listOf("wtrlab", "classics"), repo.discoverSettings.value.pinnedSourceIds)
-        assertEquals(listOf("English"), repo.discoverSettings.value.enabledLanguages)
+        // 1. Immediate in-memory check via settings.value.discover
+        assertEquals(listOf("wtrlab", "classics"), repo.settings.value.discover.pinnedSourceIds)
+        assertEquals(listOf("English"), repo.settings.value.discover.enabledLanguages)
+
+        // 2. Derived flow check waiting with withTimeout
+        val derived = withTimeout(2000L) {
+            repo.discoverSettings.first { it.pinnedSourceIds == listOf("wtrlab", "classics") }
+        }
+        assertEquals(listOf("English"), derived.enabledLanguages)
+
+        // 3. Persistence check across repository instances
+        repo.flush()
+        val secondRepo = SettingsRepository.createForTest(context, Dispatchers.IO)
+        assertEquals(listOf("wtrlab", "classics"), secondRepo.settings.value.discover.pinnedSourceIds)
+        assertEquals(listOf("English"), secondRepo.settings.value.discover.enabledLanguages)
     }
 }
