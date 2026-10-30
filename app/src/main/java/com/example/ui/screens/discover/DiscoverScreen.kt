@@ -279,12 +279,12 @@ private fun TabCell(label: String, selected: Boolean, badge: Int, modifier: Modi
 
 private fun LazyListScope.sourcesContent(state: DiscoverUiState, actions: DiscoverActions) {
     if (state.pinned.isEmpty() && state.sourceGroups.isEmpty()) {
-        val subtitle = if (state.extensionsEnabled) {
-            stringResource(R.string.discover_empty_sources_subtitle_extensions)
-        } else {
-            null
-        }
         item(key = "empty") {
+            val subtitle = if (state.extensionsEnabled) {
+                stringResource(R.string.discover_empty_sources_subtitle_extensions)
+            } else {
+                null
+            }
             EmptyState(
                 title = stringResource(R.string.discover_empty_sources_title),
                 subtitle = subtitle,
