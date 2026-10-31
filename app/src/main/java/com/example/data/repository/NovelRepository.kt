@@ -336,6 +336,29 @@ class NovelRepository(
         return libraryNovels.value.any { it.id == novelId }
     }
 
+    suspend fun getNovel(novelId: String): Novel? = withContext(Dispatchers.IO) {
+        val roomNovel = novelDao.getNovelById(novelId)
+        if (roomNovel != null) {
+            val downloadedCount = chapterDao.getDownloadedCount(novelId)
+            return@withContext roomNovel.toModel(downloadedCount = downloadedCount)
+        }
+        val sources = SourceManager.sources.value
+        for (source in sources) {
+            try {
+                val fetched = source.getNovelDetails(novelId)
+                if (fetched != null) {
+                    val entity = fetched.toEntity().copy(inLibrary = false)
+                    val canonicalId = novelDao.upsertSafe(entity)
+                    val saved = novelDao.getNovelById(canonicalId)
+                    return@withContext (saved ?: entity).toModel()
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+        }
+        null
+    }
+
     fun getReadingHistory(): List<Novel> {
         // In-memory snapshot check: no Room call on the main thread
         return libraryNovels.value
@@ -408,6 +431,16 @@ class NovelRepository(
         return chapterDao.getReadChapterIdsFlow(novelId)
             .map { it.toSet() }
             .distinctUntilChanged()
+    }
+
+    fun getNovelReadCountsFlow(): Flow<Map<String, Int>> {
+        return chapterDao.getNovelReadCountsFlow()
+            .map { list -> list.associate { it.novelId to it.count } }
+            .distinctUntilChanged()
+    }
+
+    suspend fun setAllChaptersRead(novelId: String, isRead: Boolean) = withContext(Dispatchers.IO) {
+        chapterDao.setAllChaptersRead(novelId, isRead)
     }
 
     // --- CHAPTERS & OFFLINE STORAGE ---

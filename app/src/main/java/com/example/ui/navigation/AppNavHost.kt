@@ -43,6 +43,8 @@ import com.example.R
 import com.example.data.model.NavTab
 import com.example.di.LocalAppContainer
 import com.example.ui.screens.discover.DiscoverRoute
+import com.example.ui.screens.library.LibraryRoute
+import com.example.ui.screens.detail.DetailRoute
 
 private data class NavTabDef(
     val tab: NavTab,
@@ -149,10 +151,23 @@ fun AppNavHost(
                 .padding(innerPadding)
         ) {
             composable<Library> {
-                val libraryNovels by container.novelRepository.libraryNovels.collectAsStateWithLifecycle()
-                PlaceholderScreen(
-                    title = stringResource(R.string.screen_library_title),
-                    subtitle = stringResource(R.string.library_novels_count, libraryNovels.size)
+                LibraryRoute(
+                    onNovelClick = { novelId ->
+                        navController.navigate(NovelDetail(novelId))
+                    },
+                    onResume = { novelId ->
+                        val libraryNovels = container.novelRepository.libraryNovels.value
+                        val novel = libraryNovels.firstOrNull { it.id == novelId }
+                        val chapterIndex = novel?.lastReadChapterIndex ?: 0
+                        navController.navigate(Reader(novelId, chapterIndex))
+                    },
+                    onDiscoverClick = {
+                        navigateToTab(NavTab.DISCOVER)
+                    },
+                    onWebBrowserClick = {
+                        navController.navigate(WebBrowser())
+                    },
+                    contentPadding = innerPadding
                 )
             }
 
@@ -232,11 +247,21 @@ fun AppNavHost(
                 }
             }
 
-            composable<NovelDetail> { backStackEntry ->
-                val route = backStackEntry.toRoute<NovelDetail>()
-                PlaceholderScreen(
-                    title = stringResource(R.string.screen_novel_detail_title, route.novelId),
-                    subtitle = stringResource(R.string.placeholder_description)
+            composable<NovelDetail> {
+                DetailRoute(
+                    onBack = {
+                        navController.popBackStack()
+                    },
+                    onReadClick = { novelId, chapterIndex ->
+                        navController.navigate(Reader(novelId, chapterIndex))
+                    },
+                    onChapterClick = { novelId, chapterIndex ->
+                        navController.navigate(Reader(novelId, chapterIndex))
+                    },
+                    onOpenInBrowser = { url ->
+                        navController.navigate(WebBrowser(initialUrl = url))
+                    },
+                    contentPadding = innerPadding
                 )
             }
 

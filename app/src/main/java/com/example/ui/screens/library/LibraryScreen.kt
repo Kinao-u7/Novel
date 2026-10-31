@@ -27,6 +27,9 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -34,10 +37,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ViewList
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -95,6 +100,12 @@ fun LibraryScreen(
     val c = AppTheme.colors
     val snackbarHostState = remember { SnackbarHostState() }
 
+    val epubPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let { actions.onEpubPicked(it) }
+    }
+
     LaunchedEffect(state.message) {
         state.message?.let {
             snackbarHostState.showSnackbar(it)
@@ -130,6 +141,7 @@ fun LibraryScreen(
                         filterActive = state.filterActive,
                         onSearch = { showSearch = !showSearch },
                         onFilter = { showFilter = true },
+                        onImportEpub = { epubPicker.launch(arrayOf("application/epub+zip")) },
                     )
                     AnimatedVisibility(showSearch) {
                         DesignSearchField(
@@ -187,6 +199,22 @@ fun LibraryScreen(
                             fontSize = 13.sp,
                             modifier = Modifier.padding(top = 6.dp),
                         )
+                        Spacer(Modifier.height(16.dp))
+                        OutlinedButton(
+                            onClick = { epubPicker.launch(arrayOf("application/epub+zip")) },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, c.ln),
+                            modifier = Modifier.defaultMinSize(minHeight = 48.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Add,
+                                contentDescription = null,
+                                tint = c.ac,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.library_import_epub), color = c.ac)
+                        }
                     }
                 }
             } else if (state.showNoResults) {
@@ -250,6 +278,7 @@ private fun TopBar(
     filterActive: Boolean,
     onSearch: () -> Unit,
     onFilter: () -> Unit,
+    onImportEpub: () -> Unit,
 ) {
     val c = AppTheme.colors
     val f = AppTheme.fonts
@@ -284,6 +313,7 @@ private fun TopBar(
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            SquareIcon(Icons.Rounded.Add, stringResource(R.string.library_import_epub_desc), onImportEpub)
             SquareIcon(Icons.Rounded.Search, stringResource(R.string.library_search_desc), onSearch)
             SquareIcon(Icons.Rounded.Tune, stringResource(R.string.library_filter_sort_desc), onFilter, dot = filterActive)
         }

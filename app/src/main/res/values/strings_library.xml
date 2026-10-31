@@ -34,4 +34,6 @@
     <string name="library_grid_view">Grid view</string>
     <string name="library_list_view">List view</string>
     <string name="library_default_reader_name">Reader</string>
+    <string name="library_import_epub">Import EPUB</string>
+    <string name="library_import_epub_desc">Import EPUB</string>
 </resources>

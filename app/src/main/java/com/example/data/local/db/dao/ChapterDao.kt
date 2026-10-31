@@ -14,6 +14,11 @@ data class ChapterReadPair(
     val id: String
 )
 
+data class NovelReadCount(
+    @ColumnInfo(name = "novel_id") val novelId: String,
+    val count: Int
+)
+
 @Dao
 interface ChapterDao {
 
@@ -166,6 +171,12 @@ interface ChapterDao {
 
     @Query("UPDATE chapters SET storage_tier = 'NONE' WHERE storage_tier = 'DOWNLOADED'")
     suspend fun deleteAllDownloads(): Int
+
+    @Query("SELECT novel_id, COUNT(*) as count FROM chapters WHERE is_read = 1 GROUP BY novel_id")
+    fun getNovelReadCountsFlow(): Flow<List<NovelReadCount>>
+
+    @Query("UPDATE chapters SET is_read = :isRead WHERE novel_id = :novelId")
+    suspend fun setAllChaptersRead(novelId: String, isRead: Boolean): Int
 
     @Query("DELETE FROM chapters WHERE novel_id = :novelId")
     suspend fun deleteChaptersForNovel(novelId: String): Int
