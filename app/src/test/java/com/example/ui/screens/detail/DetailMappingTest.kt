@@ -9,14 +9,14 @@ class DetailMappingTest {
     private fun createChapter(
         index: Int,
         isRead: Boolean = false,
-        storageTier: String = "NONE"
+        isDownloaded: Boolean = false
     ): Chapter = Chapter(
         id = "ch_$index",
         novelId = "novel_1",
         title = "Chapter $index",
         chapterIndex = index,
         isRead = isRead,
-        storageTier = storageTier
+        isDownloaded = isDownloaded
     )
 
     @Test
@@ -25,7 +25,7 @@ class DetailMappingTest {
             createChapter(
                 index = i,
                 isRead = i < 3,
-                storageTier = if (i == 4) "DOWNLOADED" else "NONE"
+                isDownloaded = (i == 4)
             )
         }
         // Current index is 2. Unread chapters are 3, 4(downloaded), 5, 6, 7, 8...
@@ -38,7 +38,7 @@ class DetailMappingTest {
     @Test
     fun selectChaptersForDownload_next25_takesFromAfterCurrentOrFallback() {
         val chapters = (0 until 40).map { i ->
-            createChapter(index = i, isRead = false, storageTier = "NONE")
+            createChapter(index = i, isRead = false, isDownloaded = false)
         }
         val selected = selectChaptersForDownload(chapters, currentChapterIndex = 10, DownloadScope.NEXT_25)
         assertEquals(25, selected.size)
@@ -48,11 +48,11 @@ class DetailMappingTest {
     @Test
     fun selectChaptersForDownload_allUnread_skipsReadAndDownloaded() {
         val chapters = listOf(
-            createChapter(0, isRead = true, storageTier = "NONE"),
-            createChapter(1, isRead = false, storageTier = "DOWNLOADED"),
-            createChapter(2, isRead = false, storageTier = "EPUB"),
-            createChapter(3, isRead = false, storageTier = "NONE"),
-            createChapter(4, isRead = false, storageTier = "NONE")
+            createChapter(0, isRead = true, isDownloaded = false),
+            createChapter(1, isRead = false, isDownloaded = true),
+            createChapter(2, isRead = false, isDownloaded = true),
+            createChapter(3, isRead = false, isDownloaded = false),
+            createChapter(4, isRead = false, isDownloaded = false)
         )
         val selected = selectChaptersForDownload(chapters, currentChapterIndex = 0, DownloadScope.ALL_UNREAD)
         assertEquals(listOf(3, 4), selected.map { it.chapterIndex })
@@ -61,8 +61,8 @@ class DetailMappingTest {
     @Test
     fun selectChaptersForDownload_nullOrEndOfBook_fallbackToFirstUnread() {
         val chapters = listOf(
-            createChapter(0, isRead = false, storageTier = "NONE"),
-            createChapter(1, isRead = false, storageTier = "NONE")
+            createChapter(0, isRead = false, isDownloaded = false),
+            createChapter(1, isRead = false, isDownloaded = false)
         )
         val selected = selectChaptersForDownload(chapters, currentChapterIndex = 10, DownloadScope.NEXT_5)
         assertEquals(listOf(0, 1), selected.map { it.chapterIndex })

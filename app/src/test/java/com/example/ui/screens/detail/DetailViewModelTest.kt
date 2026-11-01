@@ -43,8 +43,8 @@ class DetailViewModelTest {
     )
 
     private val testChapters = listOf(
-        Chapter("ch_0", "novel_123", "Beginning", 0, isRead = false, storageTier = "EPUB"),
-        Chapter("ch_1", "novel_123", "Ascension", 1, isRead = false, storageTier = "EPUB")
+        Chapter("ch_0", "novel_123", "Beginning", 0, isRead = false, isDownloaded = true),
+        Chapter("ch_1", "novel_123", "Ascension", 1, isRead = false, isDownloaded = true)
     )
 
     @Before

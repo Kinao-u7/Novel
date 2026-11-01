@@ -9,7 +9,7 @@ fun selectChaptersForDownload(
     scope: DownloadScope
 ): List<Chapter> {
     val unreadNotDownloaded = chapters.filter { chapter ->
-        !chapter.isRead && chapter.storageTier != "DOWNLOADED" && chapter.storageTier != "EPUB"
+        !chapter.isRead && !chapter.isDownloaded
     }
 
     return when (scope) {
@@ -96,7 +96,7 @@ fun mapToDetailChapters(
     return sorted.map { chapter ->
         val isCurrent = novel != null && novel.lastReadTimestamp > 0L &&
             (chapter.chapterIndex == novel.lastReadChapterIndex || chapter.id == novel.lastReadChapterId)
-        val isDownloaded = chapter.storageTier == "DOWNLOADED" || chapter.storageTier == "EPUB"
+        val isDownloaded = chapter.isDownloaded
         DetailChapter(
             index = chapter.chapterIndex,
             number = chapter.chapterIndex,
