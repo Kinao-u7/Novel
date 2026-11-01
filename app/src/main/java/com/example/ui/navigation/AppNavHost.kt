@@ -13,21 +13,29 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.SelfImprovement
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -45,6 +53,7 @@ import com.example.di.LocalAppContainer
 import com.example.ui.screens.discover.DiscoverRoute
 import com.example.ui.screens.library.LibraryRoute
 import com.example.ui.screens.detail.DetailRoute
+import com.example.ui.theme.AppTheme
 
 private data class NavTabDef(
     val tab: NavTab,
@@ -120,9 +129,31 @@ fun AppNavHost(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onBackground,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar {
+                val accent = AppTheme.colors.ac
+                val muted = AppTheme.colors.mu
+                val line = AppTheme.colors.ln
+                val navItemColors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = accent,
+                    selectedTextColor = accent,
+                    unselectedIconColor = muted,
+                    unselectedTextColor = muted,
+                    indicatorColor = accent.copy(alpha = 0.14f)
+                )
+                NavigationBar(
+                    containerColor = AppTheme.colors.cd.copy(alpha = 0.92f),
+                    modifier = Modifier.drawBehind {
+                        drawLine(
+                            color = line,
+                            start = Offset(0f, 0f),
+                            end = Offset(size.width, 0f),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                    }
+                ) {
                     for (tab in bottomBarTabs) {
                         val tabDef = NAV_TAB_DEFINITIONS[tab] ?: continue
                         val isSelected = currentDestination?.hasRoute(tabDef.route::class) == true
@@ -136,110 +167,116 @@ fun AppNavHost(
                                     contentDescription = label
                                 )
                             },
-                            label = { Text(text = label) }
+                            label = { Text(text = label) },
+                            colors = navItemColors
                         )
                     }
                 }
             }
         }
     ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = Library,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            composable<Library> {
-                LibraryRoute(
-                    onNovelClick = { novelId ->
-                        navController.navigate(NovelDetail(novelId))
-                    },
-                    onResume = { novelId ->
-                        val libraryNovels = container.novelRepository.libraryNovels.value
-                        val novel = libraryNovels.firstOrNull { it.id == novelId }
-                        val chapterIndex = novel?.lastReadChapterIndex ?: 0
-                        navController.navigate(Reader(novelId, chapterIndex))
-                    },
-                    onDiscoverClick = {
-                        navigateToTab(NavTab.DISCOVER)
-                    },
-                    onWebBrowserClick = {
-                        navController.navigate(WebBrowser())
-                    },
-                    contentPadding = innerPadding
-                )
-            }
+        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
+            NavHost(
+                navController = navController,
+                startDestination = Library,
+                modifier = Modifier.fillMaxSize()
+            ) {
+                composable<Library> {
+                    LibraryRoute(
+                        onNovelClick = { novelId ->
+                            navController.navigate(NovelDetail(novelId))
+                        },
+                        onResume = { novelId ->
+                            val libraryNovels = container.novelRepository.libraryNovels.value
+                            val novel = libraryNovels.firstOrNull { it.id == novelId }
+                            val chapterIndex = novel?.lastReadChapterIndex ?: 0
+                            navController.navigate(Reader(novelId, chapterIndex))
+                        },
+                        onDiscoverClick = {
+                            navigateToTab(NavTab.DISCOVER)
+                        },
+                        onWebBrowserClick = {
+                            navController.navigate(WebBrowser())
+                        },
+                        contentPadding = innerPadding
+                    )
+                }
 
-            composable<Discover> {
-                DiscoverRoute(
-                    onOpenSource = { sourceId ->
-                        navController.navigate(BrowseSource(sourceId))
-                    },
-                    contentPadding = innerPadding
-                )
-            }
+                composable<Discover> {
+                    DiscoverRoute(
+                        onOpenSource = { sourceId ->
+                            navController.navigate(BrowseSource(sourceId))
+                        },
+                        contentPadding = innerPadding
+                    )
+                }
 
-            composable<Cultivate> {
-                PlaceholderScreen(
-                    title = stringResource(R.string.screen_cultivate_title),
-                    subtitle = stringResource(R.string.placeholder_description)
-                )
-            }
+                composable<Cultivate> {
+                    PlaceholderScreen(
+                        title = stringResource(R.string.screen_cultivate_title),
+                        subtitle = stringResource(R.string.placeholder_description),
+                        bottomPadding = innerPadding.calculateBottomPadding()
+                    )
+                }
 
-            composable<Downloads> {
-                PlaceholderScreen(
-                    title = stringResource(R.string.screen_downloads_title),
-                    subtitle = stringResource(R.string.placeholder_description)
-                )
-            }
+                composable<Downloads> {
+                    PlaceholderScreen(
+                        title = stringResource(R.string.screen_downloads_title),
+                        subtitle = stringResource(R.string.placeholder_description),
+                        bottomPadding = innerPadding.calculateBottomPadding()
+                    )
+                }
 
-            composable<Profile> {
-                val hiddenTabs = NavTab.entries.filter { it !in bottomBarTabs }
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                        modifier = Modifier.padding(16.dp)
+                composable<Profile> {
+                    val hiddenTabs = NavTab.entries.filter { it !in bottomBarTabs }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .statusBarsPadding()
+                            .padding(top = 18.dp, bottom = innerPadding.calculateBottomPadding()),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = stringResource(R.string.screen_profile_title),
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = stringResource(R.string.placeholder_description),
-                            fontSize = 16.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-
-                        if (hiddenTabs.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(24.dp))
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(16.dp)
+                        ) {
                             Text(
-                                text = stringResource(R.string.profile_hidden_tabs_header),
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary
+                                text = stringResource(R.string.screen_profile_title),
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            for (tab in hiddenTabs) {
-                                val def = NAV_TAB_DEFINITIONS[tab] ?: continue
-                                val tabLabel = stringResource(def.labelRes)
-                                Button(
-                                    onClick = { navigateToTab(tab) },
-                                    modifier = Modifier.padding(vertical = 4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = def.icon,
-                                        contentDescription = null,
-                                        modifier = Modifier.padding(end = 8.dp)
-                                    )
-                                    Text(text = tabLabel)
+                            Text(
+                                text = stringResource(R.string.placeholder_description),
+                                fontSize = 16.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+
+                            if (hiddenTabs.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(24.dp))
+                                Text(
+                                    text = stringResource(R.string.profile_hidden_tabs_header),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                for (tab in hiddenTabs) {
+                                    val def = NAV_TAB_DEFINITIONS[tab] ?: continue
+                                    val tabLabel = stringResource(def.labelRes)
+                                    Button(
+                                        onClick = { navigateToTab(tab) },
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = def.icon,
+                                            contentDescription = null,
+                                            modifier = Modifier.padding(end = 8.dp)
+                                        )
+                                        Text(text = tabLabel)
+                                    }
                                 }
                             }
                         }
@@ -296,10 +333,14 @@ fun AppNavHost(
 @Composable
 private fun PlaceholderScreen(
     title: String,
-    subtitle: String
+    subtitle: String,
+    bottomPadding: Dp = 0.dp,
 ) {
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(top = 18.dp, bottom = bottomPadding),
         contentAlignment = Alignment.Center
     ) {
         Column(

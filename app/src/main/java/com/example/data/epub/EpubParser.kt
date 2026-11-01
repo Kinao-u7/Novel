@@ -17,6 +17,13 @@ data class ParsedEpub(
     val coverBytes: ByteArray? = null
 )
 
+data class EpubMetadata(
+    val title: String,
+    val author: String,
+    val language: String,
+    val description: String,
+)
+
 object EpubParser {
 
     private const val MAX_CHAPTER_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB bound
@@ -64,17 +71,10 @@ object EpubParser {
         val opfContent = opfBytes?.toString(Charsets.UTF_8) ?: ""
 
         // 2. Extract Metadata
-        var title = extractXmlTag(opfContent, "dc:title")
-        if (title.isBlank()) title = extractXmlTag(opfContent, "title")
-        if (title.isBlank()) title = fileName.removeSuffix(".epub").replace("_", " ")
-
-        var author = extractXmlTag(opfContent, "dc:creator")
-        if (author.isBlank()) author = extractXmlTag(opfContent, "creator")
-        if (author.isBlank()) author = "Unknown Author"
-
-        var description = extractXmlTag(opfContent, "dc:description")
-        if (description.isBlank()) description = extractXmlTag(opfContent, "description")
-        if (description.isBlank()) description = "Imported EPUB light novel from device storage."
+        val metadata = extractMetadata(opfContent)
+        var title = metadata.title
+        val author = metadata.author.ifBlank { "Unknown Author" }
+        val description = metadata.description.ifBlank { "Imported EPUB light novel from device storage." }
 
         // 3. Manifest items: id -> href
         // Match <item tag attributes directly without nested quantifiers or DOTALL backtracking
@@ -135,6 +135,14 @@ object EpubParser {
             spineIds.mapNotNull { manifest[it] }
         } else {
             manifest.values.filter { it.endsWith(".xhtml", ignoreCase = true) || it.endsWith(".html", ignoreCase = true) }
+        }
+
+        // Fallback to first <title> of nav or first chapter if OPF title is blank
+        if (title.isBlank()) {
+            title = findFallbackTitle(entries, opfDir, orderedHrefs)
+        }
+        if (title.isBlank()) {
+            title = fileName.removeSuffix(".epub").replace("_", " ")
         }
 
         val novelId = "epub_${System.currentTimeMillis()}"
@@ -198,16 +206,139 @@ object EpubParser {
         return ParsedEpub(novel, chapters, chapterContents, coverBytes)
     }
 
-    private fun extractXmlTag(xml: String, tag: String): String {
-        val startTag = "<$tag"
-        val endTag = "</$tag>"
-        val startIdx = xml.indexOf(startTag, ignoreCase = true)
-        if (startIdx == -1) return ""
-        val closeBracket = xml.indexOf('>', startIdx)
-        if (closeBracket == -1) return ""
-        val endIdx = xml.indexOf(endTag, closeBracket, ignoreCase = true)
-        if (endIdx == -1) return ""
-        return cleanHtml(xml.substring(closeBracket + 1, endIdx))
+    fun extractMetadata(opfContent: String): EpubMetadata {
+        val title = extractTag(opfContent, "title")
+        val creator = extractTag(opfContent, "creator")
+        val language = extractTag(opfContent, "language")
+        val description = extractTag(opfContent, "description")
+        return EpubMetadata(
+            title = title,
+            author = creator,
+            language = language,
+            description = description
+        )
+    }
+
+    fun extractTag(xml: String, tagName: String): String {
+        val bareName = tagName.substringAfter(":")
+        // Matches <tag ...>content</tag> or <prefix:tag ...>content</prefix:tag>
+        // Tolerate attributes on opening tag, whitespace, newlines, and CDATA
+        val pattern = Pattern.compile(
+            "<(?:[a-zA-Z0-9_-]+:)?$bareName(?:\\s+[^>]*)?>([\\s\\S]*?)</(?:[a-zA-Z0-9_-]+:)?$bareName>",
+            Pattern.CASE_INSENSITIVE
+        )
+        val matcher = pattern.matcher(xml)
+        if (matcher.find()) {
+            val content = matcher.group(1) ?: ""
+            val cleaned = cleanXmlContent(content)
+            if (cleaned.isNotBlank()) return cleaned
+        }
+        return ""
+    }
+
+    fun cleanXmlContent(raw: String): String {
+        // 1. Extract content inside <![CDATA[ ... ]]>
+        val cdataReplaced = raw.replace(Regex("<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>")) { it.groupValues[1] }
+        // 2. Strip nested XML/HTML tags
+        val noTags = cdataReplaced.replace(Regex("<[^>]+>"), "")
+        // 3. Unescape XML entities
+        val unescaped = unescapeXml(noTags)
+        // 4. Normalize whitespace and trim
+        return unescaped.replace(Regex("\\s+"), " ").trim()
+    }
+
+    fun unescapeXml(text: String): String {
+        return text
+            .replace("&quot;", "\"")
+            .replace("&apos;", "'")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&nbsp;", " ")
+            .replace("&mdash;", "—")
+            .replace("&ndash;", "–")
+            .replace("&hellip;", "…")
+            .replace("&lsquo;", "‘")
+            .replace("&rsquo;", "’")
+            .replace("&ldquo;", "“")
+            .replace("&rdquo;", "”")
+            // Decimal numeric entities e.g. &#8217; or &#39;
+            .replace(Regex("&#(\\d+);")) { match ->
+                try {
+                    val code = match.groupValues[1].toInt()
+                    String(Character.toChars(code))
+                } catch (e: Exception) {
+                    match.value
+                }
+            }
+            // Hexadecimal numeric entities e.g. &#x2019; or &#x27;
+            .replace(Regex("&#x([0-9a-fA-F]+);")) { match ->
+                try {
+                    val code = match.groupValues[1].toInt(16)
+                    String(Character.toChars(code))
+                } catch (e: Exception) {
+                    match.value
+                }
+            }
+            // Unescape &amp; last
+            .replace("&amp;", "&")
+    }
+
+    internal fun findFallbackTitle(
+        entries: Map<String, ByteArray>,
+        opfDir: String,
+        orderedHrefs: List<String>
+    ): String {
+        // 1. Try nav / toc documents
+        val navKeys = listOf(
+            "toc.ncx",
+            "OEBPS/toc.ncx",
+            "nav.xhtml",
+            "OEBPS/nav.xhtml",
+            "toc.xhtml",
+            "OEBPS/toc.xhtml"
+        )
+        for (key in navKeys) {
+            val bytes = entries[key] ?: entries[opfDir + key]
+            if (bytes != null) {
+                val content = bytes.toString(Charsets.UTF_8)
+                // NCX docTitle
+                val docTitlePattern = Pattern.compile("<docTitle[^>]*>([\\s\\S]*?)</docTitle>", Pattern.CASE_INSENSITIVE)
+                val docTitleMatcher = docTitlePattern.matcher(content)
+                if (docTitleMatcher.find()) {
+                    val candidate = cleanXmlContent(docTitleMatcher.group(1) ?: "")
+                    if (candidate.isNotBlank()) return candidate
+                }
+                // XHTML <title>
+                val titlePattern = Pattern.compile("<title(?:\\s+[^>]*)?>([\\s\\S]*?)</title>", Pattern.CASE_INSENSITIVE)
+                val titleMatcher = titlePattern.matcher(content)
+                if (titleMatcher.find()) {
+                    val candidate = cleanXmlContent(titleMatcher.group(1) ?: "")
+                    if (candidate.isNotBlank() && !candidate.equals("Table of Contents", ignoreCase = true) && !candidate.equals("Contents", ignoreCase = true)) {
+                        return candidate
+                    }
+                }
+            }
+        }
+
+        // 2. Try first chapter from orderedHrefs
+        for (href in orderedHrefs) {
+            val fullHref = if (entries.containsKey(href)) href else (opfDir + href)
+            val bytes = entries[fullHref] ?: entries[href] ?: continue
+            val content = bytes.toString(Charsets.UTF_8)
+            val titlePattern = Pattern.compile("<title(?:\\s+[^>]*)?>([\\s\\S]*?)</title>", Pattern.CASE_INSENSITIVE)
+            val titleMatcher = titlePattern.matcher(content)
+            if (titleMatcher.find()) {
+                val candidate = cleanXmlContent(titleMatcher.group(1) ?: "")
+                if (candidate.isNotBlank()) return candidate
+            }
+            val hPattern = Pattern.compile("<h[1-3](?:\\s+[^>]*)?>([\\s\\S]*?)</h[1-3]>", Pattern.CASE_INSENSITIVE)
+            val hMatcher = hPattern.matcher(content)
+            if (hMatcher.find()) {
+                val candidate = cleanXmlContent(hMatcher.group(1) ?: "")
+                if (candidate.isNotBlank()) return candidate
+            }
+        }
+        return ""
     }
 
     private data class ParsedHtmlChapter(val title: String, val paragraphs: List<String>)
@@ -218,12 +349,12 @@ object EpubParser {
         val hPattern = Pattern.compile("<h[1-3][^>]*>([^<]+)</h[1-3]>", Pattern.CASE_INSENSITIVE)
         val hMatcher = hPattern.matcher(html)
         if (hMatcher.find()) {
-            title = cleanHtml(hMatcher.group(1) ?: "")
+            title = cleanXmlContent(hMatcher.group(1) ?: "")
         } else {
             val titlePattern = Pattern.compile("<title[^>]*>([^<]+)</title>", Pattern.CASE_INSENSITIVE)
             val titleMatcher = titlePattern.matcher(html)
             if (titleMatcher.find()) {
-                title = cleanHtml(titleMatcher.group(1) ?: "")
+                title = cleanXmlContent(titleMatcher.group(1) ?: "")
             }
         }
 
@@ -248,7 +379,7 @@ object EpubParser {
             .replace(Regex("(?i)</div>"), "\n\n")
             .replace(Regex("(?i)</h[1-6]>"), "\n\n")
 
-        val cleanText = cleanHtml(formatted)
+        val cleanText = cleanXmlContent(formatted)
         val rawParagraphs = cleanText.split("\n\n")
         val paragraphs = mutableListOf<String>()
 
@@ -262,19 +393,5 @@ object EpubParser {
         return ParsedHtmlChapter(title.ifBlank { "Chapter $chapterIdx" }, paragraphs)
     }
 
-    private fun cleanHtml(html: String): String {
-        val noTags = html.replace(Regex("<[^>]+>"), "")
-        return noTags
-            .replace("&nbsp;", " ")
-            .replace("&quot;", "\"")
-            .replace("&apos;", "'")
-            .replace("&amp;", "&")
-            .replace("&lt;", "<")
-            .replace("&gt;", ">")
-            .replace("&mdash;", "—")
-            .replace("&ndash;", "–")
-            .replace("&#39;", "'")
-            .replace("&#34;", "\"")
-            .trim()
-    }
+    private fun cleanHtml(html: String): String = cleanXmlContent(html)
 }

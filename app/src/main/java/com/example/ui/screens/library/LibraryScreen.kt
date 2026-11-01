@@ -23,7 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -93,6 +93,7 @@ fun LibraryScreen(
     state: LibraryUiState,
     actions: LibraryActions,
     modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
     var showSearch by remember { mutableStateOf(false) }
     var showFilter by remember { mutableStateOf(false) }
@@ -113,26 +114,28 @@ fun LibraryScreen(
         }
     }
 
-    val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = Color.Transparent,
+        contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onBackground,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = {
-            SnackbarHost(snackbarHostState, Modifier.padding(bottom = 16.dp))
+            SnackbarHost(snackbarHostState, Modifier.padding(bottom = contentPadding.calculateBottomPadding() + 16.dp))
         },
-    ) { pad ->
+    ) { _ ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),
             contentPadding = PaddingValues(
                 start = 18.dp,
-                top = top + 18.dp,
+                top = 18.dp,
                 end = 18.dp,
-                bottom = pad.calculateBottomPadding() + 24.dp,
+                bottom = contentPadding.calculateBottomPadding() + 24.dp,
             ),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding(),
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
@@ -295,7 +298,11 @@ private fun TopBar(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column {
+        Column(
+            Modifier
+                .weight(1f)
+                .padding(end = 8.dp)
+        ) {
             Text(
                 "$greeting, $name".uppercase(),
                 color = c.go,
@@ -303,6 +310,8 @@ private fun TopBar(
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 11.sp,
                 letterSpacing = 2.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
                 stringResource(R.string.library_title),
@@ -312,7 +321,10 @@ private fun TopBar(
                 fontSize = 28.sp,
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             SquareIcon(Icons.Rounded.Add, stringResource(R.string.library_import_epub_desc), onImportEpub)
             SquareIcon(Icons.Rounded.Search, stringResource(R.string.library_search_desc), onSearch)
             SquareIcon(Icons.Rounded.Tune, stringResource(R.string.library_filter_sort_desc), onFilter, dot = filterActive)

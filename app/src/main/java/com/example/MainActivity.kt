@@ -55,7 +55,10 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                 ) {
-                    CompositionLocalProvider(LocalAppContainer provides container) {
+                    CompositionLocalProvider(
+                        LocalAppContainer provides container,
+                        androidx.compose.material3.LocalContentColor provides androidx.compose.material3.MaterialTheme.colorScheme.onBackground
+                    ) {
                         AppNavHost()
                     }
                 }

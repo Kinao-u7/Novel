@@ -15,11 +15,14 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -75,6 +78,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -116,18 +121,19 @@ fun DetailScreen(
 
     var menu by remember { mutableStateOf(DetailMenu.None) }
     var descExpanded by remember { mutableStateOf(false) }
+    var descCanOverflow by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = Color.Transparent,
+        contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onBackground,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = {
             SnackbarHost(snackbarHostState, Modifier.padding(bottom = 80.dp))
         },
-    ) { paddingValues ->
+    ) { _ ->
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues),
+            modifier = Modifier.fillMaxSize(),
         ) {
             when {
                 state.isLoading -> {
@@ -144,7 +150,7 @@ fun DetailScreen(
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .statusBarsPadding()
-                            .padding(start = 14.dp, top = 12.dp),
+                            .padding(start = 14.dp, top = 8.dp),
                         onClick = actions.onBack,
                     )
                 }
@@ -180,7 +186,7 @@ fun DetailScreen(
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .statusBarsPadding()
-                            .padding(start = 14.dp, top = 12.dp),
+                            .padding(start = 14.dp, top = 8.dp),
                         onClick = actions.onBack,
                     )
                 }
@@ -195,17 +201,19 @@ fun DetailScreen(
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .statusBarsPadding()
-                            .padding(start = 14.dp, top = 12.dp),
+                            .padding(start = 14.dp, top = 8.dp),
                         onClick = actions.onBack,
                     )
                 }
 
                 else -> {
                     val novel = state.novel
+                    val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                    val actionBarHeight = 78.dp
 
                     LazyColumn(
                         Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 110.dp),
+                        contentPadding = PaddingValues(bottom = actionBarHeight + navInset),
                     ) {
                         item { Header(novel) }
                         item {
@@ -220,18 +228,25 @@ fun DetailScreen(
                                         modifier = Modifier.padding(top = 18.dp),
                                         maxLines = if (descExpanded) Int.MAX_VALUE else 3,
                                         overflow = TextOverflow.Ellipsis,
+                                        onTextLayout = { layoutResult ->
+                                            if (!descExpanded && layoutResult.hasVisualOverflow) {
+                                                descCanOverflow = true
+                                            }
+                                        },
                                     )
-                                    TextButton(
-                                        onClick = { descExpanded = !descExpanded },
-                                        contentPadding = PaddingValues(0.dp),
-                                        modifier = Modifier.defaultMinSize(minHeight = 48.dp),
-                                    ) {
-                                        Text(
-                                            if (descExpanded) stringResource(R.string.detail_show_less) else stringResource(R.string.detail_read_more),
-                                            color = c.ac,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 12.sp,
-                                        )
+                                    if (descCanOverflow) {
+                                        TextButton(
+                                            onClick = { descExpanded = !descExpanded },
+                                            contentPadding = PaddingValues(0.dp),
+                                            modifier = Modifier.defaultMinSize(minHeight = 48.dp),
+                                        ) {
+                                            Text(
+                                                if (descExpanded) stringResource(R.string.detail_show_less) else stringResource(R.string.detail_read_more),
+                                                color = c.ac,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                            )
+                                        }
                                     }
                                 }
                                 if (novel.genres.isNotEmpty()) {
@@ -299,7 +314,7 @@ fun DetailScreen(
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .statusBarsPadding()
-                            .padding(start = 14.dp, top = 12.dp),
+                            .padding(start = 14.dp, top = 8.dp),
                         onClick = actions.onBack,
                     )
                     OverlayButton(
@@ -308,7 +323,7 @@ fun DetailScreen(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .statusBarsPadding()
-                            .padding(end = 14.dp, top = 12.dp),
+                            .padding(end = 14.dp, top = 8.dp),
                         onClick = { menu = DetailMenu.Main },
                     )
 
@@ -317,9 +332,17 @@ fun DetailScreen(
                         Modifier
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
-                            .background(c.bg)
+                            .background(c.cd.copy(alpha = 0.92f))
+                            .drawBehind {
+                                drawLine(
+                                    color = c.ln,
+                                    start = Offset(0f, 0f),
+                                    end = Offset(size.width, 0f),
+                                    strokeWidth = 1.dp.toPx()
+                                )
+                            }
                             .navigationBarsPadding()
-                            .padding(18.dp, 12.dp),
+                            .padding(horizontal = 18.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         val readBtnLabel = if (novel.resumeChapterNumber != null) {
@@ -655,10 +678,15 @@ private fun ChapterRow(
     val current = chapter.isCurrent
     val read = chapter.isRead
 
-    val titleDisplay = if (chapter.title.isNullOrBlank()) {
+    val cleanTitle = chapter.title?.trim()
+    val isTitleRedundant = cleanTitle.isNullOrBlank() ||
+        cleanTitle.equals("Chapter ${chapter.number}", ignoreCase = true) ||
+        cleanTitle.matches(Regex("(?i)^chapter\\s+\\d+$"))
+
+    val titleDisplay = if (isTitleRedundant) {
         "Chapter ${chapter.number}"
     } else {
-        "Chapter ${chapter.number} · ${chapter.title}"
+        "Chapter ${chapter.number} · $cleanTitle"
     }
 
     Column(modifier) {

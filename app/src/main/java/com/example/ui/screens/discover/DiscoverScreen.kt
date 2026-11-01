@@ -23,7 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -92,7 +92,7 @@ fun DiscoverScreen(
     state: DiscoverUiState,
     actions: DiscoverActions,
     modifier: Modifier = Modifier,
-    contentPadding: PaddingValues = WindowInsets.systemBars.asPaddingValues(),
+    contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(state.message) {
@@ -104,13 +104,15 @@ fun DiscoverScreen(
     // With extensions turned off there is only the Sources list: no tabs, no settings.
     val tab = if (state.extensionsEnabled) state.tab else DiscoverTab.SOURCES
 
-    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Box(modifier.fillMaxSize()) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding(),
             contentPadding = PaddingValues(
                 start = 20.dp,
                 end = 20.dp,
-                top = contentPadding.calculateTopPadding() + 18.dp,
+                top = 18.dp,
                 bottom = contentPadding.calculateBottomPadding() + 40.dp,
             ),
         ) {

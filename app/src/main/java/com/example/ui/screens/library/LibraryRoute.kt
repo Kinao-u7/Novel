@@ -54,6 +54,7 @@ fun LibraryRoute(
     LibraryScreen(
         state = state,
         actions = actions,
-        modifier = modifier
+        modifier = modifier,
+        contentPadding = contentPadding
     )
 }
