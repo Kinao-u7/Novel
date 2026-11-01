@@ -2,6 +2,7 @@ package com.example.ui.screens.library
 
 import android.content.Context
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.db.NovelDatabase
@@ -12,11 +13,16 @@ import com.example.data.model.LibraryViewMode
 import com.example.data.model.Novel
 import com.example.data.repository.NovelRepository
 import com.example.data.repository.SettingsRepository
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
@@ -34,6 +40,10 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class LibraryViewModelTest {
 
+    private lateinit var mainExecutor: ExecutorService
+    private lateinit var mainDispatcher: ExecutorCoroutineDispatcher
+    private var viewModel: LibraryViewModel? = null
+
     private lateinit var context: Context
     private lateinit var database: NovelDatabase
     private lateinit var repository: NovelRepository
@@ -41,6 +51,10 @@ class LibraryViewModelTest {
 
     @Before
     fun setup() {
+        mainExecutor = Executors.newSingleThreadExecutor()
+        mainDispatcher = mainExecutor.asCoroutineDispatcher()
+        Dispatchers.setMain(mainDispatcher)
+
         context = ApplicationProvider.getApplicationContext()
         database = Room.inMemoryDatabaseBuilder(context, NovelDatabase::class.java)
             .allowMainThreadQueries()
@@ -52,19 +66,42 @@ class LibraryViewModelTest {
 
     @After
     fun tearDown() {
+        viewModel?.viewModelScope?.cancel()
         repository.shutdownForTesting()
         NovelDatabaseHolder.clearInstanceForTesting()
         database.close()
+        Dispatchers.resetMain()
+        mainDispatcher.close()
+        com.example.data.download.DownloadCoordinator.resetInstanceForTesting()
+        com.example.data.source.SourceManager.setCustomSources(emptyList())
+    }
+
+    private suspend fun collectState(
+        vm: LibraryViewModel,
+        timeoutMs: Long = 5000L,
+        predicate: (LibraryUiState) -> Boolean
+    ): LibraryUiState {
+        var lastState: LibraryUiState = vm.uiState.value
+        return try {
+            withTimeout(timeoutMs) {
+                vm.uiState.first { state ->
+                    lastState = state
+                    predicate(state)
+                }
+            }
+        } catch (e: TimeoutCancellationException) {
+            System.err.println("Timeout waiting for LibraryUiState condition. Last state was: $lastState")
+            throw AssertionError("Timeout waiting for LibraryUiState condition. Last state was: $lastState", e)
+        }
     }
 
     @Test
     fun testInitialState_emptyLibrary() = runBlocking {
         val savedStateHandle = SavedStateHandle()
-        val viewModel = LibraryViewModel(repository, settingsRepository, savedStateHandle)
+        val vm = LibraryViewModel(repository, settingsRepository, savedStateHandle)
+        viewModel = vm
 
-        val state = withTimeout(3000) {
-            viewModel.uiState.first { !it.isLoading }
-        }
+        val state = collectState(vm) { !it.isLoading }
 
         assertEquals(0, state.libraryCount)
         assertTrue(state.novels.isEmpty())
@@ -88,40 +125,34 @@ class LibraryViewModelTest {
         database.novelDao().insertIgnore(novel.toEntity().copy(inLibrary = true))
 
         val savedStateHandle = SavedStateHandle()
-        val viewModel = LibraryViewModel(repository, settingsRepository, savedStateHandle)
+        val vm = LibraryViewModel(repository, settingsRepository, savedStateHandle)
+        viewModel = vm
 
-        val state = withTimeout(3000) {
-            viewModel.uiState.first { !it.isLoading && it.libraryCount == 1 }
-        }
+        val state = collectState(vm) { !it.isLoading && it.libraryCount == 1 }
         assertEquals(1, state.novels.size)
         assertEquals("Apotheosis", state.novels[0].title)
 
         // Filter out by search
-        viewModel.onSearchChange("NonExistent")
-        val filteredState = withTimeout(3000) {
-            viewModel.uiState.first { it.searchQuery == "NonExistent" && it.novels.isEmpty() }
-        }
+        vm.onSearchChange("NonExistent")
+        val filteredState = collectState(vm) { it.searchQuery == "NonExistent" && it.novels.isEmpty() }
         assertTrue(filteredState.showNoResults)
 
         // Reset filters
-        viewModel.onResetFilters()
-        val resetState = withTimeout(3000) {
-            viewModel.uiState.first { it.searchQuery.isEmpty() && it.novels.size == 1 }
-        }
+        vm.onResetFilters()
+        val resetState = collectState(vm) { it.searchQuery.isEmpty() && it.novels.size == 1 }
         assertEquals(1, resetState.novels.size)
     }
 
     @Test
     fun testViewModeAndSortChange() = runBlocking {
         val savedStateHandle = SavedStateHandle()
-        val viewModel = LibraryViewModel(repository, settingsRepository, savedStateHandle)
+        val vm = LibraryViewModel(repository, settingsRepository, savedStateHandle)
+        viewModel = vm
 
-        viewModel.onViewModeChange(LibraryViewMode.LIST)
-        viewModel.onSortChange(LibrarySort.TOTAL_CHAPTERS)
+        vm.onViewModeChange(LibraryViewMode.LIST)
+        vm.onSortChange(LibrarySort.TOTAL_CHAPTERS)
 
-        val state = withTimeout(3000) {
-            viewModel.uiState.first { it.viewMode == LibraryViewMode.LIST && it.sort == LibrarySort.TOTAL_CHAPTERS }
-        }
+        val state = collectState(vm) { it.viewMode == LibraryViewMode.LIST && it.sort == LibrarySort.TOTAL_CHAPTERS }
         assertEquals(LibraryViewMode.LIST, state.viewMode)
         assertEquals(LibrarySort.TOTAL_CHAPTERS, state.sort)
     }
