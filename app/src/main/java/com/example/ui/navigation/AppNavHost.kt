@@ -282,49 +282,49 @@ fun AppNavHost(
                         }
                     }
                 }
-            }
 
-            composable<NovelDetail> {
-                DetailRoute(
-                    onBack = {
-                        navController.popBackStack()
-                    },
-                    onReadClick = { novelId, chapterIndex ->
-                        navController.navigate(Reader(novelId, chapterIndex))
-                    },
-                    onChapterClick = { novelId, chapterIndex ->
-                        navController.navigate(Reader(novelId, chapterIndex))
-                    },
-                    onOpenInBrowser = { url ->
-                        navController.navigate(WebBrowser(initialUrl = url))
-                    },
-                    contentPadding = innerPadding
-                )
-            }
+                composable<NovelDetail> {
+                    DetailRoute(
+                        onBack = {
+                            navController.popBackStack()
+                        },
+                        onReadClick = { novelId, chapterIndex ->
+                            navController.navigate(Reader(novelId, chapterIndex))
+                        },
+                        onChapterClick = { novelId, chapterIndex ->
+                            navController.navigate(Reader(novelId, chapterIndex))
+                        },
+                        onOpenInBrowser = { url ->
+                            navController.navigate(WebBrowser(initialUrl = url))
+                        },
+                        contentPadding = innerPadding
+                    )
+                }
 
-            composable<Reader> { backStackEntry ->
-                val route = backStackEntry.toRoute<Reader>()
-                PlaceholderScreen(
-                    title = stringResource(R.string.screen_reader_title, route.novelId, route.chapterIndex),
-                    subtitle = stringResource(R.string.placeholder_description)
-                )
-            }
+                composable<Reader> { backStackEntry ->
+                    val route = backStackEntry.toRoute<Reader>()
+                    PlaceholderScreen(
+                        title = stringResource(R.string.screen_reader_title, route.novelId, route.chapterIndex),
+                        subtitle = stringResource(R.string.placeholder_description)
+                    )
+                }
 
-            composable<BrowseSource> { backStackEntry ->
-                val route = backStackEntry.toRoute<BrowseSource>()
-                PlaceholderScreen(
-                    title = stringResource(R.string.screen_browse_source_title, route.sourceId),
-                    subtitle = stringResource(R.string.placeholder_description)
-                )
-            }
+                composable<BrowseSource> { backStackEntry ->
+                    val route = backStackEntry.toRoute<BrowseSource>()
+                    PlaceholderScreen(
+                        title = stringResource(R.string.screen_browse_source_title, route.sourceId),
+                        subtitle = stringResource(R.string.placeholder_description)
+                    )
+                }
 
-            composable<WebBrowser> { backStackEntry ->
-                val route = backStackEntry.toRoute<WebBrowser>()
-                val initialUrl = route.initialUrl ?: "about:blank"
-                PlaceholderScreen(
-                    title = stringResource(R.string.screen_web_browser_title),
-                    subtitle = initialUrl
-                )
+                composable<WebBrowser> { backStackEntry ->
+                    val route = backStackEntry.toRoute<WebBrowser>()
+                    val initialUrl = route.initialUrl ?: "about:blank"
+                    PlaceholderScreen(
+                        title = stringResource(R.string.screen_web_browser_title),
+                        subtitle = initialUrl
+                    )
+                }
             }
         }
     }
