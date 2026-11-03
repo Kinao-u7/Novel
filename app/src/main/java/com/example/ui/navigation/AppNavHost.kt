@@ -53,6 +53,7 @@ import com.example.di.LocalAppContainer
 import com.example.ui.screens.discover.DiscoverRoute
 import com.example.ui.screens.library.LibraryRoute
 import com.example.ui.screens.detail.DetailRoute
+import com.example.ui.screens.browse.BrowseRoute
 import com.example.ui.theme.AppTheme
 
 private data class NavTabDef(
@@ -309,11 +310,13 @@ fun AppNavHost(
                     )
                 }
 
-                composable<BrowseSource> { backStackEntry ->
-                    val route = backStackEntry.toRoute<BrowseSource>()
-                    PlaceholderScreen(
-                        title = stringResource(R.string.screen_browse_source_title, route.sourceId),
-                        subtitle = stringResource(R.string.placeholder_description)
+                composable<BrowseSource> {
+                    BrowseRoute(
+                        onBack = { navController.popBackStack() },
+                        onNovelClick = { novelId ->
+                            navController.navigate(NovelDetail(novelId))
+                        },
+                        contentPadding = innerPadding
                     )
                 }
 

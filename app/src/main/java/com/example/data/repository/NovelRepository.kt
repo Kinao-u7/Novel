@@ -302,6 +302,14 @@ class NovelRepository(
         canonicalId
     }
 
+    suspend fun saveBrowseNovels(novels: List<Novel>): List<Novel> = withContext(Dispatchers.IO) {
+        novels.map { novel ->
+            val entity = novel.toEntity().copy(inLibrary = false)
+            val canonicalId = novelDao.upsertSafe(entity)
+            novel.copy(id = canonicalId, inLibrary = false)
+        }
+    }
+
     suspend fun removeFromLibrary(novelId: String) = withContext(Dispatchers.IO) {
         novelDao.setInLibrary(novelId, false)
     }

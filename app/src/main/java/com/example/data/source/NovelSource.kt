@@ -17,7 +17,11 @@ interface NovelSource {
     val description: String
     val isLocal: Boolean
 
+    val latestSupported: Boolean get() = false
+    val filtersSupported: Boolean get() = false
+
     suspend fun getPopularNovels(page: Int = 1): List<Novel>
+    suspend fun getLatestNovels(page: Int = 1): List<Novel> = emptyList()
     suspend fun searchNovels(query: String, page: Int = 1): List<Novel>
     suspend fun getNovelDetails(novelId: String): Novel
     suspend fun getChapterList(novelId: String): List<Chapter>

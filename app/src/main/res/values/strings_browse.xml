@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="browse_back">Back</string>
+    <string name="browse_filter">Filter</string>
+    <string name="browse_mode_latest">Latest</string>
+    <string name="browse_mode_popular">Popular</string>
+    <string name="browse_empty_novels">No novels match these filters.</string>
+    <string name="browse_open_novel">Open %1$s</string>
+    <string name="browse_retry">Retry</string>
+    <string name="browse_filter_title">Filter</string>
+    <string name="browse_filter_genres">Genres</string>
+    <string name="browse_filter_status">Status</string>
+    <string name="browse_filter_sort_by">Sort by</string>
+    <string name="browse_filter_reset">Reset</string>
+    <string name="browse_filter_show_results">Show results</string>
+    <string name="browse_status_any">Any</string>
+    <string name="browse_status_ongoing">Ongoing</string>
+    <string name="browse_status_completed">Completed</string>
+    <string name="browse_sort_default">Default</string>
+    <string name="browse_sort_rating">Rating</string>
+    <string name="browse_sort_title">Title</string>
+    <string name="browse_error_source_unavailable">Source not available</string>
+</resources>
