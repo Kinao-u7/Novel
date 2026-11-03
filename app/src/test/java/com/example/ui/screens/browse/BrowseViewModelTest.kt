@@ -59,11 +59,11 @@ class BrowseViewModelTest {
         override suspend fun getPopularNovels(page: Int): List<Novel> {
             return when (page) {
                 1 -> listOf(
-                    Novel(id = "pop_1", title = "Popular Novel 1", author = "Author One", sourceId = id, sourceName = name),
-                    Novel(id = "pop_2", title = "Popular Novel 2", author = "Author Two", sourceId = id, sourceName = name)
+                    Novel(id = "pop_1", title = "Popular Novel 1", author = "Author One", description = "Description 1", sourceId = id, sourceName = name),
+                    Novel(id = "pop_2", title = "Popular Novel 2", author = "Author Two", description = "Description 2", sourceId = id, sourceName = name)
                 )
                 2 -> listOf(
-                    Novel(id = "pop_3", title = "Popular Novel 3", author = "Author Three", sourceId = id, sourceName = name)
+                    Novel(id = "pop_3", title = "Popular Novel 3", author = "Author Three", description = "Description 3", sourceId = id, sourceName = name)
                 )
                 else -> emptyList()
             }
@@ -72,7 +72,7 @@ class BrowseViewModelTest {
         override suspend fun getLatestNovels(page: Int): List<Novel> {
             return when (page) {
                 1 -> listOf(
-                    Novel(id = "lat_1", title = "Latest Novel 1", author = "Author Lat", sourceId = id, sourceName = name)
+                    Novel(id = "lat_1", title = "Latest Novel 1", author = "Author Lat", description = "Description Lat", sourceId = id, sourceName = name)
                 )
                 else -> emptyList()
             }

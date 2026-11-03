@@ -13,6 +13,7 @@ class BrowseMappingTest {
         id = id,
         title = title,
         author = "Author $id",
+        description = "Description $id",
         sourceId = "test_source",
         sourceName = "Test Source",
         rating = 4.5f,
