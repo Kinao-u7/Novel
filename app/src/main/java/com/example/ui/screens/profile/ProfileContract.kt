@@ -180,21 +180,77 @@ data class ProfileUiState(
 
 @Immutable
 data class ProfileActions(
-    val onOpenCategory: (categoryId: String) -> Unit = {},
-    val onCloseCategory: () -> Unit = {},
-    val onSearchChange: (query: String) -> Unit = {},
-    val onSaveName: (name: String) -> Unit = {},
-    val onAction: (key: String) -> Unit = {},
-    val onPicked: (key: String, uri: Uri) -> Unit = { _, _ -> },
-    val onToggle: (key: String, value: Boolean) -> Unit = { _, _ -> },
-    val onSelect: (key: String, optionId: String) -> Unit = { _, _ -> },
-    val onSlide: (key: String, value: Float) -> Unit = { _, _ -> },
-    val onTimeChosen: (key: String, minutesOfDay: Int) -> Unit = { _, _ -> },
-    val onConfirm: () -> Unit = {},
-    val onDismissConfirm: () -> Unit = {},
-    val onMessageShown: () -> Unit = {}
+    val onOpenCategory: (categoryId: String) -> Unit,
+    val onCloseCategory: () -> Unit,
+    val onSearchChange: (query: String) -> Unit,
+    val onSaveName: (name: String) -> Unit,
+    val onAction: (key: String) -> Unit,
+    val onPicked: (key: String, uri: Uri) -> Unit,
+    val onToggle: (key: String, value: Boolean) -> Unit,
+    val onSelect: (key: String, optionId: String) -> Unit,
+    val onSlide: (key: String, value: Float) -> Unit,
+    val onTimeChosen: (key: String, minutesOfDay: Int) -> Unit,
+    val onConfirm: () -> Unit,
+    val onDismissConfirm: () -> Unit,
+    val onMessageShown: () -> Unit
 ) {
     companion object {
-        val NoOp = ProfileActions()
+        val NoOp = ProfileActions(
+            onOpenCategory = {},
+            onCloseCategory = {},
+            onSearchChange = {},
+            onSaveName = {},
+            onAction = {},
+            onPicked = { _, _ -> },
+            onToggle = { _, _ -> },
+            onSelect = { _, _ -> },
+            onSlide = { _, _ -> },
+            onTimeChosen = { _, _ -> },
+            onConfirm = {},
+            onDismissConfirm = {},
+            onMessageShown = {}
+        )
     }
+}
+
+object SettingKeys {
+    const val OPEN_TAB_PREFIX = "open_tab_"
+    const val THEME = "theme"
+    const val MATCH_SYSTEM = "match_system"
+    const val ACCENT = "accent"
+    const val BAR_SLOT_2 = "bar_slot_2"
+    const val BAR_SLOT_3 = "bar_slot_3"
+    const val READER_PREVIEW = "reader_preview"
+    const val READER_FONT = "reader_font"
+    const val READER_SIZE = "reader_size"
+    const val READER_SPACING = "reader_spacing"
+    const val READER_JUSTIFY = "reader_justify"
+    const val READER_MODE = "reader_mode"
+    const val KEEP_SCREEN_ON = "keep_screen_on"
+    const val VOLUME_KEYS = "volume_keys"
+    const val UPDATE_ON_LAUNCH = "update_on_launch"
+    const val UNREAD_BADGES = "unread_badges"
+    const val DEFAULT_SHELF = "default_shelf"
+    const val AUTO_DOWNLOAD = "auto_download"
+    const val DELETE_AFTER_READING = "delete_after_reading"
+    const val WIFI_ONLY = "wifi_only"
+    const val THROTTLING = "throttling"
+    const val THROTTLE_DELAY = "throttle_delay"
+    const val DOWNLOAD_FOLDER = "download_folder"
+    const val STORAGE = "storage"
+    const val CLEAR_CACHE = "clear_cache"
+    const val QI_REWARDS = "qi_rewards"
+    const val BREAKTHROUGH_FX = "breakthrough_fx"
+    const val HAPTICS = "haptics"
+    const val REDUCE_MOTION = "reduce_motion"
+    const val DAILY_GOAL = "daily_goal"
+    const val REMINDER = "reminder"
+    const val REMINDER_TIME = "reminder_time"
+    const val CREATE_BACKUP = "create_backup"
+    const val RESTORE_BACKUP = "restore_backup"
+    const val AUTO_BACKUP = "auto_backup"
+    const val CHECK_UPDATES = "check_updates"
+    const val LICENCES = "licences"
+    const val PRIVACY = "privacy"
+    const val RESET_ALL = "reset_all"
 }

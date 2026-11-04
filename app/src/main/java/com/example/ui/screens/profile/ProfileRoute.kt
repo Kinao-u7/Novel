@@ -1,72 +1,64 @@
 package com.example.ui.screens.profile
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.example.R
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.model.NavTab
+import com.example.di.LocalAppContainer
+import com.example.di.appViewModelFactory
 
 @Composable
 fun ProfileRoute(
-    hiddenTabs: List<NavTab> = emptyList(),
-    tabDefinitions: Map<NavTab, Pair<Int, ImageVector>> = emptyMap(),
-    onNavigateToTab: (NavTab) -> Unit = {},
+    onNavigateToTab: (NavTab) -> Unit,
+    modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        ProfileScreen(
-            state = ProfileUiState(isLoading = true),
-            actions = ProfileActions.NoOp,
-            contentPadding = contentPadding
-        )
-
-        if (hiddenTabs.isNotEmpty()) {
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = contentPadding.calculateBottomPadding() + 20.dp)
-                    .padding(horizontal = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = stringResource(R.string.profile_hidden_tabs_header),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                for (tab in hiddenTabs) {
-                    val def = tabDefinitions[tab] ?: continue
-                    val tabLabel = stringResource(def.first)
-                    Button(
-                        onClick = { onNavigateToTab(tab) },
-                        modifier = Modifier.padding(vertical = 2.dp)
-                    ) {
-                        Icon(
-                            imageVector = def.second,
-                            contentDescription = null,
-                            modifier = Modifier.padding(end = 8.dp)
-                        )
-                        Text(text = tabLabel)
-                    }
-                }
-            }
+    val container = LocalAppContainer.current
+    val viewModel: ProfileViewModel = viewModel(
+        factory = appViewModelFactory { appContainer, savedStateHandle ->
+            ProfileViewModel(
+                appContext = appContainer.appContext,
+                settingsRepository = appContainer.settingsRepository,
+                novelRepository = appContainer.novelRepository,
+                savedStateHandle = savedStateHandle
+            )
         }
+    )
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val actions = remember(viewModel, onNavigateToTab) {
+        ProfileActions(
+            onOpenCategory = viewModel::onOpenCategory,
+            onCloseCategory = viewModel::onCloseCategory,
+            onSearchChange = viewModel::onSearchChange,
+            onSaveName = viewModel::onSaveName,
+            onAction = { key ->
+                if (key.startsWith(SettingKeys.OPEN_TAB_PREFIX)) {
+                    val tabName = key.removePrefix(SettingKeys.OPEN_TAB_PREFIX)
+                    NavTab.entries.firstOrNull { it.name == tabName }?.let(onNavigateToTab)
+                } else {
+                    viewModel.onAction(key)
+                }
+            },
+            onPicked = viewModel::onPicked,
+            onToggle = viewModel::onToggle,
+            onSelect = viewModel::onSelect,
+            onSlide = viewModel::onSlide,
+            onTimeChosen = viewModel::onTimeChosen,
+            onConfirm = viewModel::onConfirm,
+            onDismissConfirm = viewModel::onDismissConfirm,
+            onMessageShown = viewModel::onMessageShown
+        )
     }
+
+    ProfileScreen(
+        state = state,
+        actions = actions,
+        modifier = modifier,
+        contentPadding = contentPadding
+    )
 }

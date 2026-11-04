@@ -230,10 +230,7 @@ fun AppNavHost(
                 }
 
                 composable<Profile> {
-                    val hiddenTabs = NavTab.entries.filter { it !in bottomBarTabs }
                     ProfileRoute(
-                        hiddenTabs = hiddenTabs,
-                        tabDefinitions = NAV_TAB_DEFINITIONS.mapValues { it.value.labelRes to it.value.icon },
                         onNavigateToTab = { navigateToTab(it) },
                         contentPadding = innerPadding
                     )

@@ -901,6 +901,12 @@ class NovelRepository(
 
     suspend fun clearCache(): Long = clearChapterCache()
 
+    suspend fun getCoversSizeBytes(): Long = withContext(Dispatchers.IO) {
+        val coversDir = storageResolver.getCoversDir()
+        if (!coversDir.exists() || !coversDir.isDirectory) return@withContext 0L
+        coversDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+    }
+
     fun resetAppPreferences() = settingsRepository.resetAllSettingsSync()
 
     // --- BACKUP & RESTORE ---
