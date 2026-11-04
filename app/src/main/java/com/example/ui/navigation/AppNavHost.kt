@@ -54,6 +54,7 @@ import com.example.ui.screens.discover.DiscoverRoute
 import com.example.ui.screens.library.LibraryRoute
 import com.example.ui.screens.detail.DetailRoute
 import com.example.ui.screens.browse.BrowseRoute
+import com.example.ui.screens.profile.ProfileRoute
 import com.example.ui.theme.AppTheme
 
 private data class NavTabDef(
@@ -230,58 +231,12 @@ fun AppNavHost(
 
                 composable<Profile> {
                     val hiddenTabs = NavTab.entries.filter { it !in bottomBarTabs }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .statusBarsPadding()
-                            .padding(top = 18.dp, bottom = innerPadding.calculateBottomPadding()),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center,
-                            modifier = Modifier.padding(16.dp)
-                        ) {
-                            Text(
-                                text = stringResource(R.string.screen_profile_title),
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = stringResource(R.string.placeholder_description),
-                                fontSize = 16.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
-
-                            if (hiddenTabs.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(24.dp))
-                                Text(
-                                    text = stringResource(R.string.profile_hidden_tabs_header),
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                for (tab in hiddenTabs) {
-                                    val def = NAV_TAB_DEFINITIONS[tab] ?: continue
-                                    val tabLabel = stringResource(def.labelRes)
-                                    Button(
-                                        onClick = { navigateToTab(tab) },
-                                        modifier = Modifier.padding(vertical = 4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = def.icon,
-                                            contentDescription = null,
-                                            modifier = Modifier.padding(end = 8.dp)
-                                        )
-                                        Text(text = tabLabel)
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    ProfileRoute(
+                        hiddenTabs = hiddenTabs,
+                        tabDefinitions = NAV_TAB_DEFINITIONS.mapValues { it.value.labelRes to it.value.icon },
+                        onNavigateToTab = { navigateToTab(it) },
+                        contentPadding = innerPadding
+                    )
                 }
 
                 composable<NovelDetail> {

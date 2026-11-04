@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="profile_eyebrow">Preferences</string>
+    <string name="profile_title">Settings</string>
+    <string name="profile_search_close">Close search</string>
+    <string name="profile_search_hint">Search settings</string>
+    <string name="profile_search_empty">No settings match “%1$s”.</string>
+    <string name="profile_back">Back</string>
+    <string name="profile_edit_profile">Edit profile</string>
+    <string name="profile_group_general">General</string>
+    <string name="profile_group_reading_life">Reading life</string>
+    <string name="profile_group_data_info">Data &amp; info</string>
+    <string name="profile_app_name">XIAN READER</string>
+    <string name="profile_version">Version %1$s</string>
+    <string name="profile_cancel">Cancel</string>
+    <string name="profile_save">Save</string>
+    <string name="profile_name_dialog_title">Your name</string>
+    <string name="profile_time_set">Set</string>
+    <string name="profile_storage_chapters">Chapters</string>
+    <string name="profile_storage_covers">Covers</string>
+    <string name="profile_storage_cache">Cache</string>
+</resources>
