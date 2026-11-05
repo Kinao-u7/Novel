@@ -126,7 +126,9 @@ internal fun SettingRowItem(
                         thumbColor = c.ac, activeTrackColor = c.ac, inactiveTrackColor = c.ln,
                         activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent
                     ),
-                    modifier = Modifier.semantics { stateDescription = row.valueLabel }
+                    modifier = Modifier.semantics {
+                        row.valueLabel?.let { stateDescription = it }
+                    }
                 )
             }
 
@@ -332,14 +334,4 @@ internal fun formatTime(minutesOfDay: Int, is24: Boolean): String {
     if (is24) return String.format(Locale.getDefault(), "%02d:%02d", h, m)
     val h12 = if (h % 12 == 0) 12 else h % 12
     return String.format(Locale.getDefault(), "%d:%02d %s", h12, m, if (h < 12) "AM" else "PM")
-}
-
-internal fun formatBytes(b: Long): String {
-    if (b <= 0) return "0 MB"
-    val mb = b / 1_048_576.0
-    return when {
-        mb < 1 -> "${(b / 1024.0).roundToInt()} KB"
-        mb >= 1024 -> String.format(Locale.getDefault(), "%.1f GB", mb / 1024)
-        else -> "${mb.roundToInt()} MB"
-    }
 }

@@ -20,7 +20,7 @@ data class StorageSizes(
     val cacheBytes: Long = 0L
 )
 
-fun formatBytes(b: Long): String {
+internal fun formatBytes(b: Long): String {
     if (b <= 0) return "0 MB"
     val mb = b / 1_048_576.0
     return when {

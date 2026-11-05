@@ -80,16 +80,29 @@ class ProfileViewModel(
             )
         }
 
-    val uiState: StateFlow<ProfileUiState> = combine(
-        settingsRepository.settings,
-        _storageSizes,
+    private data class ProfileLocal(
+        val query: String,
+        val openId: String?,
+        val confirm: ConfirmRequest?,
+        val message: String?
+    )
+
+    private val localFlow = combine(
         searchQuery,
         openCategoryId,
         _confirm,
         _message
-    ) { settings, storage, query, openId, confirm, message ->
+    ) { query, openId, confirm, message ->
+        ProfileLocal(query, openId, confirm, message)
+    }
+
+    val uiState: StateFlow<ProfileUiState> = combine(
+        settingsRepository.settings,
+        _storageSizes,
+        localFlow
+    ) { settings, storage, local ->
         val hiddenTabs = NavTab.entries.filter { it !in settings.bottomBar.tabs }
-        val categories = buildCategories(settings, storage, query, hiddenTabs, text)
+        val categories = buildCategories(settings, storage, local.query, hiddenTabs, text)
         val header = ProfileHeader(
             displayName = settings.profile.displayName,
             realmLabel = "",
@@ -97,13 +110,13 @@ class ProfileViewModel(
         )
         ProfileUiState(
             isLoading = false,
-            searchQuery = query,
-            openCategoryId = openId,
+            searchQuery = local.query,
+            openCategoryId = local.openId,
             header = header,
             categories = categories,
             appVersion = appVersion,
-            message = message,
-            confirm = confirm
+            message = local.message,
+            confirm = local.confirm
         )
     }
         .flowOn(Dispatchers.Default)
