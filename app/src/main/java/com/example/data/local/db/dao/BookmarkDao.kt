@@ -23,6 +23,12 @@ interface BookmarkDao {
     @Query("SELECT * FROM bookmarks WHERE novel_id = :novelId AND chapter_id = :chapterId ORDER BY created_at DESC")
     suspend fun getBookmarksForChapter(novelId: String, chapterId: String): List<BookmarkEntity>
 
+    @Query("SELECT * FROM bookmarks")
+    suspend fun getAllBookmarks(): List<BookmarkEntity>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(bookmarks: List<BookmarkEntity>): List<Long>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(bookmark: BookmarkEntity): Long
 

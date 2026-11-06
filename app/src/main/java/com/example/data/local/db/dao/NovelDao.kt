@@ -27,6 +27,12 @@ interface NovelDao {
     @Query("SELECT * FROM novels WHERE in_library = 1 ORDER BY last_read_timestamp DESC, created_at DESC")
     fun getLibraryNovels(): Flow<List<NovelEntity>>
 
+    @Query("SELECT * FROM novels WHERE in_library = 1")
+    suspend fun getAllLibraryNovels(): List<NovelEntity>
+
+    @Query("DELETE FROM novels")
+    suspend fun deleteAll(): Int
+
     @Query("""
         SELECT n.*,
           (SELECT COUNT(*) FROM chapters c WHERE c.novel_id = n.id AND c.storage_tier IN ('DOWNLOADED', 'EPUB')) AS downloaded_count,

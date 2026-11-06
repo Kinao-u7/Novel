@@ -32,4 +32,7 @@ interface ReadingSessionDao {
 
     @Query("SELECT COUNT(*) FROM reading_sessions")
     suspend fun getSessionCount(): Int
+
+    @Query("DELETE FROM reading_sessions")
+    suspend fun deleteAll(): Int
 }

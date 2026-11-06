@@ -282,15 +282,6 @@ data class ProfileSettings(
     val displayName: String = "Reader"
 )
 
-data class BackupCategories(
-    val library: Boolean = true,
-    val sources: Boolean = true,
-    val history: Boolean = true,
-    val categories: Boolean = true,
-    val readStatus: Boolean = true,
-    val appSettings: Boolean = true
-)
-
 @Serializable
 data class NotificationSettings(
     val notifyOnDownload: Boolean = true,

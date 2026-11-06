@@ -36,6 +36,9 @@ interface CustomSourceDao {
     @Delete
     suspend fun delete(source: CustomSourceEntity): Int
 
+    @Query("DELETE FROM custom_sources")
+    suspend fun deleteAll(): Int
+
     @Query("DELETE FROM custom_sources WHERE id = :id")
     suspend fun deleteById(id: String): Int
 }

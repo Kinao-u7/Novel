@@ -118,9 +118,22 @@ class NovelRepository(
         notificationDao = notificationDao,
         downloadCoordinator = downloadCoordinator
     )
-    internal val storageManager = StorageManager(appContext)
+    val backupManager: com.example.data.backup.BackupManager by lazy {
+        com.example.data.backup.BackupManager(
+            context = appContext,
+            database = database,
+            novelDao = novelDao,
+            chapterDao = chapterDao,
+            bookmarkDao = bookmarkDao,
+            termReplacementDao = termReplacementDao,
+            customSourceDao = customSourceDao,
+            readingSessionDao = readingSessionDao,
+            settingsRepository = settingsRepository,
+            storageResolver = storageResolver,
+            chapterStorage = chapterStorage
+        )
+    }
     internal val preferencesManager = PreferencesManager(appContext, settingsRepository)
-    internal val backupManager = BackupManager(this, preferencesManager)
 
     private val repoExceptionHandler = CoroutineExceptionHandler { _, throwable ->
         if (throwable !is CancellationException) {
@@ -908,17 +921,6 @@ class NovelRepository(
     }
 
     fun resetAppPreferences() = settingsRepository.resetAllSettingsSync()
-
-    // --- BACKUP & RESTORE ---
-
-    suspend fun createBackupJson(categories: BackupCategories): String = backupManager.createBackupJson(categories)
-
-    suspend fun restoreBackupFromJson(jsonString: String): Boolean = backupManager.restoreBackupFromJson(jsonString)
-
-    fun saveBackupToCustomStorage(jsonString: String, fileName: String): String? {
-        val customUriStr = settingsRepository.settings.value.downloads.customDownloadLocationUri
-        return storageManager.saveBackupToCustomStorage(jsonString, fileName, customUriStr)
-    }
 
     // --- CHANGELOG / WHAT'S NEW ---
 

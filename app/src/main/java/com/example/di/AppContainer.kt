@@ -22,4 +22,8 @@ class AppContainer(context: Context) {
 
     val settingsRepository: SettingsRepository
         get() = novelRepository.settingsRepository
+
+    val backupManager: com.example.data.backup.BackupManager by lazy {
+        novelRepository.backupManager
+    }
 }
