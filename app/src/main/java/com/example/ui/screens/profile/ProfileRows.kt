@@ -11,6 +11,8 @@ import com.example.data.model.NavTab
 import com.example.data.model.ReaderTextAlign
 import com.example.data.model.ReadingMode
 import com.example.data.repository.SettingsRepository
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -99,6 +101,24 @@ interface ProfileText {
     val createBackupTitle: String
     val restoreBackupTitle: String
     val autoBackupTitle: String
+    fun lastBackupSubtitle(lastBackupAtMillis: Long): String
+    val restoreBackupSubtitle: String
+    val backupCatLibrary: String
+    val backupCatLibrarySub: String
+    val backupCatBookmarks: String
+    val backupCatBookmarksSub: String
+    val backupCatCovers: String
+    val backupCatCoversSub: String
+    val backupCatEpubs: String
+    val backupCatEpubsSub: String
+    val backupCatStats: String
+    val backupCatStatsSub: String
+    val backupCatTerms: String
+    val backupCatTermsSub: String
+    val backupCatSources: String
+    val backupCatSourcesSub: String
+    val backupCatSettings: String
+    val backupCatSettingsSub: String
 
     val checkUpdatesTitle: String
     val licencesTitle: String
@@ -220,6 +240,28 @@ open class DefaultProfileText : ProfileText {
     override val createBackupTitle: String = "Create backup"
     override val restoreBackupTitle: String = "Restore backup"
     override val autoBackupTitle: String = "Auto backup"
+    override fun lastBackupSubtitle(lastBackupAtMillis: Long): String {
+        if (lastBackupAtMillis <= 0L) return "Never"
+        val fmt = SimpleDateFormat("MMM d, yyyy, HH:mm", Locale.US)
+        return "Last backup: ${fmt.format(Date(lastBackupAtMillis))}"
+    }
+    override val restoreBackupSubtitle: String = "Choose a backup file"
+    override val backupCatLibrary: String = "Library"
+    override val backupCatLibrarySub: String = "Novels, chapters, and read history"
+    override val backupCatBookmarks: String = "Bookmarks"
+    override val backupCatBookmarksSub: String = "Saved passages and notes"
+    override val backupCatCovers: String = "Covers"
+    override val backupCatCoversSub: String = "Downloaded novel cover art"
+    override val backupCatEpubs: String = "EPUB files"
+    override val backupCatEpubsSub: String = "Original files, can be large"
+    override val backupCatStats: String = "Reading stats"
+    override val backupCatStatsSub: String = "Reading sessions and stats"
+    override val backupCatTerms: String = "Term replacements"
+    override val backupCatTermsSub: String = "Name and term dictionary rules"
+    override val backupCatSources: String = "Custom sources"
+    override val backupCatSourcesSub: String = "Added third-party sources"
+    override val backupCatSettings: String = "Settings"
+    override val backupCatSettingsSub: String = "Reader preferences, theme, and downloads"
 
     override val checkUpdatesTitle: String = "Check for updates"
     override val licencesTitle: String = "Licences"
@@ -310,6 +352,29 @@ class AndroidProfileText(private val context: Context) : DefaultProfileText() {
     override val createBackupTitle: String get() = res(R.string.profile_row_create_backup)
     override val restoreBackupTitle: String get() = res(R.string.profile_row_restore_backup)
     override val autoBackupTitle: String get() = res(R.string.profile_row_auto_backup)
+    override val lastBackupNever: String get() = res(R.string.profile_last_backup_never)
+    override fun lastBackupSubtitle(lastBackupAtMillis: Long): String {
+        if (lastBackupAtMillis <= 0L) return res(R.string.profile_last_backup_never)
+        val fmt = SimpleDateFormat("MMM d, yyyy, HH:mm", Locale.getDefault())
+        return res(R.string.profile_last_backup_fmt, fmt.format(Date(lastBackupAtMillis)))
+    }
+    override val restoreBackupSubtitle: String get() = res(R.string.profile_restore_backup_sub)
+    override val backupCatLibrary: String get() = res(R.string.profile_backup_cat_library)
+    override val backupCatLibrarySub: String get() = res(R.string.profile_backup_cat_library_sub)
+    override val backupCatBookmarks: String get() = res(R.string.profile_backup_cat_bookmarks)
+    override val backupCatBookmarksSub: String get() = res(R.string.profile_backup_cat_bookmarks_sub)
+    override val backupCatCovers: String get() = res(R.string.profile_backup_cat_covers)
+    override val backupCatCoversSub: String get() = res(R.string.profile_backup_cat_covers_sub)
+    override val backupCatEpubs: String get() = res(R.string.profile_backup_cat_epubs)
+    override val backupCatEpubsSub: String get() = res(R.string.profile_backup_cat_epubs_sub)
+    override val backupCatStats: String get() = res(R.string.profile_backup_cat_stats)
+    override val backupCatStatsSub: String get() = res(R.string.profile_backup_cat_stats_sub)
+    override val backupCatTerms: String get() = res(R.string.profile_backup_cat_terms)
+    override val backupCatTermsSub: String get() = res(R.string.profile_backup_cat_terms_sub)
+    override val backupCatSources: String get() = res(R.string.profile_backup_cat_sources)
+    override val backupCatSourcesSub: String get() = res(R.string.profile_backup_cat_sources_sub)
+    override val backupCatSettings: String get() = res(R.string.profile_backup_cat_settings)
+    override val backupCatSettingsSub: String get() = res(R.string.profile_backup_cat_settings_sub)
 
     override val checkUpdatesTitle: String get() = res(R.string.profile_row_check_updates)
     override val licencesTitle: String get() = res(R.string.profile_row_licences)
@@ -839,13 +904,13 @@ fun buildCategories(
             ActionRow(
                 key = SettingKeys.CREATE_BACKUP,
                 title = text.createBackupTitle,
-                subtitle = if (!ProfileFeatures.BACKUP_RESTORE) text.comingSoon else null,
+                subtitle = if (!ProfileFeatures.BACKUP_RESTORE) text.comingSoon else text.lastBackupSubtitle(settings.backup.lastBackupAtMillis),
                 enabled = ProfileFeatures.BACKUP_RESTORE
             ),
             ActionRow(
                 key = SettingKeys.RESTORE_BACKUP,
                 title = text.restoreBackupTitle,
-                subtitle = if (!ProfileFeatures.BACKUP_RESTORE) text.comingSoon else null,
+                subtitle = if (!ProfileFeatures.BACKUP_RESTORE) text.comingSoon else text.restoreBackupSubtitle,
                 picker = PickerKind.BACKUP_FILE,
                 enabled = ProfileFeatures.BACKUP_RESTORE
             ),

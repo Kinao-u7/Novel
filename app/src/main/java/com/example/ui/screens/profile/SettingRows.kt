@@ -240,7 +240,7 @@ private fun StackRow(title: String, subtitle: String?, valueLabel: String? = nul
 }
 
 @Composable
-private fun Pill(label: String, selected: Boolean, enabled: Boolean, modifier: Modifier, shape: Shape, onClick: () -> Unit) {
+internal fun Pill(label: String, selected: Boolean, enabled: Boolean, modifier: Modifier, shape: Shape, onClick: () -> Unit) {
     val c = AppTheme.colors
     Box(
         modifier.heightIn(min = 40.dp).clip(shape)

@@ -51,7 +51,14 @@ fun ProfileRoute(
             onTimeChosen = viewModel::onTimeChosen,
             onConfirm = viewModel::onConfirm,
             onDismissConfirm = viewModel::onDismissConfirm,
-            onMessageShown = viewModel::onMessageShown
+            onMessageShown = viewModel::onMessageShown,
+            onBackupOptionToggle = viewModel::onBackupOptionToggle,
+            onBackupDismiss = viewModel::onBackupDismiss,
+            onBackupStart = viewModel::onBackupStart,
+            onRestoreOptionToggle = viewModel::onRestoreOptionToggle,
+            onRestoreModeChange = viewModel::onRestoreModeChange,
+            onRestoreDismiss = viewModel::onRestoreDismiss,
+            onRestoreStart = viewModel::onRestoreStart
         )
     }
 

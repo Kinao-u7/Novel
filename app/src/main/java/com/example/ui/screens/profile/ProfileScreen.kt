@@ -36,12 +36,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
+import com.example.data.backup.RestoreMode
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -135,6 +139,8 @@ fun ProfileScreen(
     }
 
     state.confirm?.let { ConfirmSheet(it, actions) }
+    state.backupSheet?.let { BackupSheet(it, actions) }
+    state.restoreSheet?.let { RestoreSheet(it, actions) }
     if (editName) NameDialog(state.header.displayName, { editName = false }) { actions.onSaveName(it); editName = false }
 }
 
@@ -372,6 +378,293 @@ private fun ConfirmSheet(req: ConfirmRequest, actions: ProfileActions) {
                 )
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BackupSheet(sheet: BackupSheetState, actions: ProfileActions) {
+    val c = AppTheme.colors
+    val createDocLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri: Uri? ->
+        if (uri != null) actions.onBackupStart(uri)
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = { if (!sheet.isWorking) actions.onBackupDismiss() },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = c.cd,
+        shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+        dragHandle = {
+            Box(Modifier.padding(top = 12.dp, bottom = 4.dp).size(40.dp, 4.dp).clip(RoundedCornerShape(4.dp)).background(c.ln))
+        }
+    ) {
+        Column(
+            Modifier
+                .padding(start = 22.dp, end = 22.dp, bottom = 24.dp)
+                .navigationBarsPadding()
+        ) {
+            Text(
+                stringResource(R.string.profile_backup_sheet_title),
+                color = c.tx,
+                fontFamily = AppTheme.fonts.heading,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 19.sp
+            )
+            Text(
+                stringResource(R.string.profile_backup_sheet_help),
+                color = c.mu,
+                fontFamily = AppTheme.fonts.ui,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(top = 4.dp, bottom = 14.dp)
+            )
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.padding(bottom = 16.dp)
+            ) {
+                sheet.options.forEach { opt ->
+                    BackupOptionRow(
+                        option = opt,
+                        isWorking = sheet.isWorking,
+                        onToggle = { actions.onBackupOptionToggle(opt.id) }
+                    )
+                }
+            }
+
+            if (sheet.isWorking) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 14.dp)
+                ) {
+                    CircularProgressIndicator(
+                        color = c.ac,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        sheet.progress ?: stringResource(R.string.profile_backup_sheet_title),
+                        color = c.ac,
+                        fontFamily = AppTheme.fonts.ui,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SheetButton(
+                    label = stringResource(R.string.profile_cancel),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    fg = c.tx,
+                    bg = null,
+                    onClick = { if (!sheet.isWorking) actions.onBackupDismiss() }
+                )
+                SheetButton(
+                    label = stringResource(R.string.profile_backup_choose_location),
+                    modifier = Modifier.weight(2f).heightIn(min = 48.dp),
+                    fg = c.on,
+                    bg = if (sheet.isWorking) c.ln else c.ac,
+                    onClick = {
+                        if (!sheet.isWorking) {
+                            createDocLauncher.launch(sheet.suggestedFileName)
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RestoreSheet(sheet: RestoreSheetState, actions: ProfileActions) {
+    val c = AppTheme.colors
+    val isDanger = sheet.mode == RestoreMode.REPLACE
+    val errorColor = MaterialTheme.colorScheme.error
+
+    ModalBottomSheet(
+        onDismissRequest = { if (!sheet.isWorking) actions.onRestoreDismiss() },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = c.cd,
+        shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+        dragHandle = {
+            Box(Modifier.padding(top = 12.dp, bottom = 4.dp).size(40.dp, 4.dp).clip(RoundedCornerShape(4.dp)).background(c.ln))
+        }
+    ) {
+        Column(
+            Modifier
+                .padding(start = 22.dp, end = 22.dp, bottom = 24.dp)
+                .navigationBarsPadding()
+        ) {
+            Text(
+                sheet.fileName,
+                color = c.tx,
+                fontFamily = AppTheme.fonts.heading,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 19.sp
+            )
+            Text(
+                "${sheet.createdAtLabel} · app ${sheet.appVersion}",
+                color = c.mu,
+                fontFamily = AppTheme.fonts.ui,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+            Text(
+                sheet.summary,
+                color = c.ac,
+                fontFamily = AppTheme.fonts.ui,
+                fontWeight = FontWeight.Medium,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
+            )
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.padding(bottom = 12.dp)
+            ) {
+                sheet.options.forEach { opt ->
+                    BackupOptionRow(
+                        option = opt,
+                        isWorking = sheet.isWorking,
+                        onToggle = { actions.onRestoreOptionToggle(opt.id) }
+                    )
+                }
+            }
+
+            Row(
+                Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Pill(
+                    label = stringResource(R.string.profile_restore_mode_merge),
+                    selected = sheet.mode == RestoreMode.MERGE,
+                    enabled = !sheet.isWorking,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    onClick = { actions.onRestoreModeChange(RestoreMode.MERGE) }
+                )
+                Pill(
+                    label = stringResource(R.string.profile_restore_mode_replace),
+                    selected = sheet.mode == RestoreMode.REPLACE,
+                    enabled = !sheet.isWorking,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    onClick = { actions.onRestoreModeChange(RestoreMode.REPLACE) }
+                )
+            }
+
+            if (isDanger) {
+                Text(
+                    stringResource(R.string.profile_restore_replace_warning),
+                    color = errorColor,
+                    fontFamily = AppTheme.fonts.ui,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(bottom = 10.dp)
+                )
+            }
+
+            if (sheet.error != null) {
+                Text(
+                    sheet.error,
+                    color = errorColor,
+                    fontFamily = AppTheme.fonts.ui,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(bottom = 10.dp)
+                )
+            }
+
+            if (sheet.isWorking) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 14.dp)
+                ) {
+                    CircularProgressIndicator(
+                        color = c.ac,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        sheet.progress ?: stringResource(R.string.profile_restore_btn),
+                        color = c.ac,
+                        fontFamily = AppTheme.fonts.ui,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SheetButton(
+                    label = stringResource(R.string.profile_cancel),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    fg = c.tx,
+                    bg = null,
+                    onClick = { if (!sheet.isWorking) actions.onRestoreDismiss() }
+                )
+                SheetButton(
+                    label = stringResource(R.string.profile_restore_btn),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    fg = if (isDanger) Color.White else c.on,
+                    bg = if (isDanger) errorColor else (if (sheet.isWorking) c.ln else c.ac),
+                    onClick = { if (!sheet.isWorking) actions.onRestoreStart() }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BackupOptionRow(
+    option: BackupOption,
+    isWorking: Boolean,
+    onToggle: () -> Unit
+) {
+    val c = AppTheme.colors
+    val shape = RoundedCornerShape(10.dp)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clip(shape)
+            .alpha(if (option.enabled) 1f else 0.4f)
+            .clickable(enabled = option.enabled && !isWorking, onClick = onToggle)
+            .padding(horizontal = 4.dp, vertical = 6.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                option.label,
+                color = if (option.enabled) c.tx else c.mu,
+                fontFamily = AppTheme.fonts.ui,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp
+            )
+            if (option.description != null) {
+                Text(
+                    option.description,
+                    color = c.mu,
+                    fontFamily = AppTheme.fonts.ui,
+                    fontSize = 12.sp
+                )
+            }
+        }
+        Checkbox(
+            checked = option.checked,
+            onCheckedChange = { onToggle() },
+            enabled = option.enabled && !isWorking,
+            colors = CheckboxDefaults.colors(
+                checkedColor = c.ac,
+                checkmarkColor = c.on,
+                uncheckedColor = c.ln
+            )
+        )
     }
 }
 

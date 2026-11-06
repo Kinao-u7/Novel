@@ -159,6 +159,36 @@ data class ProfileHeader(
 )
 
 @Immutable
+data class BackupOption(
+    val id: String,
+    val label: String,
+    val description: String?,
+    val checked: Boolean,
+    val enabled: Boolean = true
+)
+
+@Immutable
+data class BackupSheetState(
+    val options: List<BackupOption>,
+    val suggestedFileName: String,
+    val isWorking: Boolean = false,
+    val progress: String? = null
+)
+
+@Immutable
+data class RestoreSheetState(
+    val fileName: String,
+    val createdAtLabel: String,
+    val appVersion: String,
+    val summary: String,
+    val options: List<BackupOption>,
+    val mode: com.example.data.backup.RestoreMode,
+    val isWorking: Boolean = false,
+    val progress: String? = null,
+    val error: String? = null
+)
+
+@Immutable
 data class ConfirmRequest(
     val title: String,
     val message: String,
@@ -175,7 +205,9 @@ data class ProfileUiState(
     val categories: List<SettingsCategory> = emptyList(),
     val appVersion: String = "",
     val message: String? = null,
-    val confirm: ConfirmRequest? = null
+    val confirm: ConfirmRequest? = null,
+    val backupSheet: BackupSheetState? = null,
+    val restoreSheet: RestoreSheetState? = null
 )
 
 @Immutable
@@ -192,7 +224,14 @@ data class ProfileActions(
     val onTimeChosen: (key: String, minutesOfDay: Int) -> Unit,
     val onConfirm: () -> Unit,
     val onDismissConfirm: () -> Unit,
-    val onMessageShown: () -> Unit
+    val onMessageShown: () -> Unit,
+    val onBackupOptionToggle: (id: String) -> Unit,
+    val onBackupDismiss: () -> Unit,
+    val onBackupStart: (uri: Uri) -> Unit,
+    val onRestoreOptionToggle: (id: String) -> Unit,
+    val onRestoreModeChange: (mode: com.example.data.backup.RestoreMode) -> Unit,
+    val onRestoreDismiss: () -> Unit,
+    val onRestoreStart: () -> Unit
 ) {
     companion object {
         val NoOp = ProfileActions(
@@ -208,7 +247,14 @@ data class ProfileActions(
             onTimeChosen = { _, _ -> },
             onConfirm = {},
             onDismissConfirm = {},
-            onMessageShown = {}
+            onMessageShown = {},
+            onBackupOptionToggle = {},
+            onBackupDismiss = {},
+            onBackupStart = {},
+            onRestoreOptionToggle = {},
+            onRestoreModeChange = {},
+            onRestoreDismiss = {},
+            onRestoreStart = {}
         )
     }
 }

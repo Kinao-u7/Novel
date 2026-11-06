@@ -9,7 +9,7 @@ object ProfileFeatures {
     const val DELETE_AFTER_READING: Boolean = false
     const val CULTIVATION: Boolean = false
     const val DAILY_REMINDER: Boolean = false
-    const val BACKUP_RESTORE: Boolean = false
+    const val BACKUP_RESTORE: Boolean = true
     const val AUTO_BACKUP: Boolean = false
     const val CHECK_UPDATES: Boolean = false
     const val LEGAL_PAGES: Boolean = false

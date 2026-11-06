@@ -207,8 +207,6 @@ class ProfileRowsTest {
             SettingKeys.REMINDER,
             SettingKeys.REMINDER_TIME,
             SettingKeys.DELETE_AFTER_READING,
-            SettingKeys.CREATE_BACKUP,
-            SettingKeys.RESTORE_BACKUP,
             SettingKeys.AUTO_BACKUP,
             SettingKeys.CHECK_UPDATES,
             SettingKeys.LICENCES,
@@ -221,6 +219,17 @@ class ProfileRowsTest {
             assertFalse("Row with key $k must be disabled when feature flag is false", row!!.enabled)
             assertEquals("Coming soon", row.subtitle)
         }
+
+        // CREATE_BACKUP and RESTORE_BACKUP are enabled when BACKUP_RESTORE is true
+        val createRow = allRows.firstOrNull { it.key == SettingKeys.CREATE_BACKUP }
+        assertNotNull(createRow)
+        assertTrue(createRow!!.enabled)
+        assertEquals("Never", createRow.subtitle)
+
+        val restoreRow = allRows.firstOrNull { it.key == SettingKeys.RESTORE_BACKUP }
+        assertNotNull(restoreRow)
+        assertTrue(restoreRow!!.enabled)
+        assertEquals(text.restoreBackupSubtitle, restoreRow.subtitle)
     }
 
     @Test
