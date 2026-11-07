@@ -228,8 +228,14 @@ class ReaderViewModel(
     }
 
     fun onDisplayChange(display: ReaderDisplay) {
-        settingsRepository.updateReaderSettings { current ->
-            ReaderMapping.mapToReaderSettings(current, display)
+        viewModelScope.launch {
+            try {
+                settingsRepository.updateReaderSettings { current ->
+                    ReaderMapping.mapToReaderSettings(current, display)
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
         }
     }
 
