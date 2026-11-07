@@ -101,6 +101,7 @@ interface ProfileText {
     val createBackupTitle: String
     val restoreBackupTitle: String
     val autoBackupTitle: String
+    val lastBackupNever: String
     fun lastBackupSubtitle(lastBackupAtMillis: Long): String
     val restoreBackupSubtitle: String
     val backupCatLibrary: String
@@ -240,8 +241,9 @@ open class DefaultProfileText : ProfileText {
     override val createBackupTitle: String = "Create backup"
     override val restoreBackupTitle: String = "Restore backup"
     override val autoBackupTitle: String = "Auto backup"
+    override val lastBackupNever: String = "Never"
     override fun lastBackupSubtitle(lastBackupAtMillis: Long): String {
-        if (lastBackupAtMillis <= 0L) return "Never"
+        if (lastBackupAtMillis <= 0L) return lastBackupNever
         val fmt = SimpleDateFormat("MMM d, yyyy, HH:mm", Locale.US)
         return "Last backup: ${fmt.format(Date(lastBackupAtMillis))}"
     }
@@ -354,7 +356,7 @@ class AndroidProfileText(private val context: Context) : DefaultProfileText() {
     override val autoBackupTitle: String get() = res(R.string.profile_row_auto_backup)
     override val lastBackupNever: String get() = res(R.string.profile_last_backup_never)
     override fun lastBackupSubtitle(lastBackupAtMillis: Long): String {
-        if (lastBackupAtMillis <= 0L) return res(R.string.profile_last_backup_never)
+        if (lastBackupAtMillis <= 0L) return lastBackupNever
         val fmt = SimpleDateFormat("MMM d, yyyy, HH:mm", Locale.getDefault())
         return res(R.string.profile_last_backup_fmt, fmt.format(Date(lastBackupAtMillis)))
     }

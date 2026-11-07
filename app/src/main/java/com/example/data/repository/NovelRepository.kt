@@ -127,7 +127,7 @@ class NovelRepository(
             bookmarkDao = bookmarkDao,
             termReplacementDao = termReplacementDao,
             customSourceDao = customSourceDao,
-            readingSessionDao = readingSessionDao,
+            readingSessionDao = database.readingSessionDao(),
             settingsRepository = settingsRepository,
             storageResolver = storageResolver,
             chapterStorage = chapterStorage
