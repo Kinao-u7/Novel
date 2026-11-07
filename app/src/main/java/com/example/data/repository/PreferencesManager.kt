@@ -56,18 +56,6 @@ class PreferencesManager(
         settingsRepository.updateReaderSettingsSync(settings)
     }
 
-    // --- CHAPTER READING POSITION ---
-
-    fun getChapterReadingPosition(novelId: String, chapterId: String): Int {
-        val safeChapterId = chapterId.replace("[^a-zA-Z0-9_.-]".toRegex(), "_")
-        return prefs.getInt("pos_${novelId}_$safeChapterId", 0)
-    }
-
-    fun saveChapterReadingPosition(novelId: String, chapterId: String, position: Int) {
-        val safeChapterId = chapterId.replace("[^a-zA-Z0-9_.-]".toRegex(), "_")
-        prefs.edit().putInt("pos_${novelId}_$safeChapterId", position).apply()
-    }
-
     // --- THEME SETTINGS ---
 
     fun updateThemeSettings(settings: ThemeSettings) {

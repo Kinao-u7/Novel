@@ -55,6 +55,7 @@ import com.example.ui.screens.library.LibraryRoute
 import com.example.ui.screens.detail.DetailRoute
 import com.example.ui.screens.browse.BrowseRoute
 import com.example.ui.screens.profile.ProfileRoute
+import com.example.ui.screens.reader.ReaderRoute
 import com.example.ui.theme.AppTheme
 
 private data class NavTabDef(
@@ -254,11 +255,11 @@ fun AppNavHost(
                     )
                 }
 
-                composable<Reader> { backStackEntry ->
-                    val route = backStackEntry.toRoute<Reader>()
-                    PlaceholderScreen(
-                        title = stringResource(R.string.screen_reader_title, route.novelId, route.chapterIndex),
-                        subtitle = stringResource(R.string.placeholder_description)
+                composable<Reader> {
+                    ReaderRoute(
+                        onBack = {
+                            navController.popBackStack()
+                        }
                     )
                 }
 

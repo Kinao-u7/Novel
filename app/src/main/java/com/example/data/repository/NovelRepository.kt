@@ -405,9 +405,13 @@ class NovelRepository(
         }
     }
 
-    fun getChapterReadingPosition(novelId: String, chapterId: String): Int {
-        // Read fast cached position
-        return preferencesManager.getChapterReadingPosition(novelId, chapterId)
+    suspend fun getChapterReadingPosition(novelId: String, chapterId: String): Int = withContext(Dispatchers.IO) {
+        val pending = positionMutex.withLock {
+            if (pendingPosition?.novelId == novelId && pendingPosition?.chapterId == chapterId) {
+                pendingPosition?.paragraphIndex
+            } else null
+        }
+        pending ?: chapterDao.getChapter(novelId, chapterId)?.readParagraphIndex ?: 0
     }
 
     fun saveChapterReadingPosition(novelId: String, chapterId: String, position: Int) {
@@ -415,37 +419,41 @@ class NovelRepository(
     }
 
     fun saveChapterReadingPositionDebounced(novelId: String, chapterId: String, paragraphIndex: Int, charOffset: Int = 0) {
-        // Immediate sync cache update for fast reads
-        preferencesManager.saveChapterReadingPosition(novelId, chapterId, paragraphIndex)
         repoScope.launch {
             positionMutex.withLock {
                 pendingPosition = PendingPosition(novelId, chapterId, paragraphIndex, charOffset)
                 positionDebounceJob?.cancel()
                 positionDebounceJob = repoScope.launch {
                     delay(1000L) // 1-second debounce
-                    flushReadingPosition()
+                    persistPending()
                 }
             }
         }
     }
 
-    suspend fun flushReadingPosition() = withContext(Dispatchers.IO) {
+    private suspend fun persistPending() = withContext(Dispatchers.IO) {
         val pos = positionMutex.withLock {
             val p = pendingPosition
             pendingPosition = null
-            positionDebounceJob?.cancel()
-            positionDebounceJob = null
             p
         } ?: return@withContext
 
         chapterDao.updatePosition(pos.novelId, pos.chapterId, pos.paragraphIndex, pos.charOffset)
     }
 
+    suspend fun flushReadingPosition() = withContext(Dispatchers.IO) {
+        positionMutex.withLock {
+            positionDebounceJob?.cancel()
+            positionDebounceJob = null
+        }
+        persistPending()
+    }
+
     // --- READ STATE TRACKING ---
 
-    suspend fun markChapterAsRead(novelId: String, chapterId: String) = withContext(Dispatchers.IO) {
+    suspend fun markChapterAsRead(novelId: String, chapterId: String): Boolean = withContext(Dispatchers.IO) {
         // markChapterAsRead only sets is_read (skips write if already read) and never touches last_read_*
-        chapterDao.markChapterRead(novelId, chapterId)
+        chapterDao.markChapterRead(novelId, chapterId) > 0
     }
 
     fun getReadChapterIds(novelId: String): Flow<Set<String>> {
@@ -848,6 +856,18 @@ class NovelRepository(
 
     suspend fun setTermReplacementEnabled(id: String, isEnabled: Boolean) = withContext(Dispatchers.IO) {
         termReplacementDao.setEnabled(id, isEnabled)
+    }
+
+    fun applyTermReplacements(paragraphs: List<String>, rules: List<TermReplacementRule> = termReplacements.value): List<String> {
+        val active = rules.filter { it.isEnabled && it.original.isNotEmpty() }
+        if (active.isEmpty()) return paragraphs
+        return paragraphs.map { p ->
+            var text = p
+            for (rule in active) {
+                text = text.replace(rule.original, rule.replacement)
+            }
+            text
+        }
     }
 
     // --- APP THEME & ACCENT SETTINGS ---

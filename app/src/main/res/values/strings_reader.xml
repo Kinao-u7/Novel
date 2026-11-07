@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_back">Back</string>
+    <string name="reader_prev_chapter">Previous chapter</string>
+    <string name="reader_next_chapter">Next chapter</string>
+    <string name="reader_contents">Contents</string>
+    <string name="reader_display">Display</string>
+    <string name="reader_retry">Retry</string>
+    <string name="reader_bookmark">Bookmark</string>
+    <string name="reader_next_chapter_btn">Next chapter</string>
+    <string name="reader_contents_title">Table of contents</string>
+    <string name="reader_display_title">Reading display</string>
+    <string name="reader_display_font_size">Text size</string>
+    <string name="reader_display_line_spacing">Line spacing</string>
+    <string name="reader_display_theme">Theme</string>
+    <string name="reader_display_font">Font</string>
+    <string name="reader_display_justify">Justify text</string>
+    <string name="reader_display_keep_screen_on">Keep screen on</string>
+    <string name="reader_error_chapter_not_found">Chapter not found in library</string>
+    <string name="reader_error_epub_missing">EPUB file is missing</string>
+    <string name="reader_error_read_failed">Failed to read chapter file</string>
+    <string name="reader_error_storage_unavailable">Storage location is unavailable</string>
+    <string name="reader_error_source_unavailable">Novel source is unavailable</string>
+    <string name="reader_error_network">Network or storage error loading chapter</string>
+</resources>

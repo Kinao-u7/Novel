@@ -26,4 +26,6 @@ class AppContainer(context: Context) {
     val backupManager: com.example.data.backup.BackupManager by lazy {
         novelRepository.backupManager
     }
+
+    var chapterFinishedListener: ChapterFinishedListener = ChapterFinishedListener.NoOp
 }
