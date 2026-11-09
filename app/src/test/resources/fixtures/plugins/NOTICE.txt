@@ -1,0 +1,11 @@
+These test fixtures are compiled plugin artifacts obtained from LNReader/lnreader-plugins:
+Repository: https://github.com/LNReader/lnreader-plugins
+Branch: plugins/v3.0.0
+Commit: 45daf1d08b46dca6efdf6d38f250da95771967d2
+
+Included fixtures:
+- ArNovel_madara.js (.js/src/plugins/arabic/ArNovel[madara].js)
+- KolNovel_lightnovelwp.js (.js/src/plugins/arabic/KolNovel[lightnovelwp].js)
+- ranobelib.js (.js/src/plugins/russian/ranobelib.js)
+
+Licensed under the MIT License (see LICENSE.txt).

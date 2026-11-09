@@ -1,0 +1,418 @@
+{
+  "reconciledMetadata": {
+    "pinnedBranch": "plugins/v3.0.0",
+    "pinnedCommitSha": "45daf1d08b46dca6efdf6d38f250da95771967d2",
+    "commitMessage": "chore: Publish Plugins",
+    "manifestUrl": "https://raw.githubusercontent.com/LNReader/lnreader-plugins/plugins/v3.0.0/.dist/plugins.min.json",
+    "pluginsMinJsonCount": 327,
+    "compiledPluginsDirFilesCount": 327
+  },
+  "fileBreakdownAnalysis": {
+    "publishedPluginsInManifest": 327,
+    "compiledJsPluginsInDist": 327,
+    "masterSourceRepoBreakdown": {
+      "totalFilesUnderPluginsAfterMultisrcGeneration": 377,
+      "nonPluginTemplatesAndHelpers": {
+        "count": 17,
+        "files": [
+          "plugins/multisrc/generate-multisrc-plugins.js",
+          "plugins/multisrc/madara/template.ts",
+          "plugins/multisrc/lightnovelwp/template.ts",
+          "plugins/multisrc/mtlnovel/template.ts",
+          "plugins/multisrc/novelfire/template.ts",
+          "plugins/multisrc/ranobes/template.ts",
+          "plugins/multisrc/readnovelfull/template.ts",
+          "plugins/multisrc/readwn/template.ts",
+          "plugins/multisrc/readwn/get_filters.ts",
+          "plugins/multisrc/rulate/template.ts",
+          "plugins/multisrc/webnovelworld/template.ts",
+          "plugins/multisrc/fictioneer/custom/cherrymistcafe/chapterTransform.js",
+          "plugins/multisrc/fictioneer/custom/lillyonthevalley/chapterTransform.js"
+        ]
+      },
+      "brokenOrDisabledSources": {
+        "count": 14,
+        "description": "Source files with .broken.ts extension excluded by build:manifest"
+      },
+      "blacklistedOrUnpublishedSources": {
+        "count": 19,
+        "description": "Sources listed in BLACKLIST.json or unlisted in languages.js"
+      },
+      "activePublishedPluginSources": 327
+    },
+    "reconciliationExplanation": "The 377 figure was the count of all .ts and .js files under plugins/ on master after multisrc generation. Subtracting 17 non-plugin helper/template files, 14 .broken.ts files, and 19 blacklisted/unpublished sources leaves exactly 327 active plugins, matching the 327 published plugins in .dist/plugins.min.json and compiled in .js/src/plugins."
+  },
+  "globalsAnalysis": {
+    "FileReader": {
+      "totalPluginsUsing": 76,
+      "distinctMembers": [
+        "readAsDataURL"
+      ],
+      "sampleExcerpts": [
+        {
+          "plugin": "arabic/ArNovel[madara].js",
+          "member": "readAsDataURL",
+          "passedObject": "s",
+          "excerpt": "a.onloadend=function(){\"string\"==typeof a.result?e(a.result):e(r)},a.onerror=function(){return e(r)},a.readAsDataURL(s)"
+        },
+        {
+          "plugin": "arabic/Azora[madara].js",
+          "member": "readAsDataURL",
+          "passedObject": "o",
+          "excerpt": "a.onloadend=function(){\"string\"==typeof a.result?e(a.result):e(r)},a.onerror=function(){return e(r)},a.readAsDataURL(o)"
+        },
+        {
+          "plugin": "arabic/HizoManga[madara].js",
+          "member": "readAsDataURL",
+          "passedObject": "s",
+          "excerpt": "a.onloadend=function(){\"string\"==typeof a.result?e(a.result):e(r)},a.onerror=function(){return e(r)},a.readAsDataURL(s)"
+        }
+      ]
+    },
+    "FormData": {
+      "totalPluginsUsing": 106,
+      "distinctMembers": [
+        "get",
+        "append",
+        "constructor",
+        "forEach",
+        "toString"
+      ],
+      "sampleExcerpts": [
+        {
+          "plugin": "arabic/ArNovel[madara].js",
+          "member": "FormData.get()",
+          "excerpt": "if(g=Math.max.apply(Math,b.map((function(e,t){return parseInt(m(t).attr(\"data-page\")||\"1\",10)})).get()),y=b.last().attr(\"href\")||\"\",-1===(x=y.indexOf(\"?\")))return[3,13];"
+        },
+        {
+          "plugin": "arabic/ArNovel[madara].js",
+          "member": "FormData.append()",
+          "excerpt": "return O=u(\".rating-post-id\").attr(\"value\")||u(\"#manga-chapters-holder\").attr(\"data-id\")||\"\",(q=new FormData).append(\"action\",\"manga_get_chapters\"),q.append(\"manga\",O),[4,(0,n.fetchApi)(\"\".concat(t,\"/wp-admin/admin-ajax.php\"),{method:\"POST\",headers:this.requestHeaders,body:q}).then((function(e){return e.text()}))];"
+        },
+        {
+          "plugin": "arabic/Azora[madara].js",
+          "member": "FormData.get()",
+          "excerpt": "if(g=Math.max.apply(Math,m.map((function(e,t){return parseInt(f(t).attr(\"data-page\")||\"1\",10)})).get()),y=m.last().attr(\"href\")||\"\",-1===(x=y.indexOf(\"?\")))return[3,13];"
+        }
+      ]
+    },
+    "Headers": {
+      "totalPluginsUsing": 22,
+      "distinctMembers": [
+        "constructor",
+        "append",
+        "get",
+        "forEach",
+        "set"
+      ],
+      "sampleExcerpts": [
+        {
+          "plugin": "english/MTLNovel[mtlnovel].js",
+          "member": "Headers.append()",
+          "excerpt": "return(s=new Headers).append(\"Referer\",\"\".concat(this.site,\"novel-list/\")),[4,this.safeFecth(this.site+n,s).then((function(e){return e.text()}))];"
+        },
+        {
+          "plugin": "english/daotekno.js",
+          "member": "Headers.get()",
+          "excerpt": "var e,r=parseInt(null!==(e=t.headers.get(\"retry-after\"))&&void 0!==e?e:\"\",10);"
+        },
+        {
+          "plugin": "english/daotekno.js",
+          "member": "Headers.get()",
+          "excerpt": "return\"challenge\"!==t.headers.get(\"cf-mitigated\")?[3,7]:(o=\"Cloudflare challenge (HTTP \"+t.status+\"). Open daotekno.com in WebView to pass it, then retry.\",[3,10]);"
+        }
+      ]
+    },
+    "Buffer": {
+      "totalPluginsUsing": 1,
+      "distinctMembers": [
+        "from"
+      ],
+      "sampleExcerpts": [
+        {
+          "plugin": "english/fictionzone.js",
+          "member": "Buffer.from",
+          "excerpt": "var e=\"function\"==typeof atob?atob(t):\"undefined\"!=typeof Buffer?Buffer.from(t,\"base64\").toString(\"utf-8\"):t;"
+        }
+      ]
+    },
+    "URLSearchParams": {
+      "totalPluginsUsing": 78,
+      "distinctMembers": [
+        "toString",
+        "constructor",
+        "get",
+        "append",
+        "set"
+      ],
+      "sampleExcerpts": [
+        {
+          "plugin": "arabic/dilartube.js",
+          "member": "URLSearchParams.toString()",
+          "excerpt": "return[4,(0,r.fetchApi)(new URL(a,this.site).toString())];"
+        },
+        {
+          "plugin": "arabic/rewayatclub.js",
+          "member": "URLSearchParams.toString()",
+          "excerpt": "return[4,(0,r.fetchApi)(new URL(a,this.site).toString())];"
+        },
+        {
+          "plugin": "arabic/sunovels.js",
+          "member": "URLSearchParams.toString()",
+          "excerpt": "return[4,(0,r.fetchApi)(new URL(l,this.site).toString())];"
+        }
+      ]
+    },
+    "TextEncoder": {
+      "totalPluginsUsing": 4,
+      "distinctMembers": [
+        "encode",
+        "constructor"
+      ],
+      "sampleExcerpts": [
+        {
+          "plugin": "english/dreamyTranslations.js",
+          "member": "encode",
+          "excerpt": "var i=n.index+n[0].length,o=parseInt(n[1],16),a=e.slice(i),c=(new TextEncoder).encode(a);"
+        },
+        {
+          "plugin": "english/dreamyTranslations.js",
+          "member": "encode",
+          "excerpt": "var i=n.index+n[0].length,o=parseInt(n[1],16),a=(new TextEncoder).encode(e.slice(i));"
+        },
+        {
+          "plugin": "english/fenrirrealm.js",
+          "member": "encode",
+          "excerpt": "var t=(new TextEncoder).encode(e),n=8*t.length,r=1+(t.length+8>>6)<<6,a=new Uint8Array(r);"
+        }
+      ]
+    },
+    "TextDecoder": {
+      "totalPluginsUsing": 6,
+      "distinctMembers": [
+        "decode",
+        "constructor"
+      ],
+      "sampleExcerpts": [
+        {
+          "plugin": "english/dreamyTranslations.js",
+          "member": "decode",
+          "excerpt": "return(new TextDecoder).decode(c.slice(0,o))"
+        },
+        {
+          "plugin": "english/dreamyTranslations.js",
+          "member": "decode",
+          "excerpt": "return(new TextDecoder).decode(a.slice(0,o))"
+        },
+        {
+          "plugin": "english/fenrirrealm.js",
+          "member": "decode",
+          "excerpt": "var r=n.replace(/-/g,\"+\").replace(/_/g,\"/\"),a=r+\"=\".repeat((4-r.length%4)%4),i=(new TextDecoder).decode(h(a)),o=JSON.parse(i);"
+        }
+      ]
+    },
+    "atob": {
+      "totalPluginsUsing": 6,
+      "distinctMembers": [
+        "call"
+      ],
+      "sampleExcerpts": [
+        {
+          "plugin": "english/CherryMistCafe[fictioneer].js",
+          "member": "atob()",
+          "excerpt": "return e=r.sent(),i=(0,o.load)(e),a=i(\"script[id*=ghost]\"),c=i(\"#cherry-content-host\"),a.length&&c.length&&(l=a.attr(\"data-poly\"),(u=Array.from({length:+a.attr(\"data-total\")||0},(function(t,e){return a.attr(\"data-\".concat(l,\"-\").concat(e))||\"\"})).join(\"\"))&&(h=function(t){return t.replace(/[a-zA-Z]/g,(function(t){var e=t<=\"Z\"?65:97,r=(t.charCodeAt(0)-e+13)%26+e;return String.fromCharCode(r)}))},c.replaceWith(decodeURIComponent(atob(h(u)))))),i(\"script, ruby\").remove(),i('section#chapter-content p [data-fcnc-rev=\"1\"]').each((function(t,e){var r=i(e).text().trim();r&&i(e).replaceWith(n([],r,!0).reverse().join(\"\"))})),[2,(null===(f=null===(p=i(\"section#chapter-content > div\").html())||void 0===p?void 0:p.replace(/\\u00A0/g,\" \"))||void 0===f?void 0:f.replace(/[\\u2060\\u00AD\\u202F\\u2007\\u200B]/g,\"\"))||\"\"]"
+        },
+        {
+          "plugin": "english/borntobenovel.js",
+          "member": "atob()",
+          "excerpt": "var e=atob(t),r=\"\",n=0"
+        },
+        {
+          "plugin": "english/fenrirrealm.js",
+          "member": "atob()",
+          "excerpt": "var t=atob(e),n=new Uint8Array(t.length),r=0"
+        }
+      ]
+    }
+  },
+  "fetchApiAnalysis": {
+    "initKeysUsed": [
+      "method",
+      "headers",
+      "body"
+    ],
+    "bodyTypesDetected": [
+      "CallExpression"
+    ],
+    "responseMembersRead": [
+      "text",
+      "blob",
+      "json",
+      "status",
+      "ok",
+      "arrayBuffer"
+    ],
+    "initOptionSamples": {
+      "method": {
+        "count": 1,
+        "excerpts": [
+          {
+            "plugin": "chinese/ixdzs8.js",
+            "excerpt": "method:\"POST\""
+          }
+        ]
+      },
+      "headers": {
+        "count": 1,
+        "excerpts": [
+          {
+            "plugin": "chinese/ixdzs8.js",
+            "excerpt": "headers:{\"Content-Type\":\"application/x-www-form-urlencoded\"}"
+          }
+        ]
+      },
+      "body": {
+        "count": 1,
+        "excerpts": [
+          {
+            "plugin": "chinese/ixdzs8.js",
+            "excerpt": "body:\"bid=\".concat(t)"
+          }
+        ]
+      }
+    }
+  },
+  "storageAnalysis": {
+    "methodsCalled": [
+      "get",
+      "set"
+    ],
+    "totalPluginsUsing": 131,
+    "sampleExcerpts": [
+      {
+        "plugin": "arabic/ArNovel[madara].js",
+        "method": "get",
+        "excerpt": "this.hideLocked=u.storage.get(\"hideLocked\"),this.dateCache=new Map,this.parseData=function(e){var t,a=r.dateCache.get(e);if(void 0!==a)return a;r.dateCache.size>2e3&&r.dateCache.clear();var n,i=(0,l.default)(),o=(null===(t=e.match(/\\d+/))||void 0===t?void 0:t[0])||\"\",s=parseInt(o,10);if(!o)return r.dateCache.set(e,e),e;if(c.test(e))n=i.subtract(s,\"second\").format(\"LL\");else if(h.test(e))n=i.subtract(s,\"minute\").format(\"LL\");else if(p.test(e))n=i.subtract(s,\"hours\").format(\"LL\");else if(v.test(e))n=i.subtract(s,\"days\").format(\"LL\");else if(d.test(e))n=i.subtract(s,\"week\").format(\"LL\");else if(f.test(e))n=i.subtract(s,\"month\").format(\"LL\");else if(m.test(e))n=i.subtract(s,\"year\").format(\"LL\");else{var u=(0,l.default)(e).format(\"LL\");n=\"Invalid Date\"!==u?u:e}return r.dateCache.set(e,n),n},this.id=e.id,this.name=e.sourceName,this.icon=\"multisrc/madara/\".concat(e.id.toLowerCase(),\"/icon.png\"),this.site=e.sourceSite;"
+      },
+      {
+        "plugin": "arabic/Azora[madara].js",
+        "method": "get",
+        "excerpt": "this.hideLocked=u.storage.get(\"hideLocked\"),this.dateCache=new Map,this.parseData=function(e){var t,a=r.dateCache.get(e);if(void 0!==a)return a;r.dateCache.size>2e3&&r.dateCache.clear();var l,n=(0,s.default)(),i=(null===(t=e.match(/\\d+/))||void 0===t?void 0:t[0])||\"\",o=parseInt(i,10);if(!i)return r.dateCache.set(e,e),e;if(c.test(e))l=n.subtract(o,\"second\").format(\"LL\");else if(v.test(e))l=n.subtract(o,\"minute\").format(\"LL\");else if(h.test(e))l=n.subtract(o,\"hours\").format(\"LL\");else if(p.test(e))l=n.subtract(o,\"days\").format(\"LL\");else if(d.test(e))l=n.subtract(o,\"week\").format(\"LL\");else if(b.test(e))l=n.subtract(o,\"month\").format(\"LL\");else if(f.test(e))l=n.subtract(o,\"year\").format(\"LL\");else{var u=(0,s.default)(e).format(\"LL\");l=\"Invalid Date\"!==u?u:e}return r.dateCache.set(e,l),l},this.id=e.id,this.name=e.sourceName,this.icon=\"multisrc/madara/\".concat(e.id.toLowerCase(),\"/icon.png\"),this.site=e.sourceSite;"
+      },
+      {
+        "plugin": "arabic/FreeKolNovel[lightnovelwp].js",
+        "method": "get",
+        "excerpt": "this.hideLocked=n.storage.get(\"hideLocked\"),this.id=e.id,this.name=e.sourceName,this.icon=\"multisrc/lightnovelwp/\".concat(e.id.toLowerCase(),\"/icon.png\"),this.site=e.sourceSite;"
+      },
+      {
+        "plugin": "arabic/HizoManga[madara].js",
+        "method": "get",
+        "excerpt": "this.hideLocked=u.storage.get(\"hideLocked\"),this.dateCache=new Map,this.parseData=function(e){var t,a=r.dateCache.get(e);if(void 0!==a)return a;r.dateCache.size>2e3&&r.dateCache.clear();var n,i=(0,l.default)(),o=(null===(t=e.match(/\\d+/))||void 0===t?void 0:t[0])||\"\",s=parseInt(o,10);if(!o)return r.dateCache.set(e,e),e;if(c.test(e))n=i.subtract(s,\"second\").format(\"LL\");else if(h.test(e))n=i.subtract(s,\"minute\").format(\"LL\");else if(p.test(e))n=i.subtract(s,\"hours\").format(\"LL\");else if(v.test(e))n=i.subtract(s,\"days\").format(\"LL\");else if(d.test(e))n=i.subtract(s,\"week\").format(\"LL\");else if(f.test(e))n=i.subtract(s,\"month\").format(\"LL\");else if(m.test(e))n=i.subtract(s,\"year\").format(\"LL\");else{var u=(0,l.default)(e).format(\"LL\");n=\"Invalid Date\"!==u?u:e}return r.dateCache.set(e,n),n},this.id=e.id,this.name=e.sourceName,this.icon=\"multisrc/madara/\".concat(e.id.toLowerCase(),\"/icon.png\"),this.site=e.sourceSite;"
+      },
+      {
+        "plugin": "arabic/KolNovel[lightnovelwp].js",
+        "method": "get",
+        "excerpt": "this.hideLocked=o.storage.get(\"hideLocked\"),this.id=e.id,this.name=e.sourceName,this.icon=\"multisrc/lightnovelwp/\".concat(e.id.toLowerCase(),\"/icon.png\"),this.site=e.sourceSite;"
+      }
+    ]
+  },
+  "enumsAnalysis": {
+    "NovelStatus": {
+      "membersUsed": [
+        "Ongoing",
+        "Completed",
+        "OnHiatus",
+        "Unknown",
+        "Cancelled",
+        "Inactive",
+        "Licensed",
+        "chapters",
+        "genres",
+        "h"
+      ],
+      "counts": {
+        "Ongoing": 341,
+        "Completed": 341,
+        "OnHiatus": 121,
+        "Unknown": 140,
+        "Cancelled": 71,
+        "Inactive": 3,
+        "Licensed": 3,
+        "chapters": 2,
+        "genres": 1,
+        "h": 1
+      }
+    },
+    "FilterTypes": {
+      "membersUsed": [
+        "Picker",
+        "CheckboxGroup",
+        "TextInput",
+        "Switch",
+        "ExcludableCheckboxGroup"
+      ],
+      "counts": {
+        "Picker": 207,
+        "CheckboxGroup": 59,
+        "TextInput": 36,
+        "Switch": 11,
+        "ExcludableCheckboxGroup": 24
+      }
+    }
+  },
+  "setTimeoutAnalysis": {
+    "totalUsages": 105,
+    "samplePluginsUsing": [
+      {
+        "plugin": "arabic/ArNovel[madara].js",
+        "delay": 4000,
+        "excerpt": "return a.trys.push([1,5,6,7]),i=\"undefined\"!=typeof AbortController?new AbortController:null,t=i?setTimeout((function(){return i.abort()}),4e3):null,[4,(0,n.fetchApi)(r,e({headers:this.requestHeaders},i?{signal:i.signal}:{}))];"
+      },
+      {
+        "plugin": "arabic/Azora[madara].js",
+        "delay": 4000,
+        "excerpt": "return a.trys.push([1,5,6,7]),n=\"undefined\"!=typeof AbortController?new AbortController:null,t=n?setTimeout((function(){return n.abort()}),4e3):null,[4,(0,l.fetchApi)(r,e({headers:this.requestHeaders},n?{signal:n.signal}:{}))];"
+      },
+      {
+        "plugin": "arabic/HizoManga[madara].js",
+        "delay": 4000,
+        "excerpt": "return a.trys.push([1,5,6,7]),i=\"undefined\"!=typeof AbortController?new AbortController:null,t=i?setTimeout((function(){return i.abort()}),4e3):null,[4,(0,n.fetchApi)(r,e({headers:this.requestHeaders},i?{signal:i.signal}:{}))];"
+      },
+      {
+        "plugin": "arabic/Novel4Up[madara].js",
+        "delay": 4000,
+        "excerpt": "return a.trys.push([1,5,6,7]),i=\"undefined\"!=typeof AbortController?new AbortController:null,t=i?setTimeout((function(){return i.abort()}),4e3):null,[4,(0,n.fetchApi)(r,e({headers:this.requestHeaders},i?{signal:i.signal}:{}))];"
+      },
+      {
+        "plugin": "arabic/Olaoecyou[madara].js",
+        "delay": 4000,
+        "excerpt": "return a.trys.push([1,5,6,7]),n=\"undefined\"!=typeof AbortController?new AbortController:null,t=n?setTimeout((function(){return n.abort()}),4e3):null,[4,(0,r.fetchApi)(l,e({headers:this.requestHeaders},n?{signal:n.signal}:{}))];"
+      },
+      {
+        "plugin": "arabic/Riwyat[madara].js",
+        "delay": 4000,
+        "excerpt": "return a.trys.push([1,5,6,7]),i=\"undefined\"!=typeof AbortController?new AbortController:null,t=i?setTimeout((function(){return i.abort()}),4e3):null,[4,(0,n.fetchApi)(r,e({headers:this.requestHeaders},i?{signal:i.signal}:{}))];"
+      },
+      {
+        "plugin": "english/AllNovelFull[readnovelfull].js",
+        "delay": "e",
+        "excerpt": "return setTimeout(t,e)"
+      },
+      {
+        "plugin": "english/AllNovel[readnovelfull].js",
+        "delay": "e",
+        "excerpt": "return setTimeout(t,e)"
+      },
+      {
+        "plugin": "english/BaiLianTales[madara].js",
+        "delay": 4000,
+        "excerpt": "return r.trys.push([1,5,6,7]),i=\"undefined\"!=typeof AbortController?new AbortController:null,e=i?setTimeout((function(){return i.abort()}),4e3):null,[4,(0,n.fetchApi)(a,t({headers:this.requestHeaders},i?{signal:i.signal}:{}))];"
+      },
+      {
+        "plugin": "english/BelleRepository[madara].js",
+        "delay": 4000,
+        "excerpt": "return a.trys.push([1,5,6,7]),i=\"undefined\"!=typeof AbortController?new AbortController:null,t=i?setTimeout((function(){return i.abort()}),4e3):null,[4,(0,n.fetchApi)(r,e({headers:this.requestHeaders},i?{signal:i.signal}:{}))];"
+      }
+    ]
+  }
+}

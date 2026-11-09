@@ -195,6 +195,47 @@ ksp {
   arg("room.schemaLocation", "$projectDir/schemas")
 }
 
+val buildJsLibs by tasks.registering {
+  val libsDir = rootProject.file("tools/lnreader-libs")
+  val outputFile = project.file("src/main/assets/js/libs.js")
+
+  inputs.file(libsDir.resolve("entry.mjs"))
+  inputs.file(libsDir.resolve("bundle.mjs"))
+  inputs.file(libsDir.resolve("package.json"))
+  inputs.file(libsDir.resolve("package-lock.json"))
+  outputs.file(outputFile)
+
+  doLast {
+    val nodeAvailable = try {
+      val process = ProcessBuilder("node", "-v").start()
+      process.waitFor() == 0
+    } catch (_: Exception) {
+      false
+    }
+
+    if (!nodeAvailable) {
+      if (!outputFile.exists()) {
+        throw GradleException("Node.js is required to build libs.js but was not found in PATH.")
+      }
+      logger.warn("Node.js not found in PATH; using existing libs.js artifact.")
+      return@doLast
+    }
+
+    val process = ProcessBuilder("node", "bundle.mjs")
+      .directory(libsDir)
+      .inheritIO()
+      .start()
+    val exitCode = process.waitFor()
+    if (exitCode != 0) {
+      throw GradleException("Failed to bundle libs.js (exit code: $exitCode)")
+    }
+  }
+}
+
+tasks.named("preBuild") {
+  dependsOn(buildJsLibs)
+}
+
 tasks.withType<Test>().configureEach {
     timeout.set(Duration.ofMinutes(12))
     testLogging {
