@@ -109,7 +109,7 @@ class ReaderMappingTest {
     fun testErrorMapping() {
         assertEquals("Chapter not found in library", ReaderMapping.mapReaderError(ChapterRowMissing("n1", "c1")))
         assertEquals("EPUB file is missing", ReaderMapping.mapReaderError(EpubFileMissing("n1", "c1")))
-        assertEquals("Failed to read chapter file", ReaderMapping.mapReaderError(ChapterReadException("c1", "corrupt")))
+        assertEquals("Failed to read chapter file", ReaderMapping.mapReaderError(ChapterReadException("n1", "c1", java.io.IOException("corrupt"))))
         assertEquals("Storage location is unavailable", ReaderMapping.mapReaderError(StorageUnavailableException("unreachable")))
         assertEquals("Novel source is unavailable", ReaderMapping.mapReaderError(SourceUnavailable("src1")))
         assertEquals("Network or storage error loading chapter", ReaderMapping.mapReaderError(IOException("Connection reset")))

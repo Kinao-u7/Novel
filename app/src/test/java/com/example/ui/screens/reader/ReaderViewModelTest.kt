@@ -384,6 +384,8 @@ class ReaderViewModelTest {
             id = "empty_novel",
             title = "Empty Novel",
             author = "Unknown",
+            description = "",
+            status = "Ongoing",
             genresJson = "[]",
             sourceId = "test_src",
             sourceName = "Test"
