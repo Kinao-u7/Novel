@@ -6,6 +6,8 @@ import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Call
@@ -43,6 +45,7 @@ interface PluginHttpClient {
     fun abortAll()
 }
 
+@OptIn(ExperimentalEncodingApi::class)
 class PluginHttpClientImpl(
     private val baseClient: OkHttpClient = OkHttpClient(),
     private val allowLoopback: Boolean = false
@@ -104,7 +107,7 @@ class PluginHttpClientImpl(
         val requestBody = when {
             request.bodyText != null -> request.bodyText.toRequestBody(mediaType)
             request.bodyBase64 != null -> {
-                val bytes = android.util.Base64.decode(request.bodyBase64, android.util.Base64.DEFAULT)
+                val bytes = Base64.decode(request.bodyBase64)
                 bytes.toRequestBody(mediaType)
             }
             request.method.uppercase() in listOf("POST", "PUT", "PATCH") -> ByteArray(0).toRequestBody(mediaType)

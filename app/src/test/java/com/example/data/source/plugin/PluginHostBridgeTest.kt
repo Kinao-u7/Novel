@@ -1,9 +1,9 @@
 package com.example.data.source.plugin
 
-import com.dokar3.quickjs.QuickJs
-import com.dokar3.quickjs.QuickJsException
-import com.dokar3.quickjs.binding.asyncFunction
-import com.dokar3.quickjs.binding.function
+import com.dokar.quickjs.QuickJs
+import com.dokar.quickjs.QuickJsException
+import com.dokar.quickjs.binding.asyncFunction
+import com.dokar.quickjs.binding.function
 import com.example.data.source.NetworkDefaults
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer

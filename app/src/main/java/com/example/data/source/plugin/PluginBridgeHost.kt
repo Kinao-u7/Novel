@@ -1,13 +1,15 @@
 package com.example.data.source.plugin
 
-import com.dokar3.quickjs.QuickJs
-import com.dokar3.quickjs.binding.asyncFunction
-import com.dokar3.quickjs.binding.function
+import com.dokar.quickjs.QuickJs
+import com.dokar.quickjs.binding.asyncFunction
+import com.dokar.quickjs.binding.function
 import java.nio.charset.Charset
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -18,6 +20,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
+@OptIn(ExperimentalEncodingApi::class)
 class PluginBridgeHost(
     private val httpClient: PluginHttpClient = PluginHttpClientImpl(),
     val byteStore: ResponseByteStore = ResponseByteStore(),
@@ -113,8 +116,8 @@ class PluginBridgeHost(
             json.toString()
         }
 
-        // 4. __host_response_text(responseId, encoding?) -> decoded string up to 10 MB
-        quickJs.asyncFunction("__host_response_text") { args: Array<Any?> ->
+        // 4. __host_response_text(responseId, encoding?) -> decoded string up to 10 MB (synchronous)
+        quickJs.function("__host_response_text") { args: Array<Any?> ->
             val responseId = (args[0] as Number).toLong()
             val overrideEncoding = if (args.size > 1 && args[1] is String) args[1] as String else null
 
@@ -131,8 +134,8 @@ class PluginBridgeHost(
             decoded
         }
 
-        // 5. __host_response_bytes(responseId) -> ByteArray (QuickJS maps to Int8Array)
-        quickJs.asyncFunction("__host_response_bytes") { args: Array<Any?> ->
+        // 5. __host_response_bytes(responseId) -> ByteArray (QuickJS maps to Int8Array, synchronous)
+        quickJs.function("__host_response_bytes") { args: Array<Any?> ->
             val responseId = (args[0] as Number).toLong()
             val bytes = byteStore.getBinary(responseId)
             byteStore.remove(responseId)
@@ -151,7 +154,7 @@ class PluginBridgeHost(
             val b64 = args[0] as String
             val encoding = if (args.size > 1 && args[1] is String) args[1] as String else "utf-8"
 
-            val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+            val bytes = Base64.decode(b64)
             if (bytes.size > MAX_DECODE_BYTES) {
                 throw PayloadTooLargeException("Text decode input (${bytes.size} bytes) exceeds ${MAX_DECODE_BYTES / (1024 * 1024)} MB limit")
             }
