@@ -68,6 +68,7 @@ Rule for every pass: fix only the items listed for that pass, follow `docs/ARCHI
 - WebView safety (6.27): handle `onRenderProcessGone` and `onReceivedError`. Allow only http and https in `shouldOverrideUrlLoading`.
 - Address bar and rotation (6.28): do not overwrite text while the user is typing. Preserve history across rotation.
 - Add flow (6.29): "Already in your library" with an Open action for duplicates, check `isWtrLab` by host, no main-thread saves, and gate diagnostics behind a debug option (3.17). One shared user-agent constant.
+- User-Agent consolidation (Rule 19): `DEFAULT_USER_AGENT` is currently duplicated privately in `WebChapterScraper.kt` and `WtrLabExtractor.kt` (and referenced by the plugin bridge). Consolidate all network and WebView callers onto the single shared constant in `NetworkDefaults.kt`.
 - Move the roughly 250 lines of scrape parsing out of the composable into a testable scraper class (6.30). Handle lazy and paginated chapter lists.
 - Delete `ConfirmNovelScreen.kt` (dead code).
 

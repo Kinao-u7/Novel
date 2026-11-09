@@ -20,6 +20,17 @@ jobs:
           java-version: '17'
           cache: gradle
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: 'tools/lnreader-libs/package-lock.json'
+
+      - name: Build plugin libs.js
+        run: |
+          npm --prefix tools/lnreader-libs ci
+          npm --prefix tools/lnreader-libs run build
+
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 

@@ -43,6 +43,7 @@ credentials = "1.5.0"
 googleid = "1.1.1"
 documentfile = "1.0.1"
 work = "2.10.0"
+quickjs = "1.0.18"
 
 
 [libraries]
@@ -104,6 +105,8 @@ googleid = { group = "com.google.android.libraries.identity.googleid", name = "g
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
 androidx-work-testing = { group = "androidx.work", name = "work-testing", version.ref = "work" }
+quickjs-android = { group = "io.github.dokar3", name = "quickjs-kt-android", version.ref = "quickjs" }
+quickjs-jvm = { group = "io.github.dokar3", name = "quickjs-kt-jvm", version.ref = "quickjs" }
 
 
 [plugins]
