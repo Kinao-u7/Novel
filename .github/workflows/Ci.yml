@@ -46,6 +46,15 @@ jobs:
         run: ./gradlew assembleDebug compileDebugUnitTestKotlin --console=plain
       - name: Run QuickJsApiTest
         run: ./gradlew testDebugUnitTest --tests "*QuickJsApiTest*" --console=plain
+      - name: Run all unit tests
+        continue-on-error: true
+        run: ./gradlew testDebugUnitTest --console=plain
+      - name: Upload full unit test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-unit-test-reports
+          path: app/build/reports/tests/testDebugUnitTest
       - name: Summarize failed tests
         if: failure()
         run: |

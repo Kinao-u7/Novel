@@ -129,3 +129,7 @@ Rule for every pass: fix only the items listed for that pass, follow `docs/ARCHI
   - Host check instead of a substring URL match.
   - One base-URL constant.
 - Chapter fetch (3.15, remaining parts): do not reject chapters for being short or CJK (use character counts), detect challenge pages before extracting, and add retry with backoff.
+
+## 7i Build and toolchain
+
+- **Kotlin version sync:** The root `build.gradle.kts` overrides AGP 9's built-in Kotlin via `buildscript { dependencies { classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.20") } }`. Because Gradle version catalogs (`libs`) are not accessible inside `buildscript` blocks, this classpath string must be kept in sync manually with the `kotlin` version in `gradle/libs.versions.toml`.
