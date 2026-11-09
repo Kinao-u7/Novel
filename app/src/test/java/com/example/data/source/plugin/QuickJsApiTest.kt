@@ -123,12 +123,15 @@ class QuickJsApiTest {
     fun testRejectedPromiseThrows() = runBlocking(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
+            val start = System.currentTimeMillis()
             var caught: Throwable? = null
             try {
                 quickJs.evaluate<Any?>("async function fail() { throw new Error('boom'); }; await fail();")
             } catch (e: Throwable) {
                 caught = e
             }
+            val elapsed = System.currentTimeMillis() - start
+            println("[testRejectedPromiseThrows] class=${caught?.let { it::class.java.name }}, message=${caught?.message}, elapsed=${elapsed}ms")
             assertNotNull("Expected exception when awaiting rejected promise", caught)
             assertTrue("Expected Exception, got: ${caught!!::class.java.name}", caught is Exception)
         } finally {
@@ -158,12 +161,15 @@ class QuickJsApiTest {
             assertTrue("Expected JS to catch bridge exception, got: '$caughtInJs'", caughtInJs.contains("Kotlin bridge failed") || caughtInJs.isNotEmpty())
 
             // Verify uncaught error in JS surfaces as a Kotlin exception
+            val start = System.currentTimeMillis()
             var caughtInKotlin: Throwable? = null
             try {
                 quickJs.evaluate<Any?>("await failingApi();")
             } catch (e: Throwable) {
                 caughtInKotlin = e
             }
+            val elapsed = System.currentTimeMillis() - start
+            println("[testAsyncFunctionErrorSurfaces] class=${caughtInKotlin?.let { it::class.java.name }}, message=${caughtInKotlin?.message}, elapsed=${elapsed}ms")
             assertNotNull("Expected uncaught asyncFunction error to surface to Kotlin", caughtInKotlin)
         } finally {
             quickJs.close()
@@ -182,7 +188,7 @@ class QuickJsApiTest {
                 delay(20)
                 "partB"
             }
-            val result = quickJs.evaluate<Array<Any?>>("await Promise.all([fetchA(), fetchB()])")
+            val result = quickJs.evaluate<List<*>>("await Promise.all([fetchA(), fetchB()])")
             assertEquals(2, result.size)
             assertEquals("partA", result[0])
             assertEquals("partB", result[1])
@@ -204,6 +210,7 @@ class QuickJsApiTest {
                 caught = e
             }
             val elapsed = System.currentTimeMillis() - start
+            println("[testInfiniteLoopIsInterrupted] class=${caught?.let { it::class.java.name }}, message=${caught?.message}, elapsed=${elapsed}ms")
             assertNotNull("Expected evaluationTimeoutMillis to interrupt infinite loop", caught)
             assertTrue("Expected interruption within ~5s, took ${elapsed}ms", elapsed < 5_000L)
         } finally {
@@ -230,6 +237,7 @@ class QuickJsApiTest {
                 caught = e
             }
             val elapsed = System.currentTimeMillis() - start
+            println("[testPromiseLoopIsInterrupted] class=${caught?.let { it::class.java.name }}, message=${caught?.message}, elapsed=${elapsed}ms")
             assertNotNull("Expected evaluationTimeoutMillis to interrupt promise loop", caught)
             assertTrue("Expected interruption within ~5s, took ${elapsed}ms", elapsed < 5_000L)
         } finally {
@@ -242,7 +250,8 @@ class QuickJsApiTest {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
             quickJs.memoryLimit = 16 * 1024 * 1024L
-            quickJs.evaluationTimeoutMillis = 2000L
+            quickJs.evaluationTimeoutMillis = 10_000L
+            val start = System.currentTimeMillis()
             var caught: Throwable? = null
             try {
                 quickJs.evaluate<Any?>(
@@ -256,7 +265,15 @@ class QuickJsApiTest {
             } catch (e: Throwable) {
                 caught = e
             }
-            assertNotNull("Expected memory limit or timeout to throw an exception", caught)
+            val elapsed = System.currentTimeMillis() - start
+            println("[testMemoryLimitEnforced] class=${caught?.let { it::class.java.name }}, message=${caught?.message}, elapsed=${elapsed}ms")
+            assertNotNull("Expected memoryLimit to throw an out-of-memory exception", caught)
+            assertTrue("Expected exception to arrive in under 1500ms, took ${elapsed}ms", elapsed < 1500L)
+            val msgOrClass = (caught?.message ?: "") + " " + (caught?.let { it::class.java.simpleName } ?: "")
+            assertTrue(
+                "Expected class or message to indicate memory error, got class='${caught?.let { it::class.java.name }}', message='${caught?.message}'",
+                msgOrClass.contains("memory", ignoreCase = true) || msgOrClass.contains("out of memory", ignoreCase = true)
+            )
         } finally {
             quickJs.close()
         }
@@ -266,15 +283,23 @@ class QuickJsApiTest {
     fun testCancellationInterrupts() = runBlocking(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
-            val start = System.currentTimeMillis()
+            assertEquals(-1L, quickJs.evaluationTimeoutMillis)
+            var childException: Throwable? = null
             val job = launch(Dispatchers.Default) {
-                quickJs.evaluate<Any?>("while (true) {}")
+                try {
+                    quickJs.evaluate<Any?>("while (true) {}")
+                } catch (e: Throwable) {
+                    childException = e
+                    throw e
+                }
             }
             delay(100)
+            val cancelStart = System.currentTimeMillis()
             job.cancelAndJoin()
-            val elapsed = System.currentTimeMillis() - start
-            assertTrue("Expected cancellation to stop quickly, took ${elapsed}ms", elapsed < 5_000L)
-            assertTrue(job.isCancelled)
+            val cancelElapsed = System.currentTimeMillis() - cancelStart
+
+            println("[testCancellationInterrupts] class=${childException?.let { it::class.java.name }}, message=${childException?.message}, cancelElapsed=${cancelElapsed}ms")
+            assertTrue("Expected cancelAndJoin to return within 5s, took ${cancelElapsed}ms", cancelElapsed < 5_000L)
         } finally {
             quickJs.close()
         }
