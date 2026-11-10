@@ -16,9 +16,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
-class PayloadTooLargeException(message: String) : RuntimeException("PayloadTooLarge: $message")
-class StoreCapacityExceededException(message: String) : RuntimeException("StoreCapacityExceeded: $message")
-class PluginAbortException(message: String = "The user aborted a request.") : RuntimeException("AbortError: $message")
+class PayloadTooLargeException(message: String) : RuntimeException(message)
+class StoreCapacityExceededException(message: String) : RuntimeException(message)
+class PluginAbortException(message: String = "The user aborted a request.") : RuntimeException(message)
 
 data class PluginHttpRequest(
     val url: String,

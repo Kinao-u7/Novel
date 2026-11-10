@@ -116,7 +116,12 @@ class PluginBridgeHost(
         // 3. __host_response_meta(responseId) -> JSON metadata
         quickJs.function("__host_response_meta") { args: Array<Any?> ->
             val responseId = (args[0] as Number).toLong()
-            val meta = metaStore[responseId] ?: throw NoSuchElementException("No response metadata for id=$responseId")
+            val meta = metaStore[responseId] ?: return@function JSONObject().apply {
+                put("error", JSONObject().apply {
+                    put("name", "NotFoundError")
+                    put("message", "No response metadata for id=$responseId")
+                })
+            }.toString()
 
             val json = JSONObject()
             json.put("status", meta.status)
@@ -136,30 +141,61 @@ class PluginBridgeHost(
             json.toString()
         }
 
-        // 4. __host_response_text(responseId, encoding?) -> decoded string up to 10 MB (synchronous)
+        // 4. __host_response_text(responseId, encoding?) -> JSON String: { ok, value } or { error: { name, message } }
         quickJs.function("__host_response_text") { args: Array<Any?> ->
-            val responseId = (args[0] as Number).toLong()
-            val overrideEncoding = if (args.size > 1 && args[1] is String) args[1] as String else null
+            val resultJson = JSONObject()
+            try {
+                val responseId = (args[0] as Number).toLong()
+                val overrideEncoding = if (args.size > 1 && args[1] is String) args[1] as String else null
 
-            val meta = metaStore[responseId]
-            val bytes = byteStore.remove(responseId) ?: throw NoSuchElementException("No stored bytes for id=$responseId")
+                val meta = metaStore[responseId]
+                val bytes = byteStore.remove(responseId) ?: throw NoSuchElementException("No stored bytes for id=$responseId")
 
-            val charset = when {
-                !overrideEncoding.isNullOrEmpty() -> safeCharset(overrideEncoding)
-                meta != null -> extractCharsetFromContentType(meta.headers)
-                else -> Charsets.UTF_8
+                val charset = when {
+                    !overrideEncoding.isNullOrEmpty() -> safeCharset(overrideEncoding)
+                    meta != null -> extractCharsetFromContentType(meta.headers)
+                    else -> Charsets.UTF_8
+                }
+
+                val decoded = String(bytes, charset)
+                resultJson.put("ok", true)
+                resultJson.put("value", decoded)
+            } catch (e: Throwable) {
+                val errorObj = JSONObject()
+                val errorName = when (e) {
+                    is NoSuchElementException -> "NotFoundError"
+                    is PayloadTooLargeException -> "PayloadTooLarge"
+                    is java.nio.charset.UnsupportedCharsetException -> "TypeError"
+                    else -> if (e::class.java.simpleName.isNotEmpty()) e::class.java.simpleName else "Error"
+                }
+                errorObj.put("name", errorName)
+                errorObj.put("message", e.message ?: "")
+                resultJson.put("error", errorObj)
             }
-
-            val decoded = String(bytes, charset)
-            decoded
+            resultJson.toString()
         }
 
-        // 5. __host_response_bytes(responseId) -> ByteArray (QuickJS maps to Int8Array, synchronous)
+        // 5. __host_response_bytes(responseId) -> JSON String: { ok, value } or { error: { name, message } }
         quickJs.function("__host_response_bytes") { args: Array<Any?> ->
-            val responseId = (args[0] as Number).toLong()
-            val bytes = byteStore.getBinary(responseId)
-            byteStore.remove(responseId)
-            bytes
+            val resultJson = JSONObject()
+            try {
+                val responseId = (args[0] as Number).toLong()
+                val bytes = byteStore.getBinary(responseId)
+                byteStore.remove(responseId)
+                resultJson.put("ok", true)
+                resultJson.put("value", Base64.encode(bytes))
+            } catch (e: Throwable) {
+                val errorObj = JSONObject()
+                val errorName = when (e) {
+                    is NoSuchElementException -> "NotFoundError"
+                    is PayloadTooLargeException -> "PayloadTooLarge"
+                    else -> if (e::class.java.simpleName.isNotEmpty()) e::class.java.simpleName else "Error"
+                }
+                errorObj.put("name", errorName)
+                errorObj.put("message", e.message ?: "")
+                resultJson.put("error", errorObj)
+            }
+            resultJson.toString()
         }
 
         // 6. __host_response_close(responseId)
@@ -169,44 +205,75 @@ class PluginBridgeHost(
             metaStore.remove(responseId)
         }
 
-        // 7. __host_decodeText(bytesBase64, encoding) -> String (enforces 10 MB cap)
+        // 7. __host_decodeText(bytesBase64, encoding) -> JSON String: { ok, value } or { error: { name, message } }
         quickJs.function("__host_decodeText") { args: Array<Any?> ->
-            val b64 = args[0] as String
-            val encoding = if (args.size > 1 && args[1] is String) args[1] as String else "utf-8"
+            val resultJson = JSONObject()
+            try {
+                val b64 = args[0] as String
+                val encoding = if (args.size > 1 && args[1] is String) args[1] as String else "utf-8"
 
-            val bytes = Base64.decode(b64)
-            if (bytes.size > MAX_DECODE_BYTES) {
-                throw PayloadTooLargeException("Text decode input (${bytes.size} bytes) exceeds ${MAX_DECODE_BYTES / (1024 * 1024)} MB limit")
+                val bytes = Base64.decode(b64)
+                if (bytes.size > MAX_DECODE_BYTES) {
+                    throw PayloadTooLargeException("Text decode input (${bytes.size} bytes) exceeds ${MAX_DECODE_BYTES / (1024 * 1024)} MB limit")
+                }
+
+                val charset = safeCharset(encoding)
+                val decoded = String(bytes, charset)
+                resultJson.put("ok", true)
+                resultJson.put("value", decoded)
+            } catch (e: Throwable) {
+                val errorObj = JSONObject()
+                val errorName = when (e) {
+                    is PayloadTooLargeException -> "PayloadTooLarge"
+                    is IllegalArgumentException -> "TypeError"
+                    is java.nio.charset.UnsupportedCharsetException -> "TypeError"
+                    else -> if (e::class.java.simpleName.isNotEmpty()) e::class.java.simpleName else "Error"
+                }
+                errorObj.put("name", errorName)
+                errorObj.put("message", e.message ?: "")
+                resultJson.put("error", errorObj)
             }
-
-            val charset = safeCharset(encoding)
-            String(bytes, charset)
+            resultJson.toString()
         }
 
-        // 8. __host_setTimeout(callbackId, delayMs)
+        // 8. __host_setTimeout(callbackId, delayMs) -> JSON String: { ok } or { error: { name, message } }
         quickJs.function("__host_setTimeout") { args: Array<Any?> ->
-            val callbackId = (args[0] as Number).toInt()
-            val rawDelay = (args[1] as Number).toLong()
+            val resultJson = JSONObject()
+            try {
+                val callbackId = (args[0] as Number).toInt()
+                val rawDelay = (args[1] as Number).toLong()
 
-            if (timerCount.get() >= MAX_PENDING_TIMERS) {
-                throw IllegalStateException("Timer limit exceeded: max $MAX_PENDING_TIMERS concurrent pending timers allowed")
-            }
-
-            // Clamp delay to MAX_DELAY_MS (60 seconds)
-            val delayMs = rawDelay.coerceIn(0L, MAX_DELAY_MS)
-            timerCount.incrementAndGet()
-
-            val job = scope.launch(jsDispatcher) {
-                try {
-                    delay(delayMs)
-                    activeTimers.remove(callbackId)
-                    timerCount.decrementAndGet()
-                    quickJs.evaluate<Any?>("__dispatchTimeout($callbackId)")
-                } catch (e: Throwable) {
-                    // Cancelled
+                if (timerCount.get() >= MAX_PENDING_TIMERS) {
+                    throw IllegalStateException("Timer limit exceeded: max $MAX_PENDING_TIMERS concurrent pending timers allowed")
                 }
+
+                // Clamp delay to MAX_DELAY_MS (60 seconds)
+                val delayMs = rawDelay.coerceIn(0L, MAX_DELAY_MS)
+                timerCount.incrementAndGet()
+
+                val job = scope.launch(jsDispatcher) {
+                    try {
+                        delay(delayMs)
+                        activeTimers.remove(callbackId)
+                        timerCount.decrementAndGet()
+                        quickJs.evaluate<Any?>("__dispatchTimeout($callbackId)")
+                    } catch (e: Throwable) {
+                        // Cancelled
+                    }
+                }
+                activeTimers[callbackId] = job
+                resultJson.put("ok", true)
+            } catch (e: Throwable) {
+                val errorObj = JSONObject()
+                val errorName = when (e) {
+                    is IllegalStateException -> "TimerLimitExceeded"
+                    else -> if (e::class.java.simpleName.isNotEmpty()) e::class.java.simpleName else "Error"
+                }
+                errorObj.put("name", errorName)
+                errorObj.put("message", e.message ?: "")
+                resultJson.put("error", errorObj)
             }
-            activeTimers[callbackId] = job
+            resultJson.toString()
         }
 
         // 9. __host_clearTimeout(callbackId)

@@ -102,8 +102,10 @@ class PluginHostBridgeTest {
             assertTrue("responseId must be > 0", responseId > 0L)
 
             // Verify stored bytes can be read via __host_response_text
-            val text = bridge.quickJs.evaluate<String>("__host_response_text(" + responseId + ")")
-            assertEquals("SuccessPayload", text)
+            val textRes = bridge.quickJs.evaluate<String>("__host_response_text(" + responseId + ")")
+            val textJson = JSONObject(textRes)
+            assertTrue("Expected value in response_text", textJson.has("value"))
+            assertEquals("SuccessPayload", textJson.getString("value"))
         } finally {
             bridge.close()
         }
@@ -205,7 +207,7 @@ class PluginHostBridgeTest {
             store.store(chunk)
             fail("Expected StoreCapacityExceededException")
         } catch (e: StoreCapacityExceededException) {
-            assertTrue(e.message!!.contains("StoreCapacityExceeded"))
+            assertTrue(e.message!!.contains("Store byte capacity exceeded"))
         }
 
         // Clear store
@@ -350,7 +352,7 @@ class PluginHostBridgeTest {
             client.execute(1, PluginHttpRequest(url = "$serverUrl/large-stream"))
             fail("Expected PayloadTooLargeException")
         } catch (e: PayloadTooLargeException) {
-            assertTrue(e.message!!.contains("PayloadTooLarge") && e.message!!.contains("10 MB"))
+            assertTrue(e.message!!.contains("10 MB limit"))
         }
     }
 
@@ -365,7 +367,7 @@ class PluginHostBridgeTest {
             store.getBinary(id1)
             fail("Expected PayloadTooLargeException for binary > 5 MB")
         } catch (e: PayloadTooLargeException) {
-            assertTrue(e.message!!.contains("5 MB"))
+            assertTrue(e.message!!.contains("5 MB limit"))
         }
 
         val smallBytes = ByteArray(4 * 1024 * 1024) // 4 MB
@@ -374,53 +376,96 @@ class PluginHostBridgeTest {
         assertEquals(4 * 1024 * 1024, binary.size)
     }
 
-    // 10. Timer Limits and Delay Clamping
+    // 10. Timer Limits and Delay Clamping (Structured result)
     @Test(timeout = 20_000)
     fun testTimerLimitsAndClamping(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val bridge = PluginBridgeHost()
         try {
             // Schedule up to MAX_PENDING_TIMERS (50)
             for (i in 1..50) {
-                bridge.quickJs.evaluate<Any?>("__host_setTimeout(" + i + ", 5000)")
+                val res = bridge.quickJs.evaluate<String>("__host_setTimeout(" + i + ", 5000)")
+                val json = JSONObject(res)
+                assertTrue("Expected ok in setTimeout result", json.optBoolean("ok", false))
             }
 
-            // 51st timer throws IllegalStateException
-            try {
-                bridge.quickJs.evaluate<Any?>("__host_setTimeout(51, 5000)")
-                fail("Expected timer limit exceeded exception")
-            } catch (e: QuickJsException) {
-                assertTrue(e.message!!.contains("Timer limit exceeded"))
-            }
+            // 51st timer returns structured TimerLimitExceeded error
+            val errRes = bridge.quickJs.evaluate<String>("__host_setTimeout(51, 5000)")
+            val errJson = JSONObject(errRes)
+            assertTrue("Expected error in 51st setTimeout", errJson.has("error"))
+            val errObj = errJson.getJSONObject("error")
+            assertEquals("TimerLimitExceeded", errObj.getString("name"))
+            assertFalse("Error message should not carry name prefix", errObj.getString("message").startsWith("TimerLimitExceeded:"))
+            assertTrue(errObj.getString("message").contains("Timer limit exceeded"))
 
             // Verify clearTimeout frees a slot
             bridge.quickJs.evaluate<Any?>("__host_clearTimeout(1)")
-            bridge.quickJs.evaluate<Any?>("__host_setTimeout(52, 100000)") // Delay 100,000 clamped to 60,000
+            val okRes = bridge.quickJs.evaluate<String>("__host_setTimeout(52, 100000)") // Delay 100,000 clamped to 60,000
+            val okJson = JSONObject(okRes)
+            assertTrue("Expected ok after clearTimeout freed slot", okJson.optBoolean("ok", false))
         } finally {
             bridge.close()
         }
     }
 
-    // 11. DecodeText 10 MB Cap
+    // 11. DecodeText 10 MB Cap (Structured result)
     @Test(timeout = 20_000)
     fun testDecodeText10MbCap(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val bridge = PluginBridgeHost()
         try {
-            // Valid decode
+            // Valid decode returns structured result { ok: true, value: "Hello World" }
             val normalB64 = Base64.encode("Hello World".toByteArray())
             bridge.quickJs.function("__getNormalB64") { normalB64 }
-            val decoded = bridge.quickJs.evaluate<String>("__host_decodeText(__getNormalB64(), 'utf-8')")
-            assertEquals("Hello World", decoded)
+            val decodedRes = bridge.quickJs.evaluate<String>("__host_decodeText(__getNormalB64(), 'utf-8')")
+            val decodedJson = JSONObject(decodedRes)
+            assertTrue("Expected value in decodeText result", decodedJson.has("value"))
+            assertEquals("Hello World", decodedJson.getString("value"))
 
-            // Over 10 MB decode rejected
+            // Over 10 MB decode rejected with structured PayloadTooLarge error
             val oversizedBytes = ByteArray(11 * 1024 * 1024) // 11 MB
             val oversizedB64 = Base64.encode(oversizedBytes)
             bridge.quickJs.function("__getOversizedB64") { oversizedB64 }
-            try {
-                bridge.quickJs.evaluate<Any?>("__host_decodeText(__getOversizedB64(), 'utf-8')")
-                fail("Expected PayloadTooLargeException for text decode > 10 MB")
-            } catch (e: QuickJsException) {
-                assertTrue(e.message!!.contains("PayloadTooLarge"))
-            }
+            val errRes = bridge.quickJs.evaluate<String>("__host_decodeText(__getOversizedB64(), 'utf-8')")
+            val errJson = JSONObject(errRes)
+            assertTrue("Expected error in decodeText result for > 10 MB", errJson.has("error"))
+            val errObj = errJson.getJSONObject("error")
+            assertEquals("PayloadTooLarge", errObj.getString("name"))
+            assertFalse("Error message should not carry name prefix", errObj.getString("message").startsWith("PayloadTooLarge:"))
+            assertTrue(errObj.getString("message").contains("10 MB limit"))
+        } finally {
+            bridge.close()
+        }
+    }
+
+    // 11b. ResponseBytes Structured Result (Success, PayloadTooLarge, NotFound)
+    @Test(timeout = 20_000)
+    fun testHostResponseBytesStructured(): Unit = runBlocking<Unit>(Dispatchers.Default) {
+        val store = ResponseByteStore()
+        val bridge = PluginBridgeHost(byteStore = store)
+        try {
+            // 1. Success case: < 5 MB binary returns Base64 in value
+            val sampleBytes = byteArrayOf(1, 2, 3, 4, 5)
+            val id1 = store.store(sampleBytes)
+            val okRes = bridge.quickJs.evaluate<String>("__host_response_bytes(" + id1 + ")")
+            val okJson = JSONObject(okRes)
+            assertTrue(okJson.has("value"))
+            assertEquals(Base64.encode(sampleBytes), okJson.getString("value"))
+
+            // 2. Error case: > 5 MB binary returns structured PayloadTooLarge error
+            val largeBytes = ByteArray(6 * 1024 * 1024) // 6 MB
+            val id2 = store.store(largeBytes)
+            val errRes = bridge.quickJs.evaluate<String>("__host_response_bytes(" + id2 + ")")
+            val errJson = JSONObject(errRes)
+            assertTrue(errJson.has("error"))
+            val errObj = errJson.getJSONObject("error")
+            assertEquals("PayloadTooLarge", errObj.getString("name"))
+            assertFalse("Error message should not carry name prefix", errObj.getString("message").startsWith("PayloadTooLarge:"))
+            assertTrue(errObj.getString("message").contains("5 MB limit"))
+
+            // 3. Error case: Not found returns structured NotFoundError
+            val notFoundRes = bridge.quickJs.evaluate<String>("__host_response_bytes(99999)")
+            val notFoundJson = JSONObject(notFoundRes)
+            assertTrue(notFoundJson.has("error"))
+            assertEquals("NotFoundError", notFoundJson.getJSONObject("error").getString("name"))
         } finally {
             bridge.close()
         }
@@ -490,7 +535,7 @@ class PluginHostBridgeTest {
                 client.execute(requestId, PluginHttpRequest(url = "$serverUrl/slow-stream"))
                 fail("Expected PluginAbortException")
             } catch (e: PluginAbortException) {
-                assertTrue(e.message!!.contains("AbortError"))
+                assertTrue(e.message!!.contains("aborted"))
             }
         }
 
@@ -581,7 +626,7 @@ class PluginHostBridgeTest {
             client.execute(requestId, PluginHttpRequest(url = "$serverUrl/pre-abort-test"))
             fail("Expected PluginAbortException for pre-aborted request")
         } catch (e: PluginAbortException) {
-            assertTrue(e.message!!.contains("AbortError"))
+            assertTrue(e.message!!.contains("aborted"))
         }
 
         assertFalse("Server must not be hit for pre-aborted request", serverHit)
