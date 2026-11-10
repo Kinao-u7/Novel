@@ -92,16 +92,8 @@ class PluginHostBridgeTest {
                 put("method", "GET")
             }.toString()
 
-            val jsScript = """
-                async function run() {
-                    const raw = await __host_fetch(1, ${JSONObject.quote(reqJson)});
-                    const parsed = JSON.parse(raw);
-                    return parsed;
-                }
-                await run();
-            """.trimIndent()
-
-            val resultStr = bridge.quickJs.evaluate<String>("JSON.stringify(await run())")
+            bridge.quickJs.function("__getReqJson") { reqJson }
+            val resultStr = bridge.quickJs.evaluate<String>("await __host_fetch(1, __getReqJson())")
             val json = JSONObject(resultStr)
 
             assertTrue("Expected responseId in success result", json.has("responseId"))
@@ -110,7 +102,7 @@ class PluginHostBridgeTest {
             assertTrue("responseId must be > 0", responseId > 0L)
 
             // Verify stored bytes can be read via __host_response_text
-            val text = bridge.quickJs.evaluate<String>("__host_response_text($responseId)")
+            val text = bridge.quickJs.evaluate<String>("__host_response_text(" + responseId + ")")
             assertEquals("SuccessPayload", text)
         } finally {
             bridge.close()
@@ -146,8 +138,8 @@ class PluginHostBridgeTest {
             val abortReq = JSONObject().apply {
                 put("url", "$serverUrl/structured-success")
             }.toString()
-
-            val abortRaw = bridge.quickJs.evaluate<String>("await __host_fetch(101, ${JSONObject.quote(abortReq)})")
+            bridge.quickJs.function("__getAbortReq") { abortReq }
+            val abortRaw = bridge.quickJs.evaluate<String>("await __host_fetch(101, __getAbortReq())")
             val abortJson = JSONObject(abortRaw)
             assertTrue(abortJson.has("error"))
             val abortErr = abortJson.getJSONObject("error")
@@ -157,8 +149,8 @@ class PluginHostBridgeTest {
             val largeReq = JSONObject().apply {
                 put("url", "$serverUrl/oversized-stream")
             }.toString()
-
-            val largeRaw = bridge.quickJs.evaluate<String>("await __host_fetch(102, ${JSONObject.quote(largeReq)})")
+            bridge.quickJs.function("__getLargeReq") { largeReq }
+            val largeRaw = bridge.quickJs.evaluate<String>("await __host_fetch(102, __getLargeReq())")
             val largeJson = JSONObject(largeRaw)
             assertTrue(largeJson.has("error"))
             val largeErr = largeJson.getJSONObject("error")
@@ -173,8 +165,8 @@ class PluginHostBridgeTest {
             val capReq = JSONObject().apply {
                 put("url", "$serverUrl/medium-payload")
             }.toString()
-
-            val capRaw = bridge.quickJs.evaluate<String>("await __host_fetch(103, ${JSONObject.quote(capReq)})")
+            bridge.quickJs.function("__getCapReq") { capReq }
+            val capRaw = bridge.quickJs.evaluate<String>("await __host_fetch(103, __getCapReq())")
             val capJson = JSONObject(capRaw)
             assertTrue(capJson.has("error"))
             val capErr = capJson.getJSONObject("error")
@@ -185,8 +177,8 @@ class PluginHostBridgeTest {
                 put("url", "http://127.0.0.1:1") // Connection refused
                 put("timeoutMs", 1000L)
             }.toString()
-
-            val netRaw = bridge.quickJs.evaluate<String>("await __host_fetch(104, ${JSONObject.quote(netReq)})")
+            bridge.quickJs.function("__getNetReq") { netReq }
+            val netRaw = bridge.quickJs.evaluate<String>("await __host_fetch(104, __getNetReq())")
             val netJson = JSONObject(netRaw)
             assertTrue(netJson.has("error"))
             val netErr = netJson.getJSONObject("error")
@@ -389,7 +381,7 @@ class PluginHostBridgeTest {
         try {
             // Schedule up to MAX_PENDING_TIMERS (50)
             for (i in 1..50) {
-                bridge.quickJs.evaluate<Any?>("__host_setTimeout($i, 5000)")
+                bridge.quickJs.evaluate<Any?>("__host_setTimeout(" + i + ", 5000)")
             }
 
             // 51st timer throws IllegalStateException
@@ -415,14 +407,16 @@ class PluginHostBridgeTest {
         try {
             // Valid decode
             val normalB64 = android.util.Base64.encodeToString("Hello World".toByteArray(), android.util.Base64.NO_WRAP)
-            val decoded = bridge.quickJs.evaluate<String>("__host_decodeText('$normalB64', 'utf-8')")
+            bridge.quickJs.function("__getNormalB64") { normalB64 }
+            val decoded = bridge.quickJs.evaluate<String>("__host_decodeText(__getNormalB64(), 'utf-8')")
             assertEquals("Hello World", decoded)
 
             // Over 10 MB decode rejected
             val oversizedBytes = ByteArray(11 * 1024 * 1024) // 11 MB
             val oversizedB64 = android.util.Base64.encodeToString(oversizedBytes, android.util.Base64.NO_WRAP)
+            bridge.quickJs.function("__getOversizedB64") { oversizedB64 }
             try {
-                bridge.quickJs.evaluate<Any?>("__host_decodeText('$oversizedB64', 'utf-8')")
+                bridge.quickJs.evaluate<Any?>("__host_decodeText(__getOversizedB64(), 'utf-8')")
                 fail("Expected PayloadTooLargeException for text decode > 10 MB")
             } catch (e: QuickJsException) {
                 assertTrue(e.message!!.contains("PayloadTooLarge"))
@@ -457,7 +451,7 @@ class PluginHostBridgeTest {
                     quickJs.memoryLimit = limitMb * 1024 * 1024L
                     quickJs.evaluate<Any?>(libsCode)
                     quickJs.function("__getBenchmarkHtml") { html }
-                    quickJs.evaluate<Any?>("const $doc = globalThis.__LIBS__.cheerio.load(__getBenchmarkHtml());")
+                    quickJs.evaluate<Any?>("const parsedDoc = globalThis.__LIBS__.cheerio.load(__getBenchmarkHtml());")
                 } catch (e: Throwable) {
                     status = e::class.java.simpleName
                 } finally {
@@ -636,8 +630,8 @@ class PluginHostBridgeTest {
                 "Promise"
             )
             for (name in globalsToCheck) {
-                val type = quickJs.evaluate<String>("typeof $name")
-                println("typeof $name = $type")
+                val type = quickJs.evaluate<String>("typeof " + name)
+                println("typeof " + name + " = " + type)
             }
         } finally {
             quickJs.close()
@@ -671,10 +665,12 @@ class PluginHostBridgeTest {
                 put("timeoutMs", 30_000L)
             }.toString()
 
+            bridge.quickJs.function("__getHangingReq") { reqJson }
+
             var caughtInJob: Throwable? = null
             val job = launch(Dispatchers.Default) {
                 try {
-                    bridge.quickJs.evaluate<Any?>("await __host_fetch($requestId, ${JSONObject.quote(reqJson)})")
+                    bridge.quickJs.evaluate<Any?>("await __host_fetch(" + requestId + ", __getHangingReq())")
                 } catch (e: Throwable) {
                     caughtInJob = e
                     throw e
