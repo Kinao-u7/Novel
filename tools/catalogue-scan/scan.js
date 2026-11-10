@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
 import * as babelParser from '@babel/parser';
 import _traverse from '@babel/traverse';
 
@@ -9,13 +10,25 @@ const traverse = _traverse.default || _traverse;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REPO_DIR = '/tmp/lnreader-plugins';
-const COMPILED_PLUGINS_DIR = path.join(REPO_DIR, '.js/src/plugins');
-const MANIFEST_PATH = path.join(REPO_DIR, '.dist/plugins.min.json');
-
 const REPO_URL = 'https://github.com/LNReader/lnreader-plugins';
 const PINNED_BRANCH = 'plugins/v3.0.0';
 const PINNED_COMMIT = '45daf1d08b46dca6efdf6d38f250da95771967d2';
+
+const REPO_DIR = path.join(__dirname, '.cache/lnreader-plugins');
+const COMPILED_PLUGINS_DIR = path.join(REPO_DIR, '.js/src/plugins');
+const MANIFEST_PATH = path.join(REPO_DIR, '.dist/plugins.min.json');
+
+// Ensure pinned repo is downloaded and checked out
+if (!fs.existsSync(COMPILED_PLUGINS_DIR) || !fs.existsSync(MANIFEST_PATH)) {
+  console.log(`Downloading pinned commit ${PINNED_COMMIT} from ${REPO_URL}...`);
+  fs.mkdirSync(path.dirname(REPO_DIR), { recursive: true });
+  if (fs.existsSync('/tmp/lnreader-plugins/.js/src/plugins')) {
+    fs.cpSync('/tmp/lnreader-plugins', REPO_DIR, { recursive: true });
+  } else {
+    execSync(`git clone --depth 50 --branch ${PINNED_BRANCH} ${REPO_URL} "${REPO_DIR}"`, { stdio: 'inherit' });
+    execSync(`git -C "${REPO_DIR}" checkout ${PINNED_COMMIT}`, { stdio: 'inherit' });
+  }
+}
 
 function getAllFiles(dir, exts = ['.js']) {
   let files = [];
@@ -41,17 +54,9 @@ console.log(`Found ${compiledFiles.length} compiled plugin files in ${COMPILED_P
 const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf-8'));
 console.log(`Loaded ${manifest.length} plugins from ${MANIFEST_PATH}`);
 
-// Target globals to analyze
-const targetGlobals = ['FileReader', 'FormData', 'Headers', 'Buffer', 'URLSearchParams', 'TextEncoder', 'TextDecoder', 'atob'];
-
-const globalsAnalysis = {};
-for (const g of targetGlobals) {
-  globalsAnalysis[g] = {
-    plugins: new Set(),
-    distinctMembers: new Set(),
-    usages: [],
-  };
-}
+// Babel Scope Analysis maps
+const allScopeGlobals = new Map(); // name -> Set of plugin relative paths
+const nonBuiltinUnresolved = new Map(); // name -> { plugins: Set, distinctMembers: Set, usages: [] }
 
 const fetchAnalysis = {
   fetchInitKeys: new Set(),
@@ -119,21 +124,54 @@ for (const filePath of compiledFiles) {
   }
 
   traverse(ast, {
-    CallExpression(nodePath) {
-      const callee = nodePath.node.callee;
+    Program(p) {
+      // 1. Collect all unresolved global identifiers in the Program scope via Babel Scope
+      for (const name of Object.keys(p.scope.globals)) {
+        if (!allScopeGlobals.has(name)) {
+          allScopeGlobals.set(name, new Set());
+        }
+        allScopeGlobals.get(name).add(relPath);
+      }
+    },
 
-      // atob
-      if (callee.type === 'Identifier' && callee.name === 'atob') {
-        globalsAnalysis.atob.plugins.add(relPath);
-        globalsAnalysis.atob.distinctMembers.add('call');
-        if (globalsAnalysis.atob.usages.length < 5) {
-          globalsAnalysis.atob.usages.push({
+    ReferencedIdentifier(nodePath) {
+      const name = nodePath.node.name;
+      // 2. Detect free/unresolved references using Babel's hasBinding
+      if (!nodePath.scope.hasBinding(name)) {
+        if (!nonBuiltinUnresolved.has(name)) {
+          nonBuiltinUnresolved.set(name, {
+            plugins: new Set(),
+            distinctMembers: new Set(),
+            usages: [],
+          });
+        }
+        const record = nonBuiltinUnresolved.get(name);
+        record.plugins.add(relPath);
+
+        // Check if member access or call
+        const parent = nodePath.parentPath;
+        if (parent && parent.isMemberExpression() && parent.node.object === nodePath.node) {
+          const propName = parent.node.property.name || parent.node.property.value;
+          if (propName) {
+            record.distinctMembers.add(propName);
+          }
+        } else if (parent && parent.isCallExpression() && parent.node.callee === nodePath.node) {
+          record.distinctMembers.add('call()');
+        } else if (parent && parent.isNewExpression() && parent.node.callee === nodePath.node) {
+          record.distinctMembers.add('constructor');
+        }
+
+        if (record.usages.length < 5) {
+          record.usages.push({
             plugin: relPath,
-            member: 'atob()',
             excerpt: getEnclosingStatementSnippet(code, nodePath),
           });
         }
       }
+    },
+
+    CallExpression(nodePath) {
+      const callee = nodePath.node.callee;
 
       // setTimeout
       if (callee.type === 'Identifier' && callee.name === 'setTimeout') {
@@ -211,34 +249,6 @@ for (const filePath of compiledFiles) {
           }
         }
 
-        // FileReader methods
-        if (['readAsDataURL', 'readAsText', 'readAsArrayBuffer'].includes(propName)) {
-          globalsAnalysis.FileReader.plugins.add(relPath);
-          globalsAnalysis.FileReader.distinctMembers.add(propName);
-          const passedArg = nodePath.node.arguments[0] ? code.slice(nodePath.node.arguments[0].start, nodePath.node.arguments[0].end) : 'none';
-          if (globalsAnalysis.FileReader.usages.length < 5) {
-            globalsAnalysis.FileReader.usages.push({
-              plugin: relPath,
-              member: propName,
-              passedObject: passedArg,
-              excerpt: getEnclosingStatementSnippet(code, nodePath),
-            });
-          }
-        }
-
-        // Buffer methods
-        if (callee.object.name === 'Buffer' && propName === 'from') {
-          globalsAnalysis.Buffer.plugins.add(relPath);
-          globalsAnalysis.Buffer.distinctMembers.add('from');
-          if (globalsAnalysis.Buffer.usages.length < 5) {
-            globalsAnalysis.Buffer.usages.push({
-              plugin: relPath,
-              member: 'Buffer.from',
-              excerpt: getEnclosingStatementSnippet(code, nodePath),
-            });
-          }
-        }
-
         // Response methods: .text(), .json(), .blob(), .arrayBuffer()
         if (['text', 'json', 'blob', 'arrayBuffer'].includes(propName)) {
           fetchAnalysis.fetchResponseMembers.add(propName);
@@ -252,79 +262,6 @@ for (const filePath of compiledFiles) {
               excerpt: getEnclosingStatementSnippet(code, nodePath),
             });
           }
-        }
-
-        // FormData / URLSearchParams / Headers methods
-        if (['append', 'set', 'get', 'has', 'toString', 'forEach'].includes(propName)) {
-          const objCode = code.slice(callee.object.start, callee.object.end).toLowerCase();
-          if (objCode.includes('form') || objCode.includes('data')) {
-            globalsAnalysis.FormData.plugins.add(relPath);
-            globalsAnalysis.FormData.distinctMembers.add(propName);
-            if (globalsAnalysis.FormData.usages.length < 5) {
-              globalsAnalysis.FormData.usages.push({
-                plugin: relPath,
-                member: `FormData.${propName}()`,
-                excerpt: getEnclosingStatementSnippet(code, nodePath),
-              });
-            }
-          }
-          if (objCode.includes('param') || objCode.includes('search') || objCode.includes('url')) {
-            globalsAnalysis.URLSearchParams.plugins.add(relPath);
-            globalsAnalysis.URLSearchParams.distinctMembers.add(propName);
-            if (globalsAnalysis.URLSearchParams.usages.length < 5) {
-              globalsAnalysis.URLSearchParams.usages.push({
-                plugin: relPath,
-                member: `URLSearchParams.${propName}()`,
-                excerpt: getEnclosingStatementSnippet(code, nodePath),
-              });
-            }
-          }
-          if (objCode.includes('header')) {
-            globalsAnalysis.Headers.plugins.add(relPath);
-            globalsAnalysis.Headers.distinctMembers.add(propName);
-            if (globalsAnalysis.Headers.usages.length < 5) {
-              globalsAnalysis.Headers.usages.push({
-                plugin: relPath,
-                member: `Headers.${propName}()`,
-                excerpt: getEnclosingStatementSnippet(code, nodePath),
-              });
-            }
-          }
-        }
-
-        // TextEncoder / TextDecoder
-        if (propName === 'encode') {
-          globalsAnalysis.TextEncoder.plugins.add(relPath);
-          globalsAnalysis.TextEncoder.distinctMembers.add('encode');
-          if (globalsAnalysis.TextEncoder.usages.length < 5) {
-            globalsAnalysis.TextEncoder.usages.push({
-              plugin: relPath,
-              member: 'encode',
-              excerpt: getEnclosingStatementSnippet(code, nodePath),
-            });
-          }
-        }
-        if (propName === 'decode') {
-          globalsAnalysis.TextDecoder.plugins.add(relPath);
-          globalsAnalysis.TextDecoder.distinctMembers.add('decode');
-          if (globalsAnalysis.TextDecoder.usages.length < 5) {
-            globalsAnalysis.TextDecoder.usages.push({
-              plugin: relPath,
-              member: 'decode',
-              excerpt: getEnclosingStatementSnippet(code, nodePath),
-            });
-          }
-        }
-      }
-    },
-
-    NewExpression(nodePath) {
-      const callee = nodePath.node.callee;
-      if (callee.type === 'Identifier') {
-        const name = callee.name;
-        if (targetGlobals.includes(name)) {
-          globalsAnalysis[name].plugins.add(relPath);
-          globalsAnalysis[name].distinctMembers.add('constructor');
         }
       }
     },
@@ -372,12 +309,23 @@ for (const filePath of compiledFiles) {
   });
 }
 
-const serializedGlobals = {};
-for (const [key, val] of Object.entries(globalsAnalysis)) {
-  serializedGlobals[key] = {
-    totalPluginsUsing: val.plugins.size,
-    distinctMembers: Array.from(val.distinctMembers),
-    sampleExcerpts: val.usages.slice(0, 3),
+// Build serialized analysis
+const serializedAllScopeGlobals = {};
+const sortedAllScope = Array.from(allScopeGlobals.entries()).sort((a, b) => b[1].size - a[1].size);
+for (const [name, set] of sortedAllScope) {
+  serializedAllScopeGlobals[name] = {
+    totalPluginsUsing: set.size,
+    isStandardEcmaScriptGlobal: !nonBuiltinUnresolved.has(name),
+  };
+}
+
+const serializedNonBuiltinGlobals = {};
+const sortedNonBuiltin = Array.from(nonBuiltinUnresolved.entries()).sort((a, b) => b[1].plugins.size - a[1].plugins.size);
+for (const [name, data] of sortedNonBuiltin) {
+  serializedNonBuiltinGlobals[name] = {
+    totalPluginsUsing: data.plugins.size,
+    distinctMembers: Array.from(data.distinctMembers),
+    sampleExcerpts: data.usages.slice(0, 3),
   };
 }
 
@@ -436,7 +384,12 @@ const results = {
     },
     reconciliationExplanation: "The 377 figure was the count of all .ts and .js files under plugins/ on master after multisrc generation. Subtracting 17 non-plugin helper/template files, 14 .broken.ts files, and 19 blacklisted/unpublished sources leaves exactly 327 active plugins, matching the 327 published plugins in .dist/plugins.min.json and compiled in .js/src/plugins."
   },
-  globalsAnalysis: serializedGlobals,
+  babelScopeFreeIdentifiersAnalysis: {
+    totalFreeIdentifiersFound: allScopeGlobals.size,
+    totalNonBuiltinUnresolvedIdentifiers: nonBuiltinUnresolved.size,
+    allScopeGlobalsSummary: serializedAllScopeGlobals,
+    nonBuiltinUnresolvedGlobals: serializedNonBuiltinGlobals,
+  },
   fetchApiAnalysis: {
     initKeysUsed: Array.from(fetchAnalysis.fetchInitKeys),
     bodyTypesDetected: Array.from(fetchAnalysis.fetchBodyTypes),
@@ -457,4 +410,4 @@ const results = {
 
 const outPath = path.resolve(__dirname, 'scan-results.json');
 fs.writeFileSync(outPath, JSON.stringify(results, null, 2), 'utf-8');
-console.log(`Reconciled scan results written to ${outPath} (${fs.statSync(outPath).size} bytes)`);
+console.log(`Reconciled Babel scope scan results written to ${outPath} (${fs.statSync(outPath).size} bytes)`);

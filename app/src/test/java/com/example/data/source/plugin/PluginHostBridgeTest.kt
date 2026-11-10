@@ -10,12 +10,14 @@ import com.sun.net.httpserver.HttpServer
 import java.io.File
 import java.io.OutputStream
 import java.net.InetSocketAddress
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -73,98 +75,124 @@ class PluginHostBridgeTest {
         }
     }
 
-    // 2. Error name/message format test (Caught in JS vs Uncaught in Kotlin)
+    // 2. Structured __host_fetch Success Result Test
     @Test(timeout = 20_000)
-    fun testQuickJsExceptionFormatAndErrorNames() = runBlocking(Dispatchers.Default) {
-        val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
+    fun testHostFetchStructuredSuccess() = runBlocking(Dispatchers.Default) {
+        server!!.createContext("/structured-success") { exchange: HttpExchange ->
+            val response = "SuccessPayload"
+            exchange.sendResponseHeaders(200, response.length.toLong())
+            exchange.responseBody.use { it.write(response.toByteArray()) }
+        }
+
+        val client = PluginHttpClientImpl(allowLoopback = true)
+        val bridge = PluginBridgeHost(httpClient = client)
         try {
-            quickJs.asyncFunction("throwCustomErrors") { args: Array<Any?> ->
-                val type = args[0] as String
-                when (type) {
-                    "payload" -> throw PayloadTooLargeException("Body exceeds 10 MB limit")
-                    "capacity" -> throw StoreCapacityExceededException("Store full")
-                    "abort" -> throw PluginAbortException("The user aborted a request.")
-                    else -> throw IllegalStateException("Generic failure")
+            val reqJson = JSONObject().apply {
+                put("url", "$serverUrl/structured-success")
+                put("method", "GET")
+            }.toString()
+
+            val jsScript = """
+                async function run() {
+                    const raw = await __host_fetch(1, ${JSONObject.quote(reqJson)});
+                    const parsed = JSON.parse(raw);
+                    return parsed;
                 }
-            }
+                await run();
+            """.trimIndent()
 
-            // Caught in JS: inspect error message format
-            val jsCaught = quickJs.evaluate<String>(
-                """
-                let out = "";
-                try {
-                    await throwCustomErrors("payload");
-                } catch (e) {
-                    out = (e.name || "Error") + "|" + e.message;
-                }
-                out;
-                """.trimIndent()
-            )
-            println("[Report: Caught in JS error format] $jsCaught")
-            assertTrue(jsCaught.contains("PayloadTooLarge"))
+            val resultStr = bridge.quickJs.evaluate<String>("JSON.stringify(await run())")
+            val json = JSONObject(resultStr)
 
-            // Uncaught in Kotlin: inspect QuickJsException format
-            var uncaughtPayloadMsg = ""
-            try {
-                quickJs.evaluate<Any?>("await throwCustomErrors('payload');")
-                fail("Expected QuickJsException")
-            } catch (e: QuickJsException) {
-                uncaughtPayloadMsg = e.message ?: ""
-                println("[Report: Uncaught in Kotlin error format] class=${e::class.java.name}, message='$uncaughtPayloadMsg'")
-                assertTrue("Expected message to contain PayloadTooLarge", uncaughtPayloadMsg.contains("PayloadTooLarge"))
-            }
+            assertTrue("Expected responseId in success result", json.has("responseId"))
+            assertFalse("Expected no error in success result", json.has("error"))
+            val responseId = json.getLong("responseId")
+            assertTrue("responseId must be > 0", responseId > 0L)
 
-            var uncaughtAbortMsg = ""
-            try {
-                quickJs.evaluate<Any?>("await throwCustomErrors('abort');")
-                fail("Expected QuickJsException for abort")
-            } catch (e: QuickJsException) {
-                uncaughtAbortMsg = e.message ?: ""
-                println("[Report: Uncaught Abort format] message='$uncaughtAbortMsg'")
-                assertTrue("Expected message to contain AbortError", uncaughtAbortMsg.contains("AbortError"))
-            }
+            // Verify stored bytes can be read via __host_response_text
+            val text = bridge.quickJs.evaluate<String>("__host_response_text($responseId)")
+            assertEquals("SuccessPayload", text)
         } finally {
-            quickJs.close()
+            bridge.close()
         }
     }
 
-    // 3. Host Exception to JS Error Mapping
+    // 3. Structured __host_fetch Error Results Test: { error: { name, message } }
     @Test(timeout = 20_000)
-    fun testHostExceptionToJsErrorMapping() = runBlocking(Dispatchers.Default) {
-        val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
-        try {
-            quickJs.asyncFunction("failWithAbort") {
-                throw PluginAbortException()
+    fun testHostFetchStructuredErrors() = runBlocking(Dispatchers.Default) {
+        // A. Setup server endpoints for testing errors
+        server!!.createContext("/oversized-stream") { exchange: HttpExchange ->
+            exchange.sendResponseHeaders(200, 0)
+            val os: OutputStream = exchange.responseBody
+            val chunk = ByteArray(1024 * 1024)
+            try {
+                for (i in 0 until 12) {
+                    os.write(chunk)
+                    os.flush()
+                }
+            } catch (_: Exception) {
+            } finally {
+                try { os.close() } catch (_: Exception) {}
             }
-            quickJs.asyncFunction("failWithTooLarge") {
-                throw PayloadTooLargeException("Over 10 MB limit")
-            }
-            quickJs.asyncFunction("failWithStoreCapacity") {
-                throw StoreCapacityExceededException("Store exceeded 20 MB")
-            }
+        }
 
-            val result = quickJs.evaluate<String>(
-                """
-                function mapError(e) {
-                    const msg = e && e.message ? e.message : String(e);
-                    if (msg.includes("PayloadTooLarge")) return "PayloadTooLarge";
-                    if (msg.includes("StoreCapacityExceeded")) return "StoreCapacityExceeded";
-                    if (msg.includes("AbortError")) return "AbortError";
-                    return "Unknown";
-                }
-                async function test() {
-                    const res = [];
-                    try { await failWithAbort(); } catch (e) { res.push(mapError(e)); }
-                    try { await failWithTooLarge(); } catch (e) { res.push(mapError(e)); }
-                    try { await failWithStoreCapacity(); } catch (e) { res.push(mapError(e)); }
-                    return res.join(",");
-                }
-                await test();
-                """.trimIndent()
-            )
-            assertEquals("AbortError,PayloadTooLarge,StoreCapacityExceeded", result)
+        val client = PluginHttpClientImpl(allowLoopback = true)
+        val tinyStore = ResponseByteStore(maxStoreBytes = 500) // 500 bytes cap
+        val bridge = PluginBridgeHost(httpClient = client, byteStore = tinyStore)
+
+        try {
+            // 1. AbortError via pre-aborted request
+            client.abort(101)
+            val abortReq = JSONObject().apply {
+                put("url", "$serverUrl/structured-success")
+            }.toString()
+
+            val abortRaw = bridge.quickJs.evaluate<String>("await __host_fetch(101, ${JSONObject.quote(abortReq)})")
+            val abortJson = JSONObject(abortRaw)
+            assertTrue(abortJson.has("error"))
+            val abortErr = abortJson.getJSONObject("error")
+            assertEquals("AbortError", abortErr.getString("name"))
+
+            // 2. PayloadTooLarge (> 10 MB stream)
+            val largeReq = JSONObject().apply {
+                put("url", "$serverUrl/oversized-stream")
+            }.toString()
+
+            val largeRaw = bridge.quickJs.evaluate<String>("await __host_fetch(102, ${JSONObject.quote(largeReq)})")
+            val largeJson = JSONObject(largeRaw)
+            assertTrue(largeJson.has("error"))
+            val largeErr = largeJson.getJSONObject("error")
+            assertEquals("PayloadTooLarge", largeErr.getString("name"))
+
+            // 3. StoreCapacityExceeded (tinyStore is 500 bytes, response is > 500 bytes)
+            server!!.createContext("/medium-payload") { exchange: HttpExchange ->
+                val body = "x".repeat(1000)
+                exchange.sendResponseHeaders(200, body.length.toLong())
+                exchange.responseBody.use { it.write(body.toByteArray()) }
+            }
+            val capReq = JSONObject().apply {
+                put("url", "$serverUrl/medium-payload")
+            }.toString()
+
+            val capRaw = bridge.quickJs.evaluate<String>("await __host_fetch(103, ${JSONObject.quote(capReq)})")
+            val capJson = JSONObject(capRaw)
+            assertTrue(capJson.has("error"))
+            val capErr = capJson.getJSONObject("error")
+            assertEquals("StoreCapacityExceeded", capErr.getString("name"))
+
+            // 4. TypeError (Network error: invalid/closed port)
+            val netReq = JSONObject().apply {
+                put("url", "http://127.0.0.1:1") // Connection refused
+                put("timeoutMs", 1000L)
+            }.toString()
+
+            val netRaw = bridge.quickJs.evaluate<String>("await __host_fetch(104, ${JSONObject.quote(netReq)})")
+            val netJson = JSONObject(netRaw)
+            assertTrue(netJson.has("error"))
+            val netErr = netJson.getJSONObject("error")
+            assertEquals("TypeError", netErr.getString("name"))
         } finally {
-            quickJs.close()
+            bridge.close()
         }
     }
 
@@ -404,58 +432,40 @@ class PluginHostBridgeTest {
         }
     }
 
-    // 12. Cheerio Heap Benchmark under 64 MB heap limit
-    @Test(timeout = 30_000)
-    fun testCheerioHeapBenchmark() = runBlocking(Dispatchers.Default) {
-        val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
-        try {
-            quickJs.memoryLimit = 64 * 1024 * 1024L // 64 MB heap cap
+    // 12. Cheerio Parse Benchmark under 32, 64, 128, 256 MB memory limits (each in fresh QuickJs)
+    @Test(timeout = 60_000)
+    fun testCheerioMemoryLimitBenchmark() = runBlocking(Dispatchers.Default) {
+        val libsFile = File("src/main/assets/js/libs.js")
+        val libsCode = if (libsFile.exists()) {
+            libsFile.readText()
+        } else {
+            "globalThis.__LIBS__ = { cheerio: { load: (h) => ({ text: () => h.length }) } };"
+        }
 
-            // Load libs.js if available
-            val libsFile = File("src/main/assets/js/libs.js")
-            if (libsFile.exists()) {
-                val libsCode = libsFile.readText()
-                quickJs.evaluate<Any?>(libsCode)
-            } else {
-                // Fallback minimal cheerio stub if libs.js not on path during isolated test
-                quickJs.evaluate<Any?>("globalThis.__LIBS__ = { cheerio: { load: (h) => ({ text: () => h.length }) } };")
+        val testCases = listOf(
+            2 to "<!DOCTYPE html><html><body>" + "<div><p>Paragraph content for memory test</p></div>".repeat(45_000) + "</body></html>",
+            10 to "<!DOCTYPE html><html><body>" + "<div><p>Paragraph content for memory test</p></div>".repeat(225_000) + "</body></html>"
+        )
+        val limitsMb = listOf(32, 64, 128, 256)
+
+        for ((sizeMb, html) in testCases) {
+            for (limitMb in limitsMb) {
+                val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
+                var status = "ok"
+                val start = System.currentTimeMillis()
+                try {
+                    quickJs.memoryLimit = limitMb * 1024 * 1024L
+                    quickJs.evaluate<Any?>(libsCode)
+                    quickJs.function("__getBenchmarkHtml") { html }
+                    quickJs.evaluate<Any?>("const $doc = globalThis.__LIBS__.cheerio.load(__getBenchmarkHtml());")
+                } catch (e: Throwable) {
+                    status = e::class.java.simpleName
+                } finally {
+                    val elapsed = System.currentTimeMillis() - start
+                    quickJs.close()
+                    println("size=${sizeMb}MB, limit=${limitMb}MB, status=$status, elapsed=${elapsed}ms")
+                }
             }
-
-            // 1. Parse 2 MB HTML
-            val html2Mb = "<!DOCTYPE html><html><body>" + "<div><p>Paragraph content for memory test</p></div>".repeat(45_000) + "</body></html>"
-            val start2Mb = System.currentTimeMillis()
-            var parse2MbOk = false
-            try {
-                quickJs.function("__get2MbHtml") { html2Mb }
-                quickJs.evaluate<Any?>("const $2mb = globalThis.__LIBS__.cheerio.load(__get2MbHtml());")
-                parse2MbOk = true
-            } catch (e: Throwable) {
-                println("[Cheerio Heap Benchmark] 2 MB parse caught: ${e::class.java.simpleName}: ${e.message}")
-            }
-            val elapsed2Mb = System.currentTimeMillis() - start2Mb
-            println("[Cheerio Heap Benchmark] 2 MB parse: success=$parse2MbOk, elapsed=${elapsed2Mb}ms (HTML length: ${html2Mb.length} chars)")
-
-            // 2. Parse 10 MB HTML (catches OOM/exception without failing build)
-            val html10Mb = "<!DOCTYPE html><html><body>" + "<div><p>Paragraph content for memory test</p></div>".repeat(225_000) + "</body></html>"
-            val start10Mb = System.currentTimeMillis()
-            var parse10MbOk = false
-            var parse10MbError: String? = null
-            try {
-                quickJs.function("__get10MbHtml") { html10Mb }
-                quickJs.evaluate<Any?>("const $10mb = globalThis.__LIBS__.cheerio.load(__get10MbHtml());")
-                parse10MbOk = true
-            } catch (e: Throwable) {
-                parse10MbError = "${e::class.java.simpleName}: ${e.message}"
-                println("[Cheerio Heap Benchmark] 10 MB parse caught: $parse10MbError")
-            }
-            val elapsed10Mb = System.currentTimeMillis() - start10Mb
-            println("[Cheerio Heap Benchmark] 10 MB parse: success=$parse10MbOk, elapsed=${elapsed10Mb}ms, error=$parse10MbError")
-
-            // 3. Assertion: Context remains functional and usable afterwards
-            val arithmetic = quickJs.evaluate<Int>("1 + 1")
-            assertEquals("QuickJS context must remain usable after parsing tests", 2, arithmetic)
-        } finally {
-            quickJs.close()
         }
     }
 
@@ -500,5 +510,194 @@ class PluginHostBridgeTest {
 
         // After completion/abort, activeCalls must not retain requestId
         assertFalse("activeCalls must remove requestId after abort completes", client.activeCalls.containsKey(requestId))
+    }
+
+    // 14. Genuinely Overlapping Requests in PluginHttpClient and ResponseByteStore
+    @Test(timeout = 20_000)
+    fun testOverlappingRequestsGenuinelyOverlap() = runBlocking(Dispatchers.Default) {
+        val arrivalLatch = CountDownLatch(2)
+        val proceedLatch = CountDownLatch(1)
+
+        server!!.createContext("/overlap") { exchange: HttpExchange ->
+            arrivalLatch.countDown()
+            // Block until both requests have arrived at the server simultaneously
+            proceedLatch.await()
+            val query = exchange.requestURI.query ?: "default"
+            val response = "OK-$query"
+            exchange.sendResponseHeaders(200, response.length.toLong())
+            exchange.responseBody.use { it.write(response.toByteArray()) }
+        }
+
+        val client = PluginHttpClientImpl(allowLoopback = true)
+        val store = ResponseByteStore()
+        val bridge = PluginBridgeHost(httpClient = client, byteStore = store)
+
+        try {
+            val job1 = launch(Dispatchers.IO) {
+                val res = client.execute(1, PluginHttpRequest(url = "$serverUrl/overlap?id=1"))
+                store.store(res.bodyBytes)
+            }
+            val job2 = launch(Dispatchers.IO) {
+                val res = client.execute(2, PluginHttpRequest(url = "$serverUrl/overlap?id=2"))
+                store.store(res.bodyBytes)
+            }
+
+            // Wait until both requests have arrived at the server concurrently
+            arrivalLatch.await()
+
+            // Verify they are GENUINELY overlapping in-flight simultaneously
+            assertEquals("Both calls must be active at the same time in activeCalls", 2, client.activeCalls.size)
+            assertTrue("Call 1 must be active", client.activeCalls.containsKey(1))
+            assertTrue("Call 2 must be active", client.activeCalls.containsKey(2))
+
+            // Release both requests to finish
+            proceedLatch.countDown()
+
+            job1.join()
+            job2.join()
+
+            // After completion, both responses exist concurrently in ResponseByteStore
+            assertEquals(2, store.size())
+            assertEquals(0, client.activeCalls.size)
+        } finally {
+            proceedLatch.countDown()
+            bridge.close()
+        }
+    }
+
+    // 15. Pre-aborted Request Throws Abort Immediately Without Network Call
+    @Test(timeout = 20_000)
+    fun testPreAbortedRequestThrowsAbortImmediately() = runBlocking(Dispatchers.Default) {
+        var serverHit = false
+        server!!.createContext("/pre-abort-test") { exchange: HttpExchange ->
+            serverHit = true
+            val response = "ShouldNotReach"
+            exchange.sendResponseHeaders(200, response.length.toLong())
+            exchange.responseBody.use { it.write(response.toByteArray()) }
+        }
+
+        val client = PluginHttpClientImpl(allowLoopback = true)
+        val requestId = 555
+
+        // Abort called BEFORE execute
+        client.abort(requestId)
+        assertTrue(client.preAbortedIds.contains(requestId))
+
+        try {
+            client.execute(requestId, PluginHttpRequest(url = "$serverUrl/pre-abort-test"))
+            fail("Expected PluginAbortException for pre-aborted request")
+        } catch (e: PluginAbortException) {
+            assertTrue(e.message!!.contains("AbortError"))
+        }
+
+        assertFalse("Server must not be hit for pre-aborted request", serverHit)
+        assertFalse("preAbortedIds must consume requestId after execute", client.preAbortedIds.contains(requestId))
+    }
+
+    // 16. Bounded preAbortedIds Eviction
+    @Test(timeout = 20_000)
+    fun testPreAbortedIdsBoundedAndEvicted() {
+        val client = PluginHttpClientImpl(allowLoopback = true)
+
+        // Add 600 IDs (exceeding MAX_PRE_ABORTED_IDS = 500)
+        for (i in 1..600) {
+            client.abort(i)
+        }
+
+        assertEquals(PluginHttpClientImpl.MAX_PRE_ABORTED_IDS, client.preAbortedIds.size)
+        // Oldest IDs (1..100) must be evicted
+        assertFalse("Oldest ID (1) should be evicted", client.preAbortedIds.contains(1))
+        assertFalse("ID 100 should be evicted", client.preAbortedIds.contains(100))
+        // Newest IDs (101..600) must be retained
+        assertTrue("ID 101 should be retained", client.preAbortedIds.contains(101))
+        assertTrue("Newest ID 600 should be retained", client.preAbortedIds.contains(600))
+
+        client.abortAll()
+        assertEquals(0, client.preAbortedIds.size)
+    }
+
+    // 17. Evaluate and audit typeof for candidate globals in QuickJS
+    @Test(timeout = 20_000)
+    fun testGlobalTypeofAudit() = runBlocking(Dispatchers.Default) {
+        val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
+        try {
+            val globalsToCheck = listOf(
+                "Iterator",
+                "Intl",
+                "BigInt",
+                "DataView",
+                "Uint32Array",
+                "Uint8Array",
+                "globalThis",
+                "eval",
+                "Symbol",
+                "Map",
+                "Set",
+                "Promise"
+            )
+            for (name in globalsToCheck) {
+                val type = quickJs.evaluate<String>("typeof $name")
+                println("typeof $name = $type")
+            }
+        } finally {
+            quickJs.close()
+        }
+    }
+
+    // 18. Cancellation During Fetch Propagates CancellationException and Cancels Active Call
+    @Test(timeout = 20_000)
+    fun testCancellationDuringFetchPropagatesAndCancelsCall() = runBlocking(Dispatchers.Default) {
+        val arrivalLatch = CountDownLatch(1)
+        val proceedLatch = CountDownLatch(1)
+
+        server!!.createContext("/hanging-fetch") { exchange: HttpExchange ->
+            arrivalLatch.countDown()
+            try {
+                proceedLatch.await()
+            } catch (_: InterruptedException) {
+            }
+            val response = "NeverSent"
+            exchange.sendResponseHeaders(200, response.length.toLong())
+            exchange.responseBody.use { it.write(response.toByteArray()) }
+        }
+
+        val client = PluginHttpClientImpl(allowLoopback = true)
+        val bridge = PluginBridgeHost(httpClient = client)
+        val requestId = 777
+
+        try {
+            val reqJson = JSONObject().apply {
+                put("url", "$serverUrl/hanging-fetch")
+                put("timeoutMs", 30_000L)
+            }.toString()
+
+            var caughtInJob: Throwable? = null
+            val job = launch(Dispatchers.Default) {
+                try {
+                    bridge.quickJs.evaluate<Any?>("await __host_fetch($requestId, ${JSONObject.quote(reqJson)})")
+                } catch (e: Throwable) {
+                    caughtInJob = e
+                    throw e
+                }
+            }
+
+            arrivalLatch.await()
+            assertTrue("Call must be in activeCalls while fetch is waiting", client.activeCalls.containsKey(requestId))
+
+            job.cancel()
+            job.join()
+
+            assertTrue("Job must be cancelled", job.isCancelled)
+            assertNotNull("CancellationException must be caught in job scope", caughtInJob)
+            assertTrue(
+                "Expected CancellationException to propagate, got: ${caughtInJob!!::class.java.name}",
+                caughtInJob is kotlinx.coroutines.CancellationException
+            )
+
+            assertFalse("activeCalls must remove requestId after cancellation", client.activeCalls.containsKey(requestId))
+        } finally {
+            proceedLatch.countDown()
+            bridge.close()
+        }
     }
 }

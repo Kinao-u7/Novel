@@ -44,8 +44,8 @@ jobs:
       - name: Compile app and tests
         timeout-minutes: 12
         run: ./gradlew assembleDebug compileDebugUnitTestKotlin --console=plain
-      - name: Run QuickJsApiTest
-        run: ./gradlew testDebugUnitTest --tests "*QuickJsApiTest*" --console=plain
+      - name: Run Plugin Unit Tests
+        run: ./gradlew testDebugUnitTest --tests "com.example.data.source.plugin.*" --console=plain
       - name: Run all unit tests
         continue-on-error: true
         run: ./gradlew testDebugUnitTest --console=plain

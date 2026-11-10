@@ -55,10 +55,30 @@ class PluginHttpClientImpl(
 
     companion object {
         const val MAX_BODY_BYTES = 10 * 1024 * 1024L // 10 MB
+        const val MAX_PRE_ABORTED_IDS = 500
         private const val STREAM_BUFFER_SIZE = 8192
     }
 
+    val preAbortedIds: MutableSet<Int> = java.util.Collections.synchronizedSet(
+        object : LinkedHashSet<Int>() {
+            override fun add(element: Int): Boolean {
+                if (size >= MAX_PRE_ABORTED_IDS) {
+                    val it = iterator()
+                    if (it.hasNext()) {
+                        it.next()
+                        it.remove()
+                    }
+                }
+                return super.add(element)
+            }
+        }
+    )
+
     override suspend fun execute(requestId: Int, request: PluginHttpRequest): PluginHttpResponse = withContext(Dispatchers.IO) {
+        if (preAbortedIds.remove(requestId)) {
+            throw PluginAbortException()
+        }
+
         // 1. Host-side header sanitization (strip Accept-Encoding, Connection, Host)
         val sanitizedHeaders = request.headers.filterNot { (k, _) ->
             k.equals("Accept-Encoding", ignoreCase = true) ||
@@ -186,11 +206,17 @@ class PluginHttpClientImpl(
     }
 
     override fun abort(requestId: Int) {
-        activeCalls[requestId]?.cancel()
+        val call = activeCalls[requestId]
+        if (call != null) {
+            call.cancel()
+        } else {
+            preAbortedIds.add(requestId)
+        }
     }
 
     override fun abortAll() {
         activeCalls.values.forEach { it.cancel() }
         activeCalls.clear()
+        preAbortedIds.clear()
     }
 }

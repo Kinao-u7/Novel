@@ -10,6 +10,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -49,42 +50,61 @@ class PluginBridgeHost(
     }
 
     private fun registerBridge() {
-        // 1. __host_fetch(requestId, requestJson) -> responseId
+        // 1. __host_fetch(requestId, requestJson) -> JSON String: { responseId } or { error: { name, message } }
         quickJs.asyncFunction("__host_fetch") { args: Array<Any?> ->
             val requestId = (args[0] as Number).toInt()
             val jsonStr = args[1] as String
-            val json = JSONObject(jsonStr)
+            val resultJson = JSONObject()
 
-            val url = json.getString("url")
-            val method = json.optString("method", "GET")
-            val redirect = json.optString("redirect", "follow")
-            val timeoutMs = json.optLong("timeoutMs", 30_000L)
-            val bodyText = if (json.has("bodyText") && !json.isNull("bodyText")) json.getString("bodyText") else null
-            val bodyBase64 = if (json.has("bodyBase64") && !json.isNull("bodyBase64")) json.getString("bodyBase64") else null
+            try {
+                val json = JSONObject(jsonStr)
 
-            val headersList = mutableListOf<Pair<String, String>>()
-            if (json.has("headers")) {
-                val headersArr = json.getJSONArray("headers")
-                for (i in 0 until headersArr.length()) {
-                    val pair = headersArr.getJSONArray(i)
-                    headersList.add(pair.getString(0) to pair.getString(1))
+                val url = json.getString("url")
+                val method = json.optString("method", "GET")
+                val redirect = json.optString("redirect", "follow")
+                val timeoutMs = json.optLong("timeoutMs", 30_000L)
+                val bodyText = if (json.has("bodyText") && !json.isNull("bodyText")) json.getString("bodyText") else null
+                val bodyBase64 = if (json.has("bodyBase64") && !json.isNull("bodyBase64")) json.getString("bodyBase64") else null
+
+                val headersList = mutableListOf<Pair<String, String>>()
+                if (json.has("headers")) {
+                    val headersArr = json.getJSONArray("headers")
+                    for (i in 0 until headersArr.length()) {
+                        val pair = headersArr.getJSONArray(i)
+                        headersList.add(pair.getString(0) to pair.getString(1))
+                    }
                 }
+
+                val request = PluginHttpRequest(
+                    url = url,
+                    method = method,
+                    headers = headersList,
+                    bodyText = bodyText,
+                    bodyBase64 = bodyBase64,
+                    redirect = redirect,
+                    timeoutMs = timeoutMs
+                )
+
+                val response = httpClient.execute(requestId, request)
+                val responseId = byteStore.store(response.bodyBytes)
+                metaStore[responseId] = response
+                resultJson.put("responseId", responseId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                val errorObj = JSONObject()
+                val errorName = when (e) {
+                    is PluginAbortException -> "AbortError"
+                    is PayloadTooLargeException -> "PayloadTooLarge"
+                    is StoreCapacityExceededException -> "StoreCapacityExceeded"
+                    is java.io.IOException -> "TypeError"
+                    else -> if (e::class.java.simpleName.isNotEmpty()) e::class.java.simpleName else "Error"
+                }
+                errorObj.put("name", errorName)
+                errorObj.put("message", e.message ?: "")
+                resultJson.put("error", errorObj)
             }
-
-            val request = PluginHttpRequest(
-                url = url,
-                method = method,
-                headers = headersList,
-                bodyText = bodyText,
-                bodyBase64 = bodyBase64,
-                redirect = redirect,
-                timeoutMs = timeoutMs
-            )
-
-            val response = httpClient.execute(requestId, request)
-            val responseId = byteStore.store(response.bodyBytes)
-            metaStore[responseId] = response
-            responseId
+            resultJson.toString()
         }
 
         // 2. __host_abort(requestId)
