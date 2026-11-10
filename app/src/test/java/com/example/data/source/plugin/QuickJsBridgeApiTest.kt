@@ -12,7 +12,7 @@ import org.junit.Test
 class QuickJsBridgeApiTest {
 
     @Test(timeout = 20_000)
-    fun testAsyncFunctionNoArgs() = runBlocking(Dispatchers.Default) {
+    fun testAsyncFunctionNoArgs(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
             quickJs.asyncFunction("testNoArgs") {
@@ -27,7 +27,7 @@ class QuickJsBridgeApiTest {
     }
 
     @Test(timeout = 20_000)
-    fun testAsyncFunctionTypedStringArg() = runBlocking(Dispatchers.Default) {
+    fun testAsyncFunctionTypedStringArg(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
             quickJs.asyncFunction("testTypedArg") { input: String ->
@@ -42,7 +42,7 @@ class QuickJsBridgeApiTest {
     }
 
     @Test(timeout = 20_000)
-    fun testAsyncFunctionUntypedArgs() = runBlocking(Dispatchers.Default) {
+    fun testAsyncFunctionUntypedArgs(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
             quickJs.asyncFunction("testUntypedArgs") { args: Array<Any?> ->
@@ -57,7 +57,7 @@ class QuickJsBridgeApiTest {
     }
 
     @Test(timeout = 20_000)
-    fun testFunctionTypedStringArg() = runBlocking(Dispatchers.Default) {
+    fun testFunctionTypedStringArg(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
             quickJs.function("testFuncTyped") { input: String ->
@@ -71,7 +71,7 @@ class QuickJsBridgeApiTest {
     }
 
     @Test(timeout = 20_000)
-    fun testFunctionUntypedArgs() = runBlocking(Dispatchers.Default) {
+    fun testFunctionUntypedArgs(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
             quickJs.function("testFuncUntyped") { args: Array<Any?> ->

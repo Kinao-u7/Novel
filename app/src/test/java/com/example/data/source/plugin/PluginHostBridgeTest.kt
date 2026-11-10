@@ -17,6 +17,8 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -27,10 +29,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class)
+@OptIn(ExperimentalEncodingApi::class)
 class PluginHostBridgeTest {
 
     private var server: HttpServer? = null
@@ -54,7 +54,7 @@ class PluginHostBridgeTest {
 
     // 1. ByteArray Mapping Test
     @Test(timeout = 20_000)
-    fun testByteArrayMapping() = runBlocking(Dispatchers.Default) {
+    fun testByteArrayMapping(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
             quickJs.function("getSampleBytes") {
@@ -77,7 +77,7 @@ class PluginHostBridgeTest {
 
     // 2. Structured __host_fetch Success Result Test
     @Test(timeout = 20_000)
-    fun testHostFetchStructuredSuccess() = runBlocking(Dispatchers.Default) {
+    fun testHostFetchStructuredSuccess(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         server!!.createContext("/structured-success") { exchange: HttpExchange ->
             val response = "SuccessPayload"
             exchange.sendResponseHeaders(200, response.length.toLong())
@@ -111,7 +111,7 @@ class PluginHostBridgeTest {
 
     // 3. Structured __host_fetch Error Results Test: { error: { name, message } }
     @Test(timeout = 20_000)
-    fun testHostFetchStructuredErrors() = runBlocking(Dispatchers.Default) {
+    fun testHostFetchStructuredErrors(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         // A. Setup server endpoints for testing errors
         server!!.createContext("/oversized-stream") { exchange: HttpExchange ->
             exchange.sendResponseHeaders(200, 0)
@@ -190,7 +190,7 @@ class PluginHostBridgeTest {
 
     // 4. Store Caps, Clear on Call Completion and Recycle
     @Test(timeout = 20_000)
-    fun testStoreCapsAndClearOnRecycle() = runBlocking(Dispatchers.Default) {
+    fun testStoreCapsAndClearOnRecycle(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val store = ResponseByteStore(maxStoreBytes = 1024 * 1024L) // 1 MB cap for testing
         assertEquals(0, store.size())
         assertEquals(0L, store.totalBytes())
@@ -230,7 +230,7 @@ class PluginHostBridgeTest {
 
     // 5. Host Header Stripping (Accept-Encoding, Connection, Host)
     @Test(timeout = 20_000)
-    fun testHeaderStrippingOnHost() = runBlocking(Dispatchers.Default) {
+    fun testHeaderStrippingOnHost(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         var receivedHeaders = listOf<Pair<String, String>>()
         server!!.createContext("/headers-test") { exchange: HttpExchange ->
             val list = mutableListOf<Pair<String, String>>()
@@ -267,7 +267,7 @@ class PluginHostBridgeTest {
 
     // 6. Default User-Agent from NetworkDefaults
     @Test(timeout = 20_000)
-    fun testDefaultUserAgentFromNetworkDefaults() = runBlocking(Dispatchers.Default) {
+    fun testDefaultUserAgentFromNetworkDefaults(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         var capturedUa = ""
         server!!.createContext("/ua-test") { exchange: HttpExchange ->
             capturedUa = exchange.requestHeaders.getFirst("User-Agent") ?: ""
@@ -292,7 +292,7 @@ class PluginHostBridgeTest {
 
     // 7. Redirect Policies (follow, manual, error)
     @Test(timeout = 20_000)
-    fun testRedirectPolicies() = runBlocking(Dispatchers.Default) {
+    fun testRedirectPolicies(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         server!!.createContext("/redirect-source") { exchange: HttpExchange ->
             exchange.responseHeaders.set("Location", "$serverUrl/redirect-target")
             exchange.sendResponseHeaders(302, -1)
@@ -328,7 +328,7 @@ class PluginHostBridgeTest {
 
     // 8. 10 MB Streaming Cap
     @Test(timeout = 20_000)
-    fun test10MbStreamingCap() = runBlocking(Dispatchers.Default) {
+    fun test10MbStreamingCap(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         server!!.createContext("/large-stream") { exchange: HttpExchange ->
             exchange.sendResponseHeaders(200, 0) // chunked stream (no Content-Length)
             val os: OutputStream = exchange.responseBody
@@ -376,7 +376,7 @@ class PluginHostBridgeTest {
 
     // 10. Timer Limits and Delay Clamping
     @Test(timeout = 20_000)
-    fun testTimerLimitsAndClamping() = runBlocking(Dispatchers.Default) {
+    fun testTimerLimitsAndClamping(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val bridge = PluginBridgeHost()
         try {
             // Schedule up to MAX_PENDING_TIMERS (50)
@@ -402,18 +402,18 @@ class PluginHostBridgeTest {
 
     // 11. DecodeText 10 MB Cap
     @Test(timeout = 20_000)
-    fun testDecodeText10MbCap() = runBlocking(Dispatchers.Default) {
+    fun testDecodeText10MbCap(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val bridge = PluginBridgeHost()
         try {
             // Valid decode
-            val normalB64 = android.util.Base64.encodeToString("Hello World".toByteArray(), android.util.Base64.NO_WRAP)
+            val normalB64 = Base64.encode("Hello World".toByteArray())
             bridge.quickJs.function("__getNormalB64") { normalB64 }
             val decoded = bridge.quickJs.evaluate<String>("__host_decodeText(__getNormalB64(), 'utf-8')")
             assertEquals("Hello World", decoded)
 
             // Over 10 MB decode rejected
             val oversizedBytes = ByteArray(11 * 1024 * 1024) // 11 MB
-            val oversizedB64 = android.util.Base64.encodeToString(oversizedBytes, android.util.Base64.NO_WRAP)
+            val oversizedB64 = Base64.encode(oversizedBytes)
             bridge.quickJs.function("__getOversizedB64") { oversizedB64 }
             try {
                 bridge.quickJs.evaluate<Any?>("__host_decodeText(__getOversizedB64(), 'utf-8')")
@@ -428,7 +428,7 @@ class PluginHostBridgeTest {
 
     // 12. Cheerio Parse Benchmark under 32, 64, 128, 256 MB memory limits (each in fresh QuickJs)
     @Test(timeout = 60_000)
-    fun testCheerioMemoryLimitBenchmark() = runBlocking(Dispatchers.Default) {
+    fun testCheerioMemoryLimitBenchmark(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val libsFile = File("src/main/assets/js/libs.js")
         val libsCode = if (libsFile.exists()) {
             libsFile.readText()
@@ -465,7 +465,7 @@ class PluginHostBridgeTest {
 
     // 13. ActiveCalls Maintained During Streaming and Abort
     @Test(timeout = 20_000)
-    fun testActiveCallsMaintainedDuringStreamingAndAbort() = runBlocking(Dispatchers.Default) {
+    fun testActiveCallsMaintainedDuringStreamingAndAbort(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         server!!.createContext("/slow-stream") { exchange: HttpExchange ->
             exchange.sendResponseHeaders(200, 0)
             val os = exchange.responseBody
@@ -508,7 +508,7 @@ class PluginHostBridgeTest {
 
     // 14. Genuinely Overlapping Requests in PluginHttpClient and ResponseByteStore
     @Test(timeout = 20_000)
-    fun testOverlappingRequestsGenuinelyOverlap() = runBlocking(Dispatchers.Default) {
+    fun testOverlappingRequestsGenuinelyOverlap(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val arrivalLatch = CountDownLatch(2)
         val proceedLatch = CountDownLatch(1)
 
@@ -561,7 +561,7 @@ class PluginHostBridgeTest {
 
     // 15. Pre-aborted Request Throws Abort Immediately Without Network Call
     @Test(timeout = 20_000)
-    fun testPreAbortedRequestThrowsAbortImmediately() = runBlocking(Dispatchers.Default) {
+    fun testPreAbortedRequestThrowsAbortImmediately(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         var serverHit = false
         server!!.createContext("/pre-abort-test") { exchange: HttpExchange ->
             serverHit = true
@@ -612,7 +612,7 @@ class PluginHostBridgeTest {
 
     // 17. Evaluate and audit typeof for candidate globals in QuickJS
     @Test(timeout = 20_000)
-    fun testGlobalTypeofAudit() = runBlocking(Dispatchers.Default) {
+    fun testGlobalTypeofAudit(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
             val globalsToCheck = listOf(
@@ -640,7 +640,7 @@ class PluginHostBridgeTest {
 
     // 18. Cancellation During Fetch Propagates CancellationException and Cancels Active Call
     @Test(timeout = 20_000)
-    fun testCancellationDuringFetchPropagatesAndCancelsCall() = runBlocking(Dispatchers.Default) {
+    fun testCancellationDuringFetchPropagatesAndCancelsCall(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val arrivalLatch = CountDownLatch(1)
         val proceedLatch = CountDownLatch(1)
 

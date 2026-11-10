@@ -17,7 +17,7 @@ import org.junit.Test
 class QuickJsApiTest {
 
     @Test(timeout = 20_000)
-    fun testEvaluateOnePlusOne() = runBlocking(Dispatchers.Default) {
+    fun testEvaluateOnePlusOne(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
             val result = quickJs.evaluate<Int>("1 + 1")
@@ -73,7 +73,7 @@ class QuickJsApiTest {
     }
 
     @Test(timeout = 20_000)
-    fun testBytecodeCompileAndEvaluateExists() = runBlocking(Dispatchers.Default) {
+    fun testBytecodeCompileAndEvaluateExists(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
             val bytecode: ByteArray = quickJs.compile(code = "2 * 21", filename = "test.js")
@@ -87,7 +87,7 @@ class QuickJsApiTest {
     }
 
     @Test(timeout = 20_000)
-    fun testPassingDispatcherAtCreationExists() = runBlocking {
+    fun testPassingDispatcherAtCreationExists(): Unit = runBlocking<Unit> {
         val customExecutor = Executors.newSingleThreadExecutor { Thread(it, "quickjs-test-worker") }
         val customDispatcher = customExecutor.asCoroutineDispatcher()
         try {
@@ -105,7 +105,7 @@ class QuickJsApiTest {
     }
 
     @Test(timeout = 20_000)
-    fun testAsyncFunctionExists() = runBlocking(Dispatchers.Default) {
+    fun testAsyncFunctionExists(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
             quickJs.asyncFunction("fetchMessage") {
@@ -120,7 +120,7 @@ class QuickJsApiTest {
     }
 
     @Test(timeout = 20_000)
-    fun testRejectedPromiseThrows() = runBlocking(Dispatchers.Default) {
+    fun testRejectedPromiseThrows(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
             val start = System.currentTimeMillis()
@@ -140,7 +140,7 @@ class QuickJsApiTest {
     }
 
     @Test(timeout = 20_000)
-    fun testAsyncFunctionErrorSurfaces() = runBlocking(Dispatchers.Default) {
+    fun testAsyncFunctionErrorSurfaces(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
             quickJs.asyncFunction("failingApi") {
@@ -177,7 +177,7 @@ class QuickJsApiTest {
     }
 
     @Test(timeout = 20_000)
-    fun testPromiseAllWithAsyncFunction() = runBlocking(Dispatchers.Default) {
+    fun testPromiseAllWithAsyncFunction(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
             quickJs.asyncFunction("fetchA") {
@@ -198,7 +198,7 @@ class QuickJsApiTest {
     }
 
     @Test(timeout = 20_000)
-    fun testInfiniteLoopIsInterrupted() = runBlocking(Dispatchers.Default) {
+    fun testInfiniteLoopIsInterrupted(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
             quickJs.evaluationTimeoutMillis = 500L
@@ -219,7 +219,7 @@ class QuickJsApiTest {
     }
 
     @Test(timeout = 20_000)
-    fun testPromiseLoopIsInterrupted() = runBlocking(Dispatchers.Default) {
+    fun testPromiseLoopIsInterrupted(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
             quickJs.evaluationTimeoutMillis = 500L
@@ -246,7 +246,7 @@ class QuickJsApiTest {
     }
 
     @Test(timeout = 20_000)
-    fun testMemoryLimitEnforced() = runBlocking(Dispatchers.Default) {
+    fun testMemoryLimitEnforced(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
             quickJs.memoryLimit = 16 * 1024 * 1024L
@@ -280,7 +280,7 @@ class QuickJsApiTest {
     }
 
     @Test(timeout = 20_000)
-    fun testCancellationInterrupts() = runBlocking(Dispatchers.Default) {
+    fun testCancellationInterrupts(): Unit = runBlocking<Unit>(Dispatchers.Default) {
         val quickJs = QuickJs.create(jobDispatcher = Dispatchers.Default)
         try {
             assertEquals(-1L, quickJs.evaluationTimeoutMillis)
