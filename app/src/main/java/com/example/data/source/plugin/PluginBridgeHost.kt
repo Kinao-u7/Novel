@@ -4,7 +4,6 @@ import com.dokar.quickjs.QuickJs
 import com.dokar.quickjs.binding.asyncFunction
 import com.dokar.quickjs.binding.function
 import java.nio.charset.Charset
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CoroutineDispatcher
@@ -13,7 +12,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -25,8 +23,6 @@ class PluginBridgeHost(
     val jsDispatcher: CoroutineDispatcher = jsExecutor.asCoroutineDispatcher()
     val scope = CoroutineScope(jsDispatcher + Job())
     val quickJs: QuickJs = QuickJs.create(jobDispatcher = jsDispatcher)
-
-    private val activeTimers = ConcurrentHashMap<Int, Job>()
 
     companion object {
         const val MAX_DELAY_MS = 15_000L // 15 seconds max delay
@@ -101,39 +97,15 @@ class PluginBridgeHost(
             }
         }
 
-        // 2. __host_setTimeout(callbackId, delayMs) -> sync host function, NEVER throws
-        quickJs.function("__host_setTimeout") { args: Array<Any?> ->
-            try {
-                val callbackId = (args[0] as Number).toInt()
-                val rawDelay = (args[1] as Number).toLong()
-                val delayMs = rawDelay.coerceIn(0L, MAX_DELAY_MS)
-
-                val job = scope.launch(jsDispatcher) {
-                    try {
-                        delay(delayMs)
-                        activeTimers.remove(callbackId)
-                        quickJs.evaluate<Any?>("__dispatchTimeout($callbackId)")
-                    } catch (_: Throwable) {
-                        // Cancelled
-                    }
-                }
-                activeTimers[callbackId] = job
-                "ok"
-            } catch (_: Throwable) {
-                null
+        // 2. __host_sleep(delayMs) -> async host function
+        quickJs.asyncFunction("__host_sleep") { args: Array<Any?> ->
+            val rawMs = when (val a = args.getOrNull(0)) {
+                is Number -> a.toLong()
+                else -> 0L
             }
-        }
-
-        // 3. __host_clearTimeout(callbackId) -> sync host function, NEVER throws
-        quickJs.function("__host_clearTimeout") { args: Array<Any?> ->
-            try {
-                val callbackId = (args[0] as Number).toInt()
-                val job = activeTimers.remove(callbackId)
-                job?.cancel()
-                "ok"
-            } catch (_: Throwable) {
-                null
-            }
+            val delayMs = rawMs.coerceIn(0L, MAX_DELAY_MS)
+            delay(delayMs)
+            true
         }
     }
 
@@ -179,8 +151,6 @@ class PluginBridgeHost(
     override fun close() {
         scope.cancel()
         httpClient.abortAll()
-        activeTimers.values.forEach { it.cancel() }
-        activeTimers.clear()
         quickJs.close()
         jsExecutor.shutdown()
     }

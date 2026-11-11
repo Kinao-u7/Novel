@@ -70,7 +70,7 @@ class PluginPluginIntegrationTest {
             assertEquals("Lord of Mysteries", novels.getJSONObject(1).getString("name"))
             assertEquals("Reverend Insanity", novels.getJSONObject(2).getString("name"))
             for (i in 0 until minOf(3, novels.length())) {
-                println("Novel $i: ${novels.getJSONObject(i).getString("name")}")
+                println("[PLUGIN-TITLES] Novel $i: ${novels.getJSONObject(i).getString("name")}")
             }
         }
     }

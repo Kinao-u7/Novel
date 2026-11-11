@@ -97,18 +97,23 @@ globalThis.FileReader = FileReader;
 let __nextTimerId = 1;
 const __timerCallbacks = new Map();
 globalThis.setTimeout = function(fn, delay = 0, ...args) {
-  const id = __nextTimerId++, clamped = Math.min(Math.max(0, Number(delay) || 0), 15000);
+  const id = __nextTimerId++;
+  const clamped = Math.min(Math.max(0, Number(delay) || 0), 15000);
   __timerCallbacks.set(id, () => typeof fn === 'function' ? fn(...args) : eval(fn));
-  if (__host_setTimeout(id, clamped) === null) {
-    __timerCallbacks.delete(id);
-    throw new Error('Failed to set timeout');
-  }
+  __host_sleep(clamped).then(() => __dispatchTimeout(id));
   return id;
 };
-globalThis.clearTimeout = function(id) { if (id != null) { __timerCallbacks.delete(id); __host_clearTimeout(id); } };
+globalThis.clearTimeout = function(id) {
+  if (id != null) {
+    __timerCallbacks.delete(id);
+  }
+};
 globalThis.__dispatchTimeout = function(id) {
   const cb = __timerCallbacks.get(id);
-  if (cb) { __timerCallbacks.delete(id); try { cb(); } catch (e) { console.error(e); } }
+  if (cb) {
+    __timerCallbacks.delete(id);
+    try { cb(); } catch (e) { console.error(e); }
+  }
 };
 
 // Storage

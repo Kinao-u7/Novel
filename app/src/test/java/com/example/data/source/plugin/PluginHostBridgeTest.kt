@@ -162,7 +162,7 @@ class PluginHostBridgeTest {
     }
 
     // 8. setTimeout fires; clearTimeout cancels
-    @Test(timeout = 20_000)
+    @Test(timeout = 10_000)
     fun testSetTimeoutFiresAndClearTimeoutCancels() = runBlocking(Dispatchers.Default) {
         createBridge().use { b ->
             val script = "await (async () => { let f1 = false, f2 = false; setTimeout(() => { f1 = true; }, 40); const id = setTimeout(() => { f2 = true; }, 40); clearTimeout(id); await new Promise(r => setTimeout(r, 120)); return JSON.stringify({ f1, f2 }); })()"
