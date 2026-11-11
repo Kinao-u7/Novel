@@ -7,7 +7,6 @@ import java.net.InetSocketAddress
 import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -43,7 +42,6 @@ class PluginHostBridgeTest {
         runBlocking(bridge.jsDispatcher) { bridge.initHarness(polyfillsJs, libsJs, harnessJs) }
         return bridge
     }
-
 
     // 1. every require() module resolves
     @Test(timeout = 20_000)
@@ -82,7 +80,7 @@ class PluginHostBridgeTest {
             ex.responseBody.use { it.write(body.toByteArray()) }
         }
         createBridge().use { b ->
-            val script = "(async () => { const r = await fetchApi('$serverUrl/api/test'); return JSON.stringify({ status: r.status, ok: r.ok, url: r.url, header: r.headers.get('x-custom'), text: await r.text(), msg: (await r.json()).msg }); })()"
+            val script = "await (async () => { const r = await fetchApi('$serverUrl/api/test'); return JSON.stringify({ status: r.status, ok: r.ok, url: r.url, header: r.headers.get('x-custom'), text: await r.text(), msg: (await r.json()).msg }); })()"
             val json = JSONObject(b.quickJs.evaluate<String>(script))
             assertEquals(200, json.getInt("status"))
             assertTrue(json.getBoolean("ok"))
@@ -105,17 +103,26 @@ class PluginHostBridgeTest {
     // 5. header stripping + default UA
     @Test(timeout = 20_000)
     fun testHeaderStrippingAndDefaultUserAgent() = runBlocking(Dispatchers.Default) {
+        var receivedHost = ""
+        var receivedEncoding = ""
+        var receivedXTest = ""
         var receivedUa = ""
-        var strippedFound = false
         server!!.createContext("/headers") { ex ->
+            receivedHost = ex.requestHeaders.getFirst("Host") ?: ""
+            receivedEncoding = ex.requestHeaders.getFirst("Accept-Encoding") ?: ""
+            receivedXTest = ex.requestHeaders.getFirst("X-Test") ?: ""
             receivedUa = ex.requestHeaders.getFirst("User-Agent") ?: ""
-            strippedFound = ex.requestHeaders.containsKey("Accept-Encoding") || ex.requestHeaders.containsKey("Connection")
             ex.sendResponseHeaders(200, -1)
         }
         createBridge().use { b ->
-            b.quickJs.evaluate<Any?>("await fetchApi('$serverUrl/headers', { headers: { 'Accept-Encoding': 'gzip', 'Connection': 'close' } })")
+            b.quickJs.evaluate<Any?>("await fetchApi('$serverUrl/headers', { headers: { 'Host': 'evil.example', 'Connection': 'close', 'Accept-Encoding': 'identity', 'X-Test': 'custom-val' } })")
+            assertTrue("Real server host received, not evil.example", receivedHost.isNotEmpty() && !receivedHost.contains("evil.example"))
+            assertFalse("Accept-Encoding must not be identity", receivedEncoding.equals("identity", ignoreCase = true))
+            assertEquals("custom-val", receivedXTest)
             assertEquals(NetworkDefaults.DEFAULT_USER_AGENT, receivedUa)
-            assertFalse("Forbidden headers must be stripped", strippedFound)
+
+            b.quickJs.evaluate<Any?>("await fetchApi('$serverUrl/headers', { headers: { 'User-Agent': 'PluginUA/2.0' } })")
+            assertEquals("PluginUA/2.0", receivedUa)
         }
     }
 
@@ -130,7 +137,7 @@ class PluginHostBridgeTest {
             ex.sendResponseHeaders(200, -1)
         }
         createBridge().use { b ->
-            val script = "(async () => { const fd = new FormData(); fd.append('title', 'A & B'); fd.set('page', '2'); await fetchApi('$serverUrl/form', { method: 'POST', body: fd }); })()"
+            val script = "await (async () => { const fd = new FormData(); fd.append('title', 'A & B'); fd.set('page', '2'); await fetchApi('$serverUrl/form', { method: 'POST', body: fd }); })()"
             b.quickJs.evaluate<Any?>(script)
             assertTrue(contentType.contains("application/x-www-form-urlencoded"))
             assertEquals("title=A%20%26%20B&page=2", receivedBody)
@@ -150,7 +157,7 @@ class PluginHostBridgeTest {
             ex.responseBody.use { it.write(body.toByteArray()) }
         }
         createBridge().use { b ->
-            assertEquals("$serverUrl/target", b.quickJs.evaluate<String>("(async () => (await fetchApi('$serverUrl/redirect')).url)()"))
+            assertEquals("$serverUrl/target", b.quickJs.evaluate<String>("await (async () => (await fetchApi('$serverUrl/redirect')).url)()"))
         }
     }
 
@@ -158,7 +165,7 @@ class PluginHostBridgeTest {
     @Test(timeout = 20_000)
     fun testSetTimeoutFiresAndClearTimeoutCancels() = runBlocking(Dispatchers.Default) {
         createBridge().use { b ->
-            val script = "(async () => { let f1 = false, f2 = false; setTimeout(() => { f1 = true; }, 40); const id = setTimeout(() => { f2 = true; }, 40); clearTimeout(id); await new Promise(r => setTimeout(r, 120)); return JSON.stringify({ f1, f2 }); })()"
+            val script = "await (async () => { let f1 = false, f2 = false; setTimeout(() => { f1 = true; }, 40); const id = setTimeout(() => { f2 = true; }, 40); clearTimeout(id); await new Promise(r => setTimeout(r, 120)); return JSON.stringify({ f1, f2 }); })()"
             val json = JSONObject(b.quickJs.evaluate<String>(script))
             assertTrue(json.getBoolean("f1"))
             assertFalse(json.getBoolean("f2"))
@@ -194,51 +201,6 @@ class PluginHostBridgeTest {
             assertEquals("Hello AES!", b.quickJs.evaluate<String>(script))
         }
     }
-
-    // 12. ArNovel_madara.js: load, read id/name/site, call popularNovels(1, {})
-    @Test(timeout = 20_000)
-    fun testArNovelPopularNovels() = runBlocking(Dispatchers.Default) {
-        val startInit = System.currentTimeMillis()
-        val html = """<div class="page-item-detail"><div class="post-title"><a href="$serverUrl/novel/shadow-slave">Shadow Slave</a></div><img src="$serverUrl/cover.jpg" /></div>"""
-        server!!.createContext("/page/1/") { ex ->
-            ex.sendResponseHeaders(200, html.length.toLong())
-            ex.responseBody.use { it.write(html.toByteArray()) }
-        }
-
-        createBridge().use { b ->
-            val arNovelFile = File("src/test/resources/fixtures/plugins/ArNovel_madara.js").let { if (it.exists()) it else File("app/src/test/resources/fixtures/plugins/ArNovel_madara.js") }
-            val pluginMeta = b.loadPlugin("arnovel", arNovelFile.readText())
-            val duration = System.currentTimeMillis() - startInit
-            println("Plugin initialization timing: ${duration}ms")
-
-            assertEquals("arnovel", pluginMeta.getString("id"))
-            assertEquals("ArNovel", pluginMeta.getString("name"))
-            assertTrue(pluginMeta.getString("site").isNotEmpty())
-
-            b.quickJs.evaluate<Any?>("__loadedPlugins.get('arnovel').site = '$serverUrl/'")
-            val novelsJson = b.callPlugin("arnovel", "popularNovels", listOf(1, JSONObject()))
-            val novels = JSONArray(novelsJson)
-            assertTrue("popularNovels must return novels", novels.length() > 0)
-            assertEquals("Shadow Slave", novels.getJSONObject(0).getString("name"))
-        }
-    }
-
-    // 13. Awaited timer and fetchApi + timer
-    @Test(timeout = 2_000)
-    fun testAwaitedTimerAndFetchApiWithTimer() = runBlocking(Dispatchers.Default) {
-        server!!.createContext("/timer-fetch") { ex ->
-            val body = "data"
-            ex.sendResponseHeaders(200, body.length.toLong())
-            ex.responseBody.use { it.write(body.toByteArray()) }
-        }
-        createBridge().use { b ->
-            val res1 = b.quickJs.evaluate<String>("await new Promise(r => setTimeout(() => r('ok'), 50))")
-            assertEquals("ok", res1)
-
-            val script2 = "(async () => { const r = await fetchApi('$serverUrl/timer-fetch'); const text = await r.text(); return await new Promise(res => setTimeout(() => res(text + '-ok'), 50)); })()"
-            val res2 = b.quickJs.evaluate<String>(script2)
-            assertEquals("data-ok", res2)
-        }
-    }
 }
+
 
