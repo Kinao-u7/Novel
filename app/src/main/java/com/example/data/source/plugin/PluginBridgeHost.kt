@@ -152,9 +152,16 @@ class PluginBridgeHost(
         return safeCharset(charsetName)
     }
 
-    suspend fun initHarness(libsJs: String, harnessJs: String) {
+    suspend fun initHarness(polyfillsJs: String, libsJs: String, harnessJs: String) {
+        if (polyfillsJs.isNotEmpty()) {
+            quickJs.evaluate<Any?>(polyfillsJs)
+        }
         quickJs.evaluate<Any?>(libsJs)
         quickJs.evaluate<Any?>(harnessJs)
+    }
+
+    suspend fun initHarness(libsJs: String, harnessJs: String) {
+        initHarness("", libsJs, harnessJs)
     }
 
     suspend fun loadPlugin(id: String, sourceCode: String): JSONObject {

@@ -23,28 +23,6 @@ if (typeof globalThis.atob === 'undefined') {
   };
 }
 
-if (typeof globalThis.TextEncoder === 'undefined') {
-  globalThis.TextEncoder = class {
-    encode(str) {
-      const s = unescape(encodeURIComponent(String(str))), arr = new Uint8Array(s.length);
-      for (let i = 0; i < s.length; i++) arr[i] = s.charCodeAt(i);
-      return arr;
-    }
-  };
-}
-
-if (typeof globalThis.TextDecoder === 'undefined') {
-  globalThis.TextDecoder = class {
-    decode(arr) {
-      if (!arr) return '';
-      const b = new Uint8Array(arr.buffer || arr);
-      let s = '';
-      for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
-      try { return decodeURIComponent(escape(s)); } catch (_) { return s; }
-    }
-  };
-}
-
 class AbortSignal {
   constructor() { this.aborted = false; this.reason = undefined; this._listeners = []; }
   addEventListener(t, l) { if (t === 'abort' && typeof l === 'function') this._listeners.push(l); }

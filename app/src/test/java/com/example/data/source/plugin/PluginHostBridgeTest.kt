@@ -37,11 +37,13 @@ class PluginHostBridgeTest {
 
     private fun createBridge(): PluginBridgeHost {
         val bridge = PluginBridgeHost(httpClient = PluginHttpClientImpl(allowLoopback = true))
+        val polyfillsJs = File("src/main/assets/js/polyfills.js").let { if (it.exists()) it else File("app/src/main/assets/js/polyfills.js") }.readText()
         val libsJs = File("src/main/assets/js/libs.js").let { if (it.exists()) it else File("app/src/main/assets/js/libs.js") }.readText()
         val harnessJs = File("src/main/assets/js/harness.js").let { if (it.exists()) it else File("app/src/main/assets/js/harness.js") }.readText()
-        runBlocking(bridge.jsDispatcher) { bridge.initHarness(libsJs, harnessJs) }
+        runBlocking(bridge.jsDispatcher) { bridge.initHarness(polyfillsJs, libsJs, harnessJs) }
         return bridge
     }
+
 
     // 1. every require() module resolves
     @Test(timeout = 20_000)
