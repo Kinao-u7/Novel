@@ -44,7 +44,7 @@ class PluginPluginIntegrationTest {
 
     // 12. ArNovel_madara.js: load, read id/name/site, call popularNovels(1, {})
     @Test(timeout = 20_000)
-    fun testArNovelPopularNovels() = runBlocking(Dispatchers.Default) {
+    fun testArNovelPopularNovels() = runBlocking<Unit>(Dispatchers.Default) {
         val startInit = System.currentTimeMillis()
         val html = """<div class="page-item-detail"><div class="post-title"><a href="$serverUrl/novel/shadow-slave">Shadow Slave</a></div><img src="$serverUrl/c1.jpg" /></div><div class="page-item-detail"><div class="post-title"><a href="$serverUrl/novel/lord-of-mysteries">Lord of Mysteries</a></div><img src="$serverUrl/c2.jpg" /></div><div class="page-item-detail"><div class="post-title"><a href="$serverUrl/novel/reverend-insanity">Reverend Insanity</a></div><img src="$serverUrl/c3.jpg" /></div>"""
         server!!.createContext("/page/1/") { ex ->
@@ -77,7 +77,7 @@ class PluginPluginIntegrationTest {
 
     // 13. Awaited timer and fetchApi + timer
     @Test(timeout = 10_000)
-    fun testAwaitedTimerAndFetchApiWithTimer() = runBlocking(Dispatchers.Default) {
+    fun testAwaitedTimerAndFetchApiWithTimer() = runBlocking<Unit>(Dispatchers.Default) {
         server!!.createContext("/timer-fetch") { ex ->
             val body = "data"
             ex.sendResponseHeaders(200, body.length.toLong())

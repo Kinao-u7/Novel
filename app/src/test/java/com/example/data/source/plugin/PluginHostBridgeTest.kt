@@ -45,7 +45,7 @@ class PluginHostBridgeTest {
 
     // 1. every require() module resolves
     @Test(timeout = 20_000)
-    fun testEveryRequireModuleResolves() = runBlocking(Dispatchers.Default) {
+    fun testEveryRequireModuleResolves() = runBlocking<Unit>(Dispatchers.Default) {
         createBridge().use { b ->
             val modules = listOf(
                 "cheerio", "htmlparser2", "dayjs", "whatwg-url",
@@ -61,7 +61,7 @@ class PluginHostBridgeTest {
 
     // 2. browser globals exist
     @Test(timeout = 20_000)
-    fun testBrowserGlobalsExist() = runBlocking(Dispatchers.Default) {
+    fun testBrowserGlobalsExist() = runBlocking<Unit>(Dispatchers.Default) {
         createBridge().use { b ->
             val globals = listOf("fetch", "Headers", "FormData", "URL", "URLSearchParams", "TextEncoder", "TextDecoder", "atob", "btoa", "setTimeout", "AbortController")
             for (g in globals) {
@@ -72,7 +72,7 @@ class PluginHostBridgeTest {
 
     // 3. fetchApi returns text/json/status/url/headers (MockWebServer)
     @Test(timeout = 20_000)
-    fun testFetchApiReturnsTextJsonStatusUrlHeaders() = runBlocking(Dispatchers.Default) {
+    fun testFetchApiReturnsTextJsonStatusUrlHeaders() = runBlocking<Unit>(Dispatchers.Default) {
         server!!.createContext("/api/test") { ex ->
             ex.responseHeaders.add("X-Custom", "TestVal")
             val body = """{"msg":"ok"}"""
@@ -93,7 +93,7 @@ class PluginHostBridgeTest {
 
     // 4. fetchText returns "" on 404
     @Test(timeout = 20_000)
-    fun testFetchTextReturnsEmptyOn404() = runBlocking(Dispatchers.Default) {
+    fun testFetchTextReturnsEmptyOn404() = runBlocking<Unit>(Dispatchers.Default) {
         server!!.createContext("/not-found") { it.sendResponseHeaders(404, -1) }
         createBridge().use { b ->
             assertEquals("", b.quickJs.evaluate<String>("await fetchText('$serverUrl/not-found')"))
@@ -102,7 +102,7 @@ class PluginHostBridgeTest {
 
     // 5. header stripping + default UA
     @Test(timeout = 20_000)
-    fun testHeaderStrippingAndDefaultUserAgent() = runBlocking(Dispatchers.Default) {
+    fun testHeaderStrippingAndDefaultUserAgent() = runBlocking<Unit>(Dispatchers.Default) {
         var receivedHost = ""
         var receivedEncoding = ""
         var receivedXTest = ""
@@ -128,7 +128,7 @@ class PluginHostBridgeTest {
 
     // 6. FormData urlencoded body
     @Test(timeout = 20_000)
-    fun testFormDataUrlencodedBody() = runBlocking(Dispatchers.Default) {
+    fun testFormDataUrlencodedBody() = runBlocking<Unit>(Dispatchers.Default) {
         var receivedBody = ""
         var contentType = ""
         server!!.createContext("/form") { ex ->
@@ -146,7 +146,7 @@ class PluginHostBridgeTest {
 
     // 7. redirect follow, res.url
     @Test(timeout = 20_000)
-    fun testRedirectFollowAndResUrl() = runBlocking(Dispatchers.Default) {
+    fun testRedirectFollowAndResUrl() = runBlocking<Unit>(Dispatchers.Default) {
         server!!.createContext("/redirect") { ex ->
             ex.responseHeaders.add("Location", "$serverUrl/target")
             ex.sendResponseHeaders(302, -1)
@@ -163,7 +163,7 @@ class PluginHostBridgeTest {
 
     // 8. setTimeout fires; clearTimeout cancels
     @Test(timeout = 10_000)
-    fun testSetTimeoutFiresAndClearTimeoutCancels() = runBlocking(Dispatchers.Default) {
+    fun testSetTimeoutFiresAndClearTimeoutCancels() = runBlocking<Unit>(Dispatchers.Default) {
         createBridge().use { b ->
             val script = "await (async () => { let f1 = false, f2 = false; setTimeout(() => { f1 = true; }, 40); const id = setTimeout(() => { f2 = true; }, 40); clearTimeout(id); await new Promise(r => setTimeout(r, 120)); return JSON.stringify({ f1, f2 }); })()"
             val json = JSONObject(b.quickJs.evaluate<String>(script))
@@ -174,7 +174,7 @@ class PluginHostBridgeTest {
 
     // 9. storage get/set/getAllKeys
     @Test(timeout = 20_000)
-    fun testStorageGetSetGetAllKeys() = runBlocking(Dispatchers.Default) {
+    fun testStorageGetSetGetAllKeys() = runBlocking<Unit>(Dispatchers.Default) {
         createBridge().use { b ->
             val script = "(() => { const s = require('@libs/storage').storage; s.clearAll(); s.set('k1', 'v1'); s.set('k2', 42); const v1 = s.get('k1'); const len = s.getAllKeys().length; s.delete('k1'); return JSON.stringify({ v1, len, hasK1: s.get('k1') !== undefined }); })()"
             val json = JSONObject(b.quickJs.evaluate<String>(script))
@@ -186,7 +186,7 @@ class PluginHostBridgeTest {
 
     // 10. unknown require -> err.name == "UnsupportedPluginFeature"
     @Test(timeout = 20_000)
-    fun testUnknownRequireThrowsUnsupportedPluginFeature() = runBlocking(Dispatchers.Default) {
+    fun testUnknownRequireThrowsUnsupportedPluginFeature() = runBlocking<Unit>(Dispatchers.Default) {
         createBridge().use { b ->
             val errName = b.quickJs.evaluate<String>("(() => { try { require('unknown-lib'); return 'none'; } catch (e) { return e.name; } })()")
             assertEquals("UnsupportedPluginFeature", errName)
@@ -195,7 +195,7 @@ class PluginHostBridgeTest {
 
     // 11. AES-GCM encrypt/decrypt round trip
     @Test(timeout = 20_000)
-    fun testAesGcmEncryptDecryptRoundTrip() = runBlocking(Dispatchers.Default) {
+    fun testAesGcmEncryptDecryptRoundTrip() = runBlocking<Unit>(Dispatchers.Default) {
         createBridge().use { b ->
             val script = "(() => { const { gcm } = require('@libs/aes'); const key = new Uint8Array(32), nonce = new Uint8Array(12); for (let i = 0; i < 32; i++) key[i] = i; for (let i = 0; i < 12; i++) nonce[i] = i; const c = gcm(key, nonce); const plain = new TextEncoder().encode('Hello AES!'); return new TextDecoder().decode(c.decrypt(c.encrypt(plain))); })()"
             assertEquals("Hello AES!", b.quickJs.evaluate<String>(script))

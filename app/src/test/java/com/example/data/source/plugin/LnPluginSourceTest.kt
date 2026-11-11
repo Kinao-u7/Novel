@@ -56,7 +56,7 @@ class LnPluginSourceTest {
     }
 
     @Test(timeout = 20_000)
-    fun testPopularNovelsThroughNovelSourceInterface() = runBlocking(Dispatchers.Default) {
+    fun testPopularNovelsThroughNovelSourceInterface() = runBlocking<Unit>(Dispatchers.Default) {
         val html = """
             <div class="page-item-detail"><div class="post-title"><a href="$serverUrl/novel/shadow-slave">Shadow Slave</a></div><img src="$serverUrl/c1.jpg" /></div>
             <div class="page-item-detail"><div class="post-title"><a href="$serverUrl/novel/lord-of-mysteries">Lord of Mysteries</a></div><img src="$serverUrl/c2.jpg" /></div>
@@ -110,7 +110,7 @@ class LnPluginSourceTest {
     }
 
     @Test(timeout = 20_000)
-    fun testDefaultFiltersPassedToPlugin() = runBlocking(Dispatchers.Default) {
+    fun testDefaultFiltersPassedToPlugin() = runBlocking<Unit>(Dispatchers.Default) {
         val filterScript = """
             function FilterPlugin() {
                 this.id = "filter_test";
@@ -160,7 +160,7 @@ class LnPluginSourceTest {
     }
 
     @Test(timeout = 20_000)
-    fun testOverLongPathSkippedInListAndComputedLimit() = runBlocking(Dispatchers.Default) {
+    fun testOverLongPathSkippedInListAndComputedLimit() = runBlocking<Unit>(Dispatchers.Default) {
         val scriptWithOverlong = """
             function OverlongPlugin() {
                 this.id = "overlong_test";
@@ -184,7 +184,7 @@ class LnPluginSourceTest {
     }
 
     @Test(timeout = 20_000)
-    fun testPluginExceptionPreservesCauseAndFormat() = runBlocking(Dispatchers.Default) {
+    fun testPluginExceptionPreservesCauseAndFormat() = runBlocking<Unit>(Dispatchers.Default) {
         val failingScript = """
             function FailingPlugin() {
                 this.id = "failing_plug";
@@ -210,7 +210,7 @@ class LnPluginSourceTest {
     }
 
     @Test(timeout = 20_000)
-    fun testCancellationExceptionIsRethrownNotWrapped() = runBlocking(Dispatchers.Default) {
+    fun testCancellationExceptionIsRethrownNotWrapped() = runBlocking<Unit>(Dispatchers.Default) {
         val hangingScript = """
             function HangingPlugin() {
                 this.id = "cancel_plug";

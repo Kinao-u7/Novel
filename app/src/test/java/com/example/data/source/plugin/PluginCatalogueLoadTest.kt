@@ -11,7 +11,7 @@ import org.junit.Test
 class PluginCatalogueLoadTest {
 
     @Test(timeout = 120_000)
-    fun testCataloguePluginsLoadInQuickJs() = runBlocking(Dispatchers.Default) {
+    fun testCataloguePluginsLoadInQuickJs() = runBlocking<Unit>(Dispatchers.Default) {
         val isCi = System.getenv("CI") == "true"
         val rootDir = listOf(
             File("tools/catalogue-scan/.cache/lnreader-plugins-45daf1d"),
