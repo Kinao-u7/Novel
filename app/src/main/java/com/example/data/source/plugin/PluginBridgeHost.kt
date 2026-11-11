@@ -7,10 +7,6 @@ import java.nio.charset.Charset
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicInteger
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -21,10 +17,8 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
-@OptIn(ExperimentalEncodingApi::class)
 class PluginBridgeHost(
-    private val httpClient: PluginHttpClient = PluginHttpClientImpl(),
-    val byteStore: ResponseByteStore = ResponseByteStore(),
+    val httpClient: PluginHttpClient = PluginHttpClientImpl(),
     private val jsExecutor: ExecutorService = Executors.newSingleThreadExecutor { Thread(it, "quickjs-runtime") }
 ) : AutoCloseable {
 
@@ -32,17 +26,10 @@ class PluginBridgeHost(
     val scope = CoroutineScope(jsDispatcher + Job())
     val quickJs: QuickJs = QuickJs.create(jobDispatcher = jsDispatcher)
 
-    private val metaStore = ConcurrentHashMap<Long, PluginHttpResponse>()
     private val activeTimers = ConcurrentHashMap<Int, Job>()
-    private val timerCount = AtomicInteger(0)
-
-    val logs = mutableListOf<String>()
 
     companion object {
-        const val MAX_PENDING_TIMERS = 50
-        const val MAX_DELAY_MS = 60_000L // 60 seconds max delay
-        const val MAX_DECODE_BYTES = 10 * 1024 * 1024L // 10 MB cap for __host_decodeText
-        const val MAX_LOGS = 200
+        const val MAX_DELAY_MS = 15_000L // 15 seconds max delay
     }
 
     init {
@@ -50,21 +37,17 @@ class PluginBridgeHost(
     }
 
     private fun registerBridge() {
-        // 1. __host_fetch(requestId, requestJson) -> JSON String: { responseId } or { error: { name, message } }
+        // 1. __host_fetch(requestJson) -> JSON String or throws "Name: message"
         quickJs.asyncFunction("__host_fetch") { args: Array<Any?> ->
-            val requestId = (args[0] as Number).toInt()
-            val jsonStr = args[1] as String
-            val resultJson = JSONObject()
-
+            val jsonStr = args[0] as String
             try {
                 val json = JSONObject(jsonStr)
-
                 val url = json.getString("url")
                 val method = json.optString("method", "GET")
                 val redirect = json.optString("redirect", "follow")
                 val timeoutMs = json.optLong("timeoutMs", 30_000L)
                 val bodyText = if (json.has("bodyText") && !json.isNull("bodyText")) json.getString("bodyText") else null
-                val bodyBase64 = if (json.has("bodyBase64") && !json.isNull("bodyBase64")) json.getString("bodyBase64") else null
+                val encoding = if (json.has("encoding") && !json.isNull("encoding")) json.getString("encoding") else null
 
                 val headersList = mutableListOf<Pair<String, String>>()
                 if (json.has("headers")) {
@@ -80,221 +63,76 @@ class PluginBridgeHost(
                     method = method,
                     headers = headersList,
                     bodyText = bodyText,
-                    bodyBase64 = bodyBase64,
                     redirect = redirect,
                     timeoutMs = timeoutMs
                 )
 
-                val response = httpClient.execute(requestId, request)
-                val responseId = byteStore.store(response.bodyBytes)
-                metaStore[responseId] = response
-                resultJson.put("responseId", responseId)
-            } catch (e: CancellationException) {
-                throw e
+                val response = httpClient.execute(0, request)
+                val charset = when {
+                    !encoding.isNullOrEmpty() -> safeCharset(encoding)
+                    else -> extractCharsetFromContentType(response.headers)
+                }
+                val decodedBody = String(response.bodyBytes, charset)
+
+                val resultJson = JSONObject().apply {
+                    put("status", response.status)
+                    put("ok", response.ok)
+                    put("statusText", response.statusText)
+                    put("url", response.url)
+                    val headersArr = JSONArray()
+                    for ((k, v) in response.headers) {
+                        headersArr.put(JSONArray().apply {
+                            put(k)
+                            put(v)
+                        })
+                    }
+                    put("headers", headersArr)
+                    put("body", decodedBody)
+                }
+                resultJson.toString()
             } catch (e: Throwable) {
-                val errorObj = JSONObject()
                 val errorName = when (e) {
                     is PluginAbortException -> "AbortError"
                     is PayloadTooLargeException -> "PayloadTooLarge"
-                    is StoreCapacityExceededException -> "StoreCapacityExceeded"
                     is java.io.IOException -> "TypeError"
                     else -> if (e::class.java.simpleName.isNotEmpty()) e::class.java.simpleName else "Error"
                 }
-                errorObj.put("name", errorName)
-                errorObj.put("message", e.message ?: "")
-                resultJson.put("error", errorObj)
+                throw RuntimeException("$errorName: ${e.message ?: ""}")
             }
-            resultJson.toString()
         }
 
-        // 2. __host_abort(requestId)
-        quickJs.function("__host_abort") { args: Array<Any?> ->
-            val requestId = (args[0] as Number).toInt()
-            httpClient.abort(requestId)
-        }
-
-        // 3. __host_response_meta(responseId) -> JSON metadata
-        quickJs.function("__host_response_meta") { args: Array<Any?> ->
-            val responseId = (args[0] as Number).toLong()
-            val meta = metaStore[responseId] ?: return@function JSONObject().apply {
-                put("error", JSONObject().apply {
-                    put("name", "NotFoundError")
-                    put("message", "No response metadata for id=$responseId")
-                })
-            }.toString()
-
-            val json = JSONObject()
-            json.put("status", meta.status)
-            json.put("ok", meta.ok)
-            json.put("statusText", meta.statusText)
-            json.put("url", meta.url)
-
-            val headersArr = JSONArray()
-            for ((k, v) in meta.headers) {
-                val pair = JSONArray().apply {
-                    put(k)
-                    put(v)
-                }
-                headersArr.put(pair)
-            }
-            json.put("headers", headersArr)
-            json.toString()
-        }
-
-        // 4. __host_response_text(responseId, encoding?) -> JSON String: { ok, value } or { error: { name, message } }
-        quickJs.function("__host_response_text") { args: Array<Any?> ->
-            val resultJson = JSONObject()
-            try {
-                val responseId = (args[0] as Number).toLong()
-                val overrideEncoding = if (args.size > 1 && args[1] is String) args[1] as String else null
-
-                val meta = metaStore[responseId]
-                val bytes = byteStore.remove(responseId) ?: throw NoSuchElementException("No stored bytes for id=$responseId")
-
-                val charset = when {
-                    !overrideEncoding.isNullOrEmpty() -> safeCharset(overrideEncoding)
-                    meta != null -> extractCharsetFromContentType(meta.headers)
-                    else -> Charsets.UTF_8
-                }
-
-                val decoded = String(bytes, charset)
-                resultJson.put("ok", true)
-                resultJson.put("value", decoded)
-            } catch (e: Throwable) {
-                val errorObj = JSONObject()
-                val errorName = when (e) {
-                    is NoSuchElementException -> "NotFoundError"
-                    is PayloadTooLargeException -> "PayloadTooLarge"
-                    is java.nio.charset.UnsupportedCharsetException -> "TypeError"
-                    else -> if (e::class.java.simpleName.isNotEmpty()) e::class.java.simpleName else "Error"
-                }
-                errorObj.put("name", errorName)
-                errorObj.put("message", e.message ?: "")
-                resultJson.put("error", errorObj)
-            }
-            resultJson.toString()
-        }
-
-        // 5. __host_response_bytes(responseId) -> JSON String: { ok, value } or { error: { name, message } }
-        quickJs.function("__host_response_bytes") { args: Array<Any?> ->
-            val resultJson = JSONObject()
-            try {
-                val responseId = (args[0] as Number).toLong()
-                val bytes = byteStore.getBinary(responseId)
-                byteStore.remove(responseId)
-                resultJson.put("ok", true)
-                resultJson.put("value", Base64.encode(bytes))
-            } catch (e: Throwable) {
-                val errorObj = JSONObject()
-                val errorName = when (e) {
-                    is NoSuchElementException -> "NotFoundError"
-                    is PayloadTooLargeException -> "PayloadTooLarge"
-                    else -> if (e::class.java.simpleName.isNotEmpty()) e::class.java.simpleName else "Error"
-                }
-                errorObj.put("name", errorName)
-                errorObj.put("message", e.message ?: "")
-                resultJson.put("error", errorObj)
-            }
-            resultJson.toString()
-        }
-
-        // 6. __host_response_close(responseId)
-        quickJs.function("__host_response_close") { args: Array<Any?> ->
-            val responseId = (args[0] as Number).toLong()
-            byteStore.remove(responseId)
-            metaStore.remove(responseId)
-        }
-
-        // 7. __host_decodeText(bytesBase64, encoding) -> JSON String: { ok, value } or { error: { name, message } }
-        quickJs.function("__host_decodeText") { args: Array<Any?> ->
-            val resultJson = JSONObject()
-            try {
-                val b64 = args[0] as String
-                val encoding = if (args.size > 1 && args[1] is String) args[1] as String else "utf-8"
-
-                val bytes = Base64.decode(b64)
-                if (bytes.size > MAX_DECODE_BYTES) {
-                    throw PayloadTooLargeException("Text decode input (${bytes.size} bytes) exceeds ${MAX_DECODE_BYTES / (1024 * 1024)} MB limit")
-                }
-
-                val charset = safeCharset(encoding)
-                val decoded = String(bytes, charset)
-                resultJson.put("ok", true)
-                resultJson.put("value", decoded)
-            } catch (e: Throwable) {
-                val errorObj = JSONObject()
-                val errorName = when (e) {
-                    is PayloadTooLargeException -> "PayloadTooLarge"
-                    is IllegalArgumentException -> "TypeError"
-                    is java.nio.charset.UnsupportedCharsetException -> "TypeError"
-                    else -> if (e::class.java.simpleName.isNotEmpty()) e::class.java.simpleName else "Error"
-                }
-                errorObj.put("name", errorName)
-                errorObj.put("message", e.message ?: "")
-                resultJson.put("error", errorObj)
-            }
-            resultJson.toString()
-        }
-
-        // 8. __host_setTimeout(callbackId, delayMs) -> JSON String: { ok } or { error: { name, message } }
+        // 2. __host_setTimeout(callbackId, delayMs) -> sync host function, NEVER throws
         quickJs.function("__host_setTimeout") { args: Array<Any?> ->
-            val resultJson = JSONObject()
             try {
                 val callbackId = (args[0] as Number).toInt()
                 val rawDelay = (args[1] as Number).toLong()
-
-                if (timerCount.get() >= MAX_PENDING_TIMERS) {
-                    throw IllegalStateException("Timer limit exceeded: max $MAX_PENDING_TIMERS concurrent pending timers allowed")
-                }
-
-                // Clamp delay to MAX_DELAY_MS (60 seconds)
                 val delayMs = rawDelay.coerceIn(0L, MAX_DELAY_MS)
-                timerCount.incrementAndGet()
 
                 val job = scope.launch(jsDispatcher) {
                     try {
                         delay(delayMs)
                         activeTimers.remove(callbackId)
-                        timerCount.decrementAndGet()
                         quickJs.evaluate<Any?>("__dispatchTimeout($callbackId)")
-                    } catch (e: Throwable) {
+                    } catch (_: Throwable) {
                         // Cancelled
                     }
                 }
                 activeTimers[callbackId] = job
-                resultJson.put("ok", true)
-            } catch (e: Throwable) {
-                val errorObj = JSONObject()
-                val errorName = when (e) {
-                    is IllegalStateException -> "TimerLimitExceeded"
-                    else -> if (e::class.java.simpleName.isNotEmpty()) e::class.java.simpleName else "Error"
-                }
-                errorObj.put("name", errorName)
-                errorObj.put("message", e.message ?: "")
-                resultJson.put("error", errorObj)
+                "ok"
+            } catch (_: Throwable) {
+                null
             }
-            resultJson.toString()
         }
 
-        // 9. __host_clearTimeout(callbackId)
+        // 3. __host_clearTimeout(callbackId) -> sync host function, NEVER throws
         quickJs.function("__host_clearTimeout") { args: Array<Any?> ->
-            val callbackId = (args[0] as Number).toInt()
-            val job = activeTimers.remove(callbackId)
-            if (job != null) {
-                timerCount.decrementAndGet()
-                job.cancel()
-            }
-        }
-
-        // 10. __host_log(level, message)
-        quickJs.function("__host_log") { args: Array<Any?> ->
-            val level = args[0] as String
-            val msg = args[1] as String
-            synchronized(logs) {
-                if (logs.size >= MAX_LOGS) {
-                    logs.removeAt(0)
-                }
-                logs.add("[$level] $msg")
+            try {
+                val callbackId = (args[0] as Number).toInt()
+                val job = activeTimers.remove(callbackId)
+                job?.cancel()
+                "ok"
+            } catch (_: Throwable) {
+                null
             }
         }
     }
@@ -302,7 +140,7 @@ class PluginBridgeHost(
     private fun safeCharset(name: String): Charset {
         return try {
             Charset.forName(name)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             Charsets.UTF_8
         }
     }
@@ -314,13 +152,21 @@ class PluginBridgeHost(
         return safeCharset(charsetName)
     }
 
-    suspend fun <T> executePluginCall(block: suspend () -> T): T {
-        try {
-            return block()
-        } finally {
-            byteStore.clear()
-            metaStore.clear()
-        }
+    suspend fun initHarness(libsJs: String, harnessJs: String) {
+        quickJs.evaluate<Any?>(libsJs)
+        quickJs.evaluate<Any?>(harnessJs)
+    }
+
+    suspend fun loadPlugin(id: String, sourceCode: String): JSONObject {
+        quickJs.function("__getPluginSrc") { sourceCode }
+        val metaJson = quickJs.evaluate<String>("JSON.stringify(__loadPlugin('$id', __getPluginSrc()))")
+        return JSONObject(metaJson)
+    }
+
+    suspend fun callPlugin(id: String, method: String, args: List<Any?> = emptyList()): String {
+        val argsJson = JSONArray(args).toString()
+        quickJs.function("__getArgsJson") { argsJson }
+        return quickJs.evaluate<String>("await __callPlugin('$id', '$method', __getArgsJson())")
     }
 
     override fun close() {
@@ -328,8 +174,6 @@ class PluginBridgeHost(
         httpClient.abortAll()
         activeTimers.values.forEach { it.cancel() }
         activeTimers.clear()
-        byteStore.clear()
-        metaStore.clear()
         quickJs.close()
         jsExecutor.shutdown()
     }
