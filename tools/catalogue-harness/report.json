@@ -1,0 +1,2945 @@
+{
+  "arabic/ArNovel[madara].js": {
+    "id": "arnovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "arabic/Azora[madara].js": {
+    "id": "azora",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "arabic/FreeKolNovel[lightnovelwp].js": {
+    "id": "freekolnovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "arabic/HizoManga[madara].js": {
+    "id": "hizomanga",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "arabic/KolNovel[lightnovelwp].js": {
+    "id": "kolnovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "arabic/Novel4Up[madara].js": {
+    "id": "novel4up",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "arabic/NovelsParadise[lightnovelwp].js": {
+    "id": "novelsparadise",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "arabic/Olaoecyou[madara].js": {
+    "id": "olaoe",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "arabic/Riwyat[madara].js": {
+    "id": "riwyat",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "arabic/azorafly.js": {
+    "id": "azorafly",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "arabic/dilartube.js": {
+    "id": "dilartube",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "arabic/galaxynovels.js": {
+    "id": "galaxynovels",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "arabic/mknov.js": {
+    "id": "mknov",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "arabic/mtlarabic.js": {
+    "id": "mtlarabic",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Could not find \"__NOVELS__\" data on the page",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Could not find \"__NOVELS__\" data on the page"
+  },
+  "arabic/rewayahfans.js": {
+    "id": "rewayahfans",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "arabic/rewayatclub.js": {
+    "id": "rewayatclub",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "arabic/rewayatfans.js": {
+    "id": "rewayatfans",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "arabic/seanovel.js": {
+    "id": "seanovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "arabic/sunovels.js": {
+    "id": "sunovels",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "bangla/golpercity.js": {
+    "id": "golpercity",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "chinese/69shu.js": {
+    "id": "69shu",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: 无法获取小说列表，请检查网络",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: 无法获取搜索结果，请检查网络"
+  },
+  "chinese/Quanben.js": {
+    "id": "quanben",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "chinese/ixdzs8.js": {
+    "id": "ixdzs8",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "chinese/lewenn.js": {
+    "id": "lewenn",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: [LeWenn] Failed to fetch: https://www.lewenn.com/",
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "chinese/linovel.js": {
+    "id": "linovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: 无法获取内容，请检查网络",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: 无法获取内容，请检查网络"
+  },
+  "chinese/linovelib.js": {
+    "id": "linovelib",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: 无法获取小说列表，请检查网络",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "chinese/linovelib_tw.js": {
+    "id": "linovelib_tw",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: 無法獲取小説列表, 請檢查網絡",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: 無法獲取搜索結果, 請檢查網絡"
+  },
+  "chinese/novel543.js": {
+    "id": "novel543",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/AllNovelFull[readnovelfull].js": {
+    "id": "anf.net",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/AllNovel[readnovelfull].js": {
+    "id": "allnovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/ArcaneTranslations[lightnovelwp].js": {
+    "id": "arcane",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/BaiLianTales[madara].js": {
+    "id": "bailiantales",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/BelleRepository[madara].js": {
+    "id": "bellereservoir",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/BlumeVerse[lightnovelwp].js": {
+    "id": "blumeverse",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/BoxNovel[madara].js": {
+    "id": "boxnovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/CPUnovel[lightnovelwp].js": {
+    "id": "cpunovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/CherryMistCafe[fictioneer].js": {
+    "id": "cherrymistcafe",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/CitrusAurora[madara].js": {
+    "id": "citrusaurora",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/CoralBoutique[madara].js": {
+    "id": "coralboutique",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/DaoNovel[madara].js": {
+    "id": "daonovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/DaoTranslate[lightnovelwp].js": {
+    "id": "daotranslate",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/DaoistQuest[fictioneer].js": {
+    "id": "daoistquest",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/DearestRosalie[fictioneer].js": {
+    "id": "dearestrosalie",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/DobyNovels[lightnovelwp].js": {
+    "id": "dobynovels",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/DragonTea[madara].js": {
+    "id": "dragontea",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/DuskBlossoms[madara].js": {
+    "id": "duskblossoms",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/ElloTL[lightnovelwp].js": {
+    "id": "ellotl",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/Eternalune[madara].js": {
+    "id": "eternalune",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/EtudeTranslations[madara].js": {
+    "id": "etudetranslations",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/FanNovel[readwn].js": {
+    "id": "fannovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/FansMTL[readwn].js": {
+    "id": "wuxiamtl",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/FansTranslations[madara].js": {
+    "id": "fanstranslations",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/FirstKissNovel[madara].js": {
+    "id": "1stkissnovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/Foxaholic[madara].js": {
+    "id": "foxaholic",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/FreeWebNovel[readnovelfull].js": {
+    "id": "FWN.com",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/GalaxyTranslations[madara].js": {
+    "id": "galaxytranslations",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/Guavaread[madara].js": {
+    "id": "guavaread",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/HangulPlanet.js": {
+    "id": "hangulplanet",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/HiraethTranslation[madara].js": {
+    "id": "hiraethtranslation",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/HotNovelPub[hotnovelpub].js": {
+    "id": "hotnovelpub",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/HyacinthinBloom[lightnovelwp].js": {
+    "id": "hyacinthbloom",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/Ippotranslations[lightnovelwp].js": {
+    "id": "ippotranslations",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/KeopiTranslations[lightnovelwp].js": {
+    "id": "keopi",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/KnoxT[lightnovelwp].js": {
+    "id": "knoxt",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/LazyGirlTranslations[lightnovelwp].js": {
+    "id": "lazygirltranslations",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/LibRead[readnovelfull].js": {
+    "id": "libread",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/LightNovelCave[webnovelworld].js": {
+    "id": "lightnovelcave",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/LightNovelHeaven[madara].js": {
+    "id": "lnheaven",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/LightNovelPlus[readnovelfull].js": {
+    "id": "lightnovelplus",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/LightNovelPubVip[webnovelworld].js": {
+    "id": "lightnovelpubvip",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/LightNovelUpdates[madara].js": {
+    "id": "LightNovelUpdates",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/LilyontheValley[fictioneer].js": {
+    "id": "lilyonthevalley",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/Lovelyblossoms[madara].js": {
+    "id": "lovelyblossoms",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/Ltnovel[readwn].js": {
+    "id": "ltnovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/LulloBox[madara].js": {
+    "id": "lullobox",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/LunarLetters[madara].js": {
+    "id": "lunarletters",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/MTLNovel[madara].js": {
+    "id": "mtl-novel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/MTLNovel[mtlnovel].js": {
+    "id": "mtlnovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/Meownovel[madara].js": {
+    "id": "meownovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/MoonlightNovels[lightnovelwp].js": {
+    "id": "moonlightnovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/MostNovel[madara].js": {
+    "id": "mostnovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/MysticalSeries[madara].js": {
+    "id": "mysticalmerries",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/NeoSekaiTranslations[madara].js": {
+    "id": "neosekaiTLS",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/NitroManga[madara].js": {
+    "id": "nitromanga",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/NobleMTL[lightnovelwp].js": {
+    "id": "noblemtl",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/NoiceTranslations[madara].js": {
+    "id": "noicetranslations",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/NovelCool[novelcool].js": {
+    "id": "novelcool",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/NovelFire[novelfire].js": {
+    "id": "novelfire",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/NovelFull[readnovelfull].js": {
+    "id": "novelfull",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/NovelLib[fictioneer].js": {
+    "id": "novelib",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/NovelMultiverse[madara].js": {
+    "id": "novelmultiverse",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/NovelNice[madara].js": {
+    "id": "novelnice",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/NovelNinja[madara].js": {
+    "id": "novelninja",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/NovelOnline.js": {
+    "id": "NO.net",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/NovelPhoenix[novelfire].js": {
+    "id": "novelphoenix",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/NovelPing[readnovelfull].js": {
+    "id": "novelping",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/NovelShort[madara].js": {
+    "id": "novelshort",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/NovelTranslate[madara].js": {
+    "id": "novelTL",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/NovelsKnight[lightnovelwp].js": {
+    "id": "novelsknight",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/OssanTL[lightnovelwp].js": {
+    "id": "ossantl",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/PandaMachineTranslations[lightnovelwp].js": {
+    "id": "pandamtl",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/PastelTales[madara].js": {
+    "id": "pasteltales",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/PenguinSquad[fictioneer].js": {
+    "id": "penguinsquad",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/Prizma[fictioneer].js": {
+    "id": "prizmatranslation",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/Ranobes[ranobes].js": {
+    "id": "ranobes",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/Ranovel[madara].js": {
+    "id": "ranovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/ReadFanfic[madara].js": {
+    "id": "readfanfic",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/ReadNovelFull[readnovelfull].js": {
+    "id": "readnovelfull",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/RequiemTranslations[lightnovelwp].js": {
+    "id": "requiemtls",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/SalmonLatte[madara].js": {
+    "id": "salmonlatte",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/SleepyTranslations[madara].js": {
+    "id": "sleeptTLS",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/SonicMTL[madara].js": {
+    "id": "sonicmtl",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/SrankManga[madara].js": {
+    "id": "asuralightnovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/StorySeedling.js": {
+    "id": "storyseedling",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/SweetEscape[madara].js": {
+    "id": "sweetescape",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/SystemTranslation[lightnovelwp].js": {
+    "id": "systemtranslation",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/TangerineArchive[madara].js": {
+    "id": "tangerinearchive",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/TranslatinOtaku[madara].js": {
+    "id": "translatinotaku",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/TranslationWeaver[lightnovelwp].js": {
+    "id": "transweaver",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/UniversalNovel[lightnovelwp].js": {
+    "id": "universalnovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/VandyTranslate[lightnovelwp].js": {
+    "id": "vandytranslate",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/VioletLily[madara].js": {
+    "id": "violetlily",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/WebNovelLover[madara].js": {
+    "id": "webnovelover",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/WebNovelPub[webnovelworld].js": {
+    "id": "webnovelworld",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/WhiteMoonlightNovels[lightnovelwp].js": {
+    "id": "whitemoonlightnovels",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "english/WooksTeahouse[madara].js": {
+    "id": "wooksteahouse",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/WordExcerpt[madara].js": {
+    "id": "wordexcerpt",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/WuxiaSpace[readwn].js": {
+    "id": "wuxiaspace",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/WuxiaV[readwn].js": {
+    "id": "wuxiav",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/WuxiaWorldSite[madara].js": {
+    "id": "wuxiaworld.site",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/Wuxiabox[readwn].js": {
+    "id": "wuxiap",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/Wuxiafox[readwn].js": {
+    "id": "wuxiacity",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/ZetroTranslation[madara].js": {
+    "id": "zetroTL",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "english/animeAnyway.js": {
+    "id": "animeanyway",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/ao3.js": {
+    "id": "archiveofourown",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/asianfanfics.js": {
+    "id": "asianfanfics",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/asurascans.js": {
+    "id": "asurascans",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/atsumaru.js": {
+    "id": "atsumaru",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Failed to load popular novels: response was not valid JSON",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Failed to search novels: response was not valid JSON"
+  },
+  "english/bakaTsuki.js": {
+    "id": "bakatsuki",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/beastnovels.js": {
+    "id": "beastnovels",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Could not find the novel catalog",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Could not find the novel catalog"
+  },
+  "english/boonnovel.js": {
+    "id": "boonnovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Failed to load popular novels: response was not valid JSON",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Failed to search novels: response was not valid JSON"
+  },
+  "english/borntobenovel.js": {
+    "id": "borntobenovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/bronstl.js": {
+    "id": "bronstl",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/chikari.js": {
+    "id": "chikari",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Failed to parse popular novels: Expected JSON response but received unexpected content (\"...\")",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Failed to parse search novels: Expected JSON response but received unexpected content (\"...\")"
+  },
+  "english/chrysanthemumgarden.js": {
+    "id": "chrysanthemumgarden",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/cotereader.js": {
+    "id": "cotereader",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Received empty response from server. Please retry in a moment.",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Received empty response from server. Please retry in a moment."
+  },
+  "english/crimsonscrolls.js": {
+    "id": "crimsonscrolls",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/daotekno.js": {
+    "id": "daotekno",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/divinedaolibrary.js": {
+    "id": "DDL.com",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/dragonholic.js": {
+    "id": "dragonholic",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/dreambigtl.js": {
+    "id": "dreambigtl",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/dreamyTranslations.js": {
+    "id": "dreamyTranslations",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Could not find \"\"projects\"\" in Dreamy Translations RSC response",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Could not find \"\"projects\"\" in Dreamy Translations RSC response"
+  },
+  "english/empirenovel.js": {
+    "id": "empirenovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/faqwikius.js": {
+    "id": "FWK.US",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/fenrirrealm.js": {
+    "id": "fenrir",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: There was an error fetching the data from the server. Please try to open it in WebView",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/fictionzone.js": {
+    "id": "fictionzone",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/firebirdsnest.js": {
+    "id": "firebirdsnest",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Firebird's Nest: no novels found in the site menu",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Firebird's Nest: no novels found in the site menu"
+  },
+  "english/foxteller.js": {
+    "id": "foxteller",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/fucknovelpia.js": {
+    "id": "FuckNovelpia",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/genesis.js": {
+    "id": "genesistudio",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/hennoveltranslations.js": {
+    "id": "hennoveltranslations",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Hen Novel Translations: the project list could not be read.",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Hen Novel Translations: the project list could not be read."
+  },
+  "english/indraTranslations.js": {
+    "id": "indratranslations",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/inkitt.js": {
+    "id": "inkitt",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Failed to load novels, try opening in webview.",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Failed to search novels, try opening in webview."
+  },
+  "english/inoveltranslation.js": {
+    "id": "inoveltranslation",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/kdtnovels.js": {
+    "id": "kdtnovels",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/konkon.js": {
+    "id": "konkon",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Konkon returned an unexpected response. Try opening the site in webview.",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Konkon returned an unexpected response. Try opening the site in webview."
+  },
+  "english/leafstudio.js": {
+    "id": "LeafStudio",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/lightnovelto.js": {
+    "id": "lightnovelto",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/lightnoveltranslation.js": {
+    "id": "lightnoveltranslations",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/lightnovelworld.js": {
+    "id": "lightnovelworld",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/lncrawler.js": {
+    "id": "lncrawler",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Failed to load popular novels: response was not valid JSON",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Failed to search novels: response was not valid JSON"
+  },
+  "english/lnmtl.js": {
+    "id": "lnmtl",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/lnori.js": {
+    "id": "lnori",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/luminaretranslations.js": {
+    "id": "luminaretranslations",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/maehwasup.js": {
+    "id": "maehwasup",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Maehwasup: the novel title could not be read.",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Maehwasup: the novel title could not be read."
+  },
+  "english/mizupanshoko.js": {
+    "id": "mizupanshoko",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/mvlempyr.js": {
+    "id": "mvlempyr.com",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/mylasted.js": {
+    "id": "mylasted",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/mynovels.js": {
+    "id": "mynovels",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/nightjarreads.js": {
+    "id": "nightjarreads",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/novel7s.js": {
+    "id": "novel7s",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/novelarchive.js": {
+    "id": "novelarchive",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/novelarrow.js": {
+    "id": "novelarrow",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/novelbin.js": {
+    "id": "novelbin",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/novelbuddy.js": {
+    "id": "novelbuddy",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/noveldex.js": {
+    "id": "noveldex",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/novelhall.js": {
+    "id": "novelhall",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/novelhi.js": {
+    "id": "novelhi",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/novelight.js": {
+    "id": "novelight",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/novelito.js": {
+    "id": "novelito",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Failed to load novels: response was not valid JSON",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Failed to load novels: response was not valid JSON"
+  },
+  "english/novelrest.js": {
+    "id": "novelrest",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/novelupdates.js": {
+    "id": "novelupdates",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/onlinereadfreenovel.js": {
+    "id": "onlinereadfreenovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/pawread.js": {
+    "id": "pawread",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/peachpuff.js": {
+    "id": "peachpuff",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/puffinFolio.js": {
+    "id": "puffinfolio",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/rainofsnow.js": {
+    "id": "rainofsnow",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/readfrom.js": {
+    "id": "readfrom",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/rechapters.js": {
+    "id": "rechapters",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/relibrary.js": {
+    "id": "ReLib",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/royalroad.js": {
+    "id": "royalroad",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/scribblehub.js": {
+    "id": "scribblehub",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/seireitranslations.js": {
+    "id": "seireitranslations",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/skythewood.js": {
+    "id": "skythewoodtranslations",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/sylthorian.js": {
+    "id": "sylthorian",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/tensurafan.js": {
+    "id": "tensurafan",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/tinytranslation.js": {
+    "id": "tinytranslation",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/toasteful.js": {
+    "id": "toasteful",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/vynovel.js": {
+    "id": "vynovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/wct.js": {
+    "id": "witchculttranslations",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/webnovel.js": {
+    "id": "webnovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/wetriedtls.js": {
+    "id": "wetriedtls",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "english/wntl.js": {
+    "id": "WebNovelTraslation",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "english/wtrlab.js": {
+    "id": "WTRLAB",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Could not find __NEXT_DATA__ on novel finder page",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Could not find __NEXT_DATA__ on novel finder page"
+  },
+  "english/wuxiaworld.js": {
+    "id": "wuxiaworld",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "french/LighNovelFR[lightnovelwp].js": {
+    "id": "lightnovelfr",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "french/MTLNovel(FR)[mtlnovel].js": {
+    "id": "mtlnovel-fr",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "french/MassNovel[madara].js": {
+    "id": "massnovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "french/chireads.js": {
+    "id": "chireads",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Chireads search failed for all category parents"
+  },
+  "french/harkeneliwood.js": {
+    "id": "harkeneliwood",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "french/jgarden.js": {
+    "id": "jgarden",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Failed to load catalogue",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Failed to load catalogue"
+  },
+  "french/kisswood.js": {
+    "id": "kisswood",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "french/lightnovelvf.js": {
+    "id": "lightnovelvf",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "french/noveldeglace.js": {
+    "id": "noveldeglace",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "french/novelfrance.js": {
+    "id": "novelfrance",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "french/novhell.js": {
+    "id": "novhell",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "french/rezerowebnovelfr.js": {
+    "id": "rezerowebnovelfr",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "french/tradindex.js": {
+    "id": "tradindex",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Trad-Index catalogue returned no work cards",
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "french/warriorlegendtrad.js": {
+    "id": "warriorlegendtrad",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "french/wuxialnscantrad.js": {
+    "id": "wuxialnscantrad",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "french/xiaowaz.js": {
+    "id": "xiaowaz",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "indonesian/BacaLightNovel[lightnovelwp].js": {
+    "id": "bacalightnovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "indonesian/MTLNovel(ID)[mtlnovel].js": {
+    "id": "mtlnovel-id",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "indonesian/MeioNovel[madara].js": {
+    "id": "meionovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "indonesian/NovelBookID[madara].js": {
+    "id": "novelbookid",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "indonesian/SekteNovel[lightnovelwp].js": {
+    "id": "sektenovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "indonesian/Vanovel[madara].js": {
+    "id": "morenovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "indonesian/WBNovel[madara].js": {
+    "id": "wbnovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "indonesian/grensia.js": {
+    "id": "grensia",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "indonesian/indowebnovel.js": {
+    "id": "IDWN.id",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "indonesian/novelringan.js": {
+    "id": "novelringan.com",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "indonesian/sakuranovel.js": {
+    "id": "sakura.id",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "japanese/Syosetu.js": {
+    "id": "yomou.syosetu",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "japanese/kakuyomu.js": {
+    "id": "kakuyomu",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "korean/Agitoon.js": {
+    "id": "agit.xyz",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "korean/FortuneEternal[madara].js": {
+    "id": "fortuneeternal",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "multi/komga.js": {
+    "id": "komga",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "polish/novelki.js": {
+    "id": "novelki.pl",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "portuguese/BetterNovels[lightnovelwp].js": {
+    "id": "betternovels",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "portuguese/CentralNovel[lightnovelwp].js": {
+    "id": "centralnovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "portuguese/Illusia[fictioneer].js": {
+    "id": "illusia",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "portuguese/Kiniga[madara].js": {
+    "id": "kiniga",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "portuguese/LaNovels[hotnovelpub].js": {
+    "id": "lanovels",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "portuguese/LightNovelBrasil[lightnovelwp].js": {
+    "id": "lightnovelbrasil",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "portuguese/MTLNovel(PT)[mtlnovel].js": {
+    "id": "mtlnovel-pt",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "portuguese/blnovels.js": {
+    "id": "blnovels",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "portuguese/blogdoamonnovels.js": {
+    "id": "blogdoamonnovels",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "portuguese/novelmania.js": {
+    "id": "novelmania.com.br",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "portuguese/tsundoku.js": {
+    "id": "tsundoku",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "russian/Bllate[rulate].js": {
+    "id": "bllate-api",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "russian/Bookhamster[ifreedom].js": {
+    "id": "bookhamster",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "russian/Erolate[rulate].js": {
+    "id": "erolate-api",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "russian/EzNovels[hotnovelpub].js": {
+    "id": "eznovels",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "russian/MTLNovel(RU)[mtlnovel].js": {
+    "id": "mtlnovel-ru",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "russian/NovelCool(RU)[novelcool].js": {
+    "id": "novelcool-ru",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "russian/Ranobes(RU)[ranobes].js": {
+    "id": "ranobes-ru",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "russian/Rulate[rulate].js": {
+    "id": "rulate-api",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "russian/authortoday.js": {
+    "id": "AT",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "russian/bookriver.js": {
+    "id": "bookriver",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "russian/ficbook.js": {
+    "id": "ficbook",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "russian/hexnovels.js": {
+    "id": "hexnovels",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "russian/jaomix.js": {
+    "id": "jaomix.ru",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "russian/neobook.js": {
+    "id": "neobook",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "russian/novelTL.js": {
+    "id": "TL",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "russian/ranobehub.js": {
+    "id": "RNBH.org",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "russian/ranobelib.js": {
+    "id": "RLIB",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "russian/ranobelife.js": {
+    "id": "ranobelife",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "russian/ranobeme.js": {
+    "id": "ranobeme",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "russian/ranobemir.js": {
+    "id": "ranobemir",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "russian/ranoberf.js": {
+    "id": "RNRF",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "russian/renovels.js": {
+    "id": "ReN",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "russian/ruranobe.js": {
+    "id": "ruranobe",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "russian/webfandom.js": {
+    "id": "webfandom",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Пройдите проверку: откройте сайт в WebView",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Пройдите проверку: откройте сайт в WebView"
+  },
+  "russian/zelluloza.js": {
+    "id": "zelluloza",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "russian/СвободныйМирРанобэ[ifreedom].js": {
+    "id": "ifreedom",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "spanish/AllNovelRead[lightnovelwp].js": {
+    "id": "allnovelread",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "spanish/AnimesHoy12[madara].js": {
+    "id": "AnimesHoy12",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "spanish/Anslid[madara].js": {
+    "id": "anslid",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "spanish/LightNovelDaily[hotnovelpub].js": {
+    "id": "lightnoveldaily",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "spanish/MTLNovel(ES)[mtlnovel].js": {
+    "id": "mtlnovel-es",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "spanish/NOVA.js": {
+    "id": "nova",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "spanish/PanchoTranslations[madara].js": {
+    "id": "panchotranslations",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "spanish/TC&Sega[lightnovelwp].js": {
+    "id": "TCSega",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "spanish/TraduccionesAmistosas[madara].js": {
+    "id": "traducciones",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "spanish/hasutl.js": {
+    "id": "HasuTL",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "spanish/novelasligera.js": {
+    "id": "novelasligera",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "spanish/novelawuxia.js": {
+    "id": "reinowuxia",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "spanish/novels2.js": {
+    "id": "novels2",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "spanish/novelyra.js": {
+    "id": "novelyra",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "spanish/oasistranslations.js": {
+    "id": "oasistranslations",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "spanish/skynovels.js": {
+    "id": "skynovels",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "spanish/tunovelaligera.js": {
+    "id": "tunovelaligera",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "spanish/yukitls.js": {
+    "id": "yuukitls",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "thai/NovelLucky[madara].js": {
+    "id": "novel-lucky",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "thai/NovelPDF[madara].js": {
+    "id": "novelpdf",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "turkish/ArazNovel[madara].js": {
+    "id": "azraznovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "turkish/EKTAPLAR[madara].js": {
+    "id": "ekitaplar",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "turkish/KodeksLibrary[lightnovelwp].js": {
+    "id": "kodekslibrary",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "turkish/MangaTR.js": {
+    "id": "mangatr",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "turkish/NABSCANS[madara].js": {
+    "id": "nabiscans",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "turkish/Namevt[lightnovelwp].js": {
+    "id": "namevt",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "turkish/NovelTR[lightnovelwp].js": {
+    "id": "noveltr",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview (or the website has changed url)",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview (or the website has changed url)"
+  },
+  "turkish/Noveloku[madara].js": {
+    "id": "noveloku",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "turkish/RagnarScans[madara].js": {
+    "id": "ragnarscans",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "turkish/ThNovels[hotnovelpub].js": {
+    "id": "thnovels",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "turkish/TurkceLightNovels[madara].js": {
+    "id": "turkcelightnovels",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "turkish/WebNovelOku[madara].js": {
+    "id": "webnoveloku",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "turkish/epiknovel.js": {
+    "id": "epiknovel",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "turkish/kakikata[madara].js": {
+    "id": "Kakikata",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: Captcha error, please open in webview",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Captcha error, please open in webview"
+  },
+  "turkish/rezeroturkce.js": {
+    "id": "rezeroturkce",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "ukrainian/bakainua.js": {
+    "id": "bakainua",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "ukrainian/smakolykytl.js": {
+    "id": "smakolykytl",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "SyntaxError: Unexpected end of JSON input",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "vietnamese/LNHako.js": {
+    "id": "ln.hako",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  },
+  "vietnamese/lightnovelvn.js": {
+    "id": "lightnovel.vn",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "SyntaxError: Unexpected end of JSON input"
+  },
+  "vietnamese/nettruyen.js": {
+    "id": "nettruyen",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: Method not implemented."
+  },
+  "vietnamese/truyendich.js": {
+    "id": "truyendich",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "EMPTY_BODY_ERROR",
+    "popError": "Error: /api/lists/truyen-hot?page=1&size=24 -> HTTP 200, not JSON",
+    "searchNovels": "EMPTY_BODY_ERROR",
+    "searchError": "Error: /api/novels/search?q=test&page=1&size=24 -> HTTP 200, not JSON"
+  },
+  "vietnamese/truyenss.js": {
+    "id": "truyenss.com",
+    "load": "LOAD_OK",
+    "construct": "CONSTRUCT_OK",
+    "popularNovels": "OK",
+    "popError": null,
+    "searchNovels": "OK",
+    "searchError": null
+  }
+}

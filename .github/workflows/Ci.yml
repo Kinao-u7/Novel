@@ -22,6 +22,18 @@ jobs:
         run: |
           npm --prefix tools/lnreader-libs ci
           npm --prefix tools/lnreader-libs run build
+      - name: Fetch catalogue plugins
+        run: node -e "import('./tools/catalogue-scan/plugins-cache.js').then(m => m.ensurePlugins())"
+      - name: Run catalogue harness check
+        continue-on-error: true
+        run: node tools/catalogue-harness/run.mjs
+      - name: Upload catalogue report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-report
+          path: tools/catalogue-harness/report.json
       - run: chmod +x gradlew
       - name: Helper script
         run: |

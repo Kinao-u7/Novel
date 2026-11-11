@@ -10,43 +10,9 @@ const traverse = _traverse.default || _traverse;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REPO_URL = 'https://github.com/LNReader/lnreader-plugins';
-const PINNED_BRANCH = 'plugins/v3.0.0';
-const PINNED_COMMIT = '45daf1d08b46dca6efdf6d38f250da95771967d2';
+import { ensurePlugins, getAllFiles, COMPILED_PLUGINS_DIR, MANIFEST_PATH } from './plugins-cache.js';
 
-const REPO_DIR = path.join(__dirname, '.cache/lnreader-plugins');
-const COMPILED_PLUGINS_DIR = path.join(REPO_DIR, '.js/src/plugins');
-const MANIFEST_PATH = path.join(REPO_DIR, '.dist/plugins.min.json');
-
-// Ensure pinned repo is downloaded and checked out
-if (!fs.existsSync(COMPILED_PLUGINS_DIR) || !fs.existsSync(MANIFEST_PATH)) {
-  console.log(`Downloading pinned commit ${PINNED_COMMIT} from ${REPO_URL}...`);
-  fs.mkdirSync(path.dirname(REPO_DIR), { recursive: true });
-  if (fs.existsSync('/tmp/lnreader-plugins/.js/src/plugins')) {
-    fs.cpSync('/tmp/lnreader-plugins', REPO_DIR, { recursive: true });
-  } else {
-    execSync(`git clone --depth 50 --branch ${PINNED_BRANCH} ${REPO_URL} "${REPO_DIR}"`, { stdio: 'inherit' });
-    execSync(`git -C "${REPO_DIR}" checkout ${PINNED_COMMIT}`, { stdio: 'inherit' });
-  }
-}
-
-function getAllFiles(dir, exts = ['.js']) {
-  let files = [];
-  if (!fs.existsSync(dir)) return files;
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      files = files.concat(getAllFiles(fullPath, exts));
-    } else if (entry.isFile()) {
-      const ext = path.extname(entry.name);
-      if (exts.includes(ext)) {
-        files.push(fullPath);
-      }
-    }
-  }
-  return files;
-}
+ensurePlugins();
 
 const compiledFiles = getAllFiles(COMPILED_PLUGINS_DIR, ['.js']);
 console.log(`Found ${compiledFiles.length} compiled plugin files in ${COMPILED_PLUGINS_DIR}`);
