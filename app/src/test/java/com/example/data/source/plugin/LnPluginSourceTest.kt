@@ -8,8 +8,15 @@ import java.io.IOException
 import java.net.InetSocketAddress
 import java.util.concurrent.Executors
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -202,18 +209,30 @@ class LnPluginSourceTest {
         }
     }
 
-    @Test
+    @Test(timeout = 20_000)
     fun testCancellationExceptionIsRethrownNotWrapped() = runBlocking(Dispatchers.Default) {
-        val adapter = LnPluginSource(pluginScript = "this.id = 'cancel_plug';")
-        try {
-            kotlinx.coroutines.coroutineScope {
-                kotlinx.coroutines.cancel(CancellationException("Test cancellation"))
-                adapter.getPopularNovels(1)
+        val hangingScript = """
+            function HangingPlugin() {
+                this.id = "cancel_plug";
+                this.name = "Cancel Plugin";
+                this.popularNovels = function() {
+                    return new Promise(function() {});
+                };
             }
-            fail("Expected CancellationException")
-        } catch (e: Throwable) {
-            assertTrue("Must rethrow CancellationException directly", e is CancellationException)
-            assertEquals("Test cancellation", e.message)
+            exports.default = new HangingPlugin();
+        """.trimIndent()
+
+        val adapter = LnPluginSource(pluginScript = hangingScript)
+        try {
+            val seen = CompletableDeferred<Throwable>()
+            val job = launch {
+                try { adapter.getPopularNovels(1) }
+                catch (e: Throwable) { seen.complete(e); throw e }
+            }
+            delay(100)
+            job.cancel(CancellationException("Test cancellation"))
+            val thrown = withTimeout(10_000) { seen.await() }
+            assertTrue("Must be CancellationException, not IOException: $thrown", thrown is CancellationException)
         } finally {
             adapter.close()
         }
