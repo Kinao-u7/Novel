@@ -148,6 +148,24 @@ class PluginBridgeHost(
         return quickJs.evaluate<String>("await __callPlugin('$id', '$method', __getArgsJson())")
     }
 
+    suspend fun callPluginWithOptions(id: String, method: String, leadingArgs: List<Any?>, extraOptions: JSONObject = JSONObject()): String {
+        val leadingJson = JSONArray(leadingArgs).toString()
+        val extraJson = extraOptions.toString()
+        quickJs.function("__getLeadingArgsJson") { leadingJson }
+        quickJs.function("__getExtraOptionsJson") { extraJson }
+        val script = """
+            await (async () => {
+                const leading = JSON.parse(__getLeadingArgsJson());
+                const extra = JSON.parse(__getExtraOptionsJson());
+                const opts = __getDefaultPluginOptions('$id', extra);
+                const fullArgs = leading.concat([opts]);
+                return await __callPlugin('$id', '$method', JSON.stringify(fullArgs));
+            })()
+        """.trimIndent()
+        return quickJs.evaluate<String>(script)
+    }
+
+
     override fun close() {
         scope.cancel()
         httpClient.abortAll()

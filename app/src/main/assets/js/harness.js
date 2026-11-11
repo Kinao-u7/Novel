@@ -258,6 +258,22 @@ function __loadPlugin(id, sourceCode) {
 }
 globalThis.__loadPlugin = __loadPlugin;
 
+function __getDefaultPluginOptions(id, extraOptions) {
+  const plugin = __loadedPlugins.get(id);
+  const defaultFilters = {};
+  if (plugin && plugin.filters && typeof plugin.filters === 'object') {
+    for (const [key, filter] of Object.entries(plugin.filters)) {
+      if (filter && typeof filter === 'object' && 'value' in filter) {
+        defaultFilters[key] = { ...filter, value: filter.value };
+      } else {
+        defaultFilters[key] = { value: filter };
+      }
+    }
+  }
+  return Object.assign({ filters: defaultFilters, showLatestNovels: false }, extraOptions || {});
+}
+globalThis.__getDefaultPluginOptions = __getDefaultPluginOptions;
+
 async function __callPlugin(id, method, argsJson) {
   const plugin = __loadedPlugins.get(id);
   if (!plugin) {
@@ -276,3 +292,4 @@ async function __callPlugin(id, method, argsJson) {
   return result === undefined ? 'null' : JSON.stringify(result);
 }
 globalThis.__callPlugin = __callPlugin;
+
