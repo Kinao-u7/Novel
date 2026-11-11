@@ -63,9 +63,14 @@ class LnPluginSourceTest {
             <div class="page-item-detail"><div class="post-title"><a href="$serverUrl/novel/reverend-insanity">Reverend Insanity</a></div><img src="$serverUrl/c3.jpg" /></div>
         """.trimIndent()
 
-        server!!.createContext("/page/1/") { ex ->
-            ex.sendResponseHeaders(200, html.length.toLong())
-            ex.responseBody.use { it.write(html.toByteArray()) }
+        val recordedRequests = java.util.Collections.synchronizedList(mutableListOf<String>())
+        server!!.createContext("/") { ex ->
+            val reqLine = "${ex.requestMethod} ${ex.requestURI}"
+            recordedRequests.add(reqLine)
+            println("[LN-SOURCE-REQ] $reqLine")
+            val bytes = html.toByteArray(Charsets.UTF_8)
+            ex.sendResponseHeaders(200, bytes.size.toLong())
+            ex.responseBody.use { it.write(bytes) }
         }
 
         val originalScript = loadArNovelScript()
@@ -76,6 +81,12 @@ class LnPluginSourceTest {
         ).replace(
             "sourceSite:\"https://arnovel.me\"",
             "sourceSite:\"$serverUrl\""
+        ).replace(
+            "https://ar-no.com/",
+            "$serverUrl/"
+        ).replace(
+            "https://ar-no.com",
+            "$serverUrl"
         )
 
         val source: NovelSource = LnPluginSource(
@@ -90,6 +101,11 @@ class LnPluginSourceTest {
         assertFalse(source.isLocal)
 
         val novels: List<Novel> = source.getPopularNovels(1)
+        assertTrue(
+            "Expected mock server to receive requests, but recorded none (mock site=$serverUrl, rewritten from ar-no.com/arnovel.me). Recorded: $recordedRequests",
+            recordedRequests.isNotEmpty()
+        )
+        assertTrue("Returned novels list must not be empty", novels.isNotEmpty())
         assertTrue("popularNovels must return at least 3 novels", novels.size >= 3)
         assertEquals("Shadow Slave", novels[0].title)
         assertEquals("Lord of Mysteries", novels[1].title)
@@ -100,7 +116,7 @@ class LnPluginSourceTest {
         }
 
         for (novel in novels) {
-            assertTrue("Novel id must only contain [A-Za-z0-9_.-]", novel.id.matches(Regex("^[A-Za-z0-9_.-]+$")))
+            assertTrue("Novel id '${novel.id}' must match [A-Za-z0-9_.-]+", novel.id.matches(Regex("^[A-Za-z0-9_.-]+$")))
             assertEquals("ln_arnovel", novel.sourceId)
             assertEquals("ArNovel", novel.sourceName)
             assertEquals(null, novel.sourceUrl)
