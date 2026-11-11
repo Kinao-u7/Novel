@@ -71,8 +71,7 @@ class LnPluginSource(
     private suspend fun ensureHostInitialized(): PluginBridgeHost {
         host?.let { return it }
         val newHost = PluginBridgeHost(
-            httpClient = PluginHttpClientImpl(allowLoopback = allowLoopback),
-            jsDispatcher = ioDispatcher
+            httpClient = PluginHttpClientImpl(allowLoopback = allowLoopback)
         )
         val polyfillsJs = loadAssetOrFile("js/polyfills.js")
         val libsJs = loadAssetOrFile("js/libs.js")
@@ -123,42 +122,37 @@ class LnPluginSource(
         return String(bytes, Charsets.UTF_8)
     }
 
-    private inline fun <T> runPluginCall(methodName: String, block: (PluginBridgeHost) -> T): T {
-        try {
-            val bridge = kotlinx.coroutines.runBlocking(ioDispatcher) { ensureHostInitialized() }
-            return block(bridge)
-        } catch (e: Throwable) {
-            if (e is CancellationException) throw e
-            throw IOException("Plugin [$pluginId] failed during $methodName: ${e.message}", e)
+    private suspend inline fun <T> runPluginCall(method: String, block: suspend (PluginBridgeHost) -> T): T =
+        callMutex.withLock {
+            try {
+                val bridge = ensureHostInitialized()
+                block(bridge)
+            } catch (e: Throwable) {
+                if (e is CancellationException) throw e
+                throw IOException("Plugin [$pluginId] failed during $method: ${e.message}", e)
+            }
         }
-    }
 
     override suspend fun getPopularNovels(page: Int): List<Novel> = withContext(ioDispatcher) {
-        callMutex.withLock {
-            runPluginCall("popularNovels") { bridge ->
-                val jsonStr = bridge.callPluginWithOptions(pluginId, "popularNovels", listOf(page))
-                parseNovelsArray(jsonStr)
-            }
+        runPluginCall("popularNovels") { bridge ->
+            val jsonStr = bridge.callPluginWithOptions(pluginId, "popularNovels", listOf(page))
+            parseNovelsArray(jsonStr)
         }
     }
 
     override suspend fun getLatestNovels(page: Int): List<Novel> = withContext(ioDispatcher) {
         if (!latestSupported) return@withContext emptyList()
-        callMutex.withLock {
-            runPluginCall("latestNovels") { bridge ->
-                val extra = JSONObject().apply { put("showLatestNovels", true) }
-                val jsonStr = bridge.callPluginWithOptions(pluginId, "popularNovels", listOf(page), extra)
-                parseNovelsArray(jsonStr)
-            }
+        runPluginCall("latestNovels") { bridge ->
+            val extra = JSONObject().apply { put("showLatestNovels", true) }
+            val jsonStr = bridge.callPluginWithOptions(pluginId, "popularNovels", listOf(page), extra)
+            parseNovelsArray(jsonStr)
         }
     }
 
     override suspend fun searchNovels(query: String, page: Int): List<Novel> = withContext(ioDispatcher) {
-        callMutex.withLock {
-            runPluginCall("searchNovels") { bridge ->
-                val jsonStr = bridge.callPluginWithOptions(pluginId, "searchNovels", listOf(query, page))
-                parseNovelsArray(jsonStr)
-            }
+        runPluginCall("searchNovels") { bridge ->
+            val jsonStr = bridge.callPluginWithOptions(pluginId, "searchNovels", listOf(query, page))
+            parseNovelsArray(jsonStr)
         }
     }
 
