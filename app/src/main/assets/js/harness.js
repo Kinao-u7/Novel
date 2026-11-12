@@ -274,12 +274,65 @@ function __getDefaultPluginOptions(id, extraOptions) {
 }
 globalThis.__getDefaultPluginOptions = __getDefaultPluginOptions;
 
+function __htmlToParagraphs(html) {
+  if (!html || typeof html !== 'string') return [];
+  const cheerio = globalThis.__LIBS__.cheerio;
+  const $ = cheerio.load(html);
+  $('script, style, noscript, svg, iframe, img').remove();
+  $('br').replaceWith('\n');
+  $('p, div, li, h1, h2, h3, h4, h5, h6, blockquote, article, section').each(function() {
+    $(this).append('\n');
+  });
+  const text = (typeof $.text === 'function' ? $.text() : $.root().text()) || '';
+  return text.split(/\r?\n/)
+    .map(p => p.replace(/\u00A0/g, ' ').trim())
+    .filter(p => p.length > 0);
+}
+globalThis.__htmlToParagraphs = __htmlToParagraphs;
+
 async function __callPlugin(id, method, argsJson) {
   const plugin = __loadedPlugins.get(id);
   if (!plugin) {
     const err = new Error('Plugin not found: ' + id);
     err.name = 'NotFoundError';
     throw err;
+  }
+  if (method === '__parseNovelDetails') {
+    const args = argsJson ? JSON.parse(argsJson) : [];
+    const path = args[0];
+    if (typeof plugin.parseNovel !== 'function') {
+      const err = new Error('Method not found: parseNovel');
+      err.name = 'NoSuchMethodError';
+      throw err;
+    }
+    const novel = await plugin.parseNovel(path);
+    let sourceUrl = null;
+    if (typeof plugin.resolveUrl === 'function') {
+      try {
+        sourceUrl = plugin.resolveUrl(path, true);
+      } catch (_) {}
+    }
+    return JSON.stringify({ novel: novel, sourceUrl: sourceUrl });
+  }
+  if (method === '__parseChapterContent') {
+    const args = argsJson ? JSON.parse(argsJson) : [];
+    const chapterPath = args[0];
+    if (typeof plugin.parseChapter !== 'function') {
+      const err = new Error('Method not found: parseChapter');
+      err.name = 'NoSuchMethodError';
+      throw err;
+    }
+    const html = await plugin.parseChapter(chapterPath);
+    const paragraphs = __htmlToParagraphs(html || '');
+    return JSON.stringify(paragraphs);
+  }
+  if (method === 'parsePage') {
+    if (typeof plugin.parsePage !== 'function') {
+      return 'null';
+    }
+    const args = argsJson ? JSON.parse(argsJson) : [];
+    const result = await plugin.parsePage.apply(plugin, args);
+    return result === undefined ? 'null' : JSON.stringify(result);
   }
   const target = plugin[method];
   if (typeof target !== 'function') {

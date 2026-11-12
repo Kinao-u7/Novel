@@ -3,12 +3,14 @@ package com.example.data.source.plugin
 import android.content.Context
 import android.util.Base64
 import android.util.Log
+import com.example.data.local.db.NovelDatabaseHolder
 import com.example.data.model.Chapter
 import com.example.data.model.ChapterContent
 import com.example.data.model.Novel
 import com.example.data.source.NovelSource
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -112,14 +114,38 @@ class LnPluginSource(
         return "ln_${pluginId}_$encoded"
     }
 
+    private data class CachedNovelEntry(
+        val novelId: String,
+        val novel: Novel,
+        val chapters: List<Chapter>,
+        val timestampMs: Long
+    )
+
+    private val cachedEntry = AtomicReference<CachedNovelEntry?>(null)
+
     fun decodeNovelPath(novelId: String): String {
         val prefix = "ln_${pluginId}_"
         if (!novelId.startsWith(prefix)) {
             throw IllegalArgumentException("Plugin [$pluginId] cannot decode novelId not starting with '$prefix': $novelId")
         }
         val encoded = novelId.substring(prefix.length)
-        val bytes = Base64.decode(encoded, Base64.URL_SAFE)
+        val bytes = try {
+            Base64.decode(encoded, Base64.URL_SAFE)
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Plugin [$pluginId] malformed novelId base64: $novelId", e)
+        }
+        if (bytes == null || bytes.isEmpty()) {
+            throw IllegalArgumentException("Plugin [$pluginId] decoded empty novel path from: $novelId")
+        }
         return String(bytes, Charsets.UTF_8)
+    }
+
+    private fun decodeAndValidatePath(novelId: String): String {
+        val path = decodeNovelPath(novelId)
+        if (!isPathLengthSafe(path)) {
+            throw IllegalArgumentException("Novel path exceeds safe length limit: $path (plugin=$pluginId)")
+        }
+        return path
     }
 
     private suspend inline fun <T> runPluginCall(method: String, block: suspend (PluginBridgeHost) -> T): T =
@@ -129,6 +155,7 @@ class LnPluginSource(
                 block(bridge)
             } catch (e: Throwable) {
                 if (e is CancellationException) throw e
+                if (e is IllegalArgumentException) throw e
                 throw IOException("Plugin [$pluginId] failed during $method: ${e.message}", e)
             }
         }
@@ -136,7 +163,7 @@ class LnPluginSource(
     override suspend fun getPopularNovels(page: Int): List<Novel> = withContext(ioDispatcher) {
         runPluginCall("popularNovels") { bridge ->
             val jsonStr = bridge.callPluginWithOptions(pluginId, "popularNovels", listOf(page))
-            parseNovelsArray(jsonStr)
+            LnPluginMapping.parseNovelsArray(jsonStr, id, name, ::isPathLengthSafe, ::encodeNovelId)
         }
     }
 
@@ -145,65 +172,99 @@ class LnPluginSource(
         runPluginCall("latestNovels") { bridge ->
             val extra = JSONObject().apply { put("showLatestNovels", true) }
             val jsonStr = bridge.callPluginWithOptions(pluginId, "popularNovels", listOf(page), extra)
-            parseNovelsArray(jsonStr)
+            LnPluginMapping.parseNovelsArray(jsonStr, id, name, ::isPathLengthSafe, ::encodeNovelId)
         }
     }
 
     override suspend fun searchNovels(query: String, page: Int): List<Novel> = withContext(ioDispatcher) {
         runPluginCall("searchNovels") { bridge ->
             val jsonStr = bridge.callPluginWithOptions(pluginId, "searchNovels", listOf(query, page))
-            parseNovelsArray(jsonStr)
+            LnPluginMapping.parseNovelsArray(jsonStr, id, name, ::isPathLengthSafe, ::encodeNovelId)
         }
     }
 
-
-    private fun parseNovelsArray(jsonStr: String): List<Novel> {
-        val array = JSONArray(jsonStr)
-        val results = ArrayList<Novel>(array.length())
-        for (i in 0 until array.length()) {
-            val obj = array.optJSONObject(i) ?: continue
-            val rawPath = obj.optString("path", "")
-            val title = obj.optString("name", "")
-            val cover = obj.optString("cover", "").takeIf { it.isNotBlank() }
-
-            if (rawPath.isBlank()) continue
-            if (!isPathLengthSafe(rawPath)) {
-                Log.w("LnPluginSource", "Skipping novel with over-long path: $rawPath (plugin=$pluginId)")
-                continue
+    private suspend fun fetchChapters(
+        bridge: PluginBridgeHost,
+        path: String,
+        novelObj: JSONObject
+    ): List<RawPluginChapter> {
+        val allChapters = LnPluginMapping.parseRawChapters(novelObj.optJSONArray("chapters")).toMutableList()
+        val totalPages = novelObj.optInt("totalPages", 1)
+        if (totalPages > 1) {
+            val maxPages = minOf(totalPages, 200)
+            if (totalPages > 200) {
+                Log.w("LnPluginSource", "totalPages ($totalPages) exceeded 200 limit for novel $path (plugin=$pluginId)")
             }
-
-            val novelId = encodeNovelId(rawPath)
-            results.add(
-                Novel(
-                    id = novelId,
-                    title = title,
-                    author = "",
-                    coverUrl = cover,
-                    description = "",
-                    status = "Ongoing",
-                    sourceId = id,
-                    sourceName = name,
-                    rawId = rawPath,
-                    sourceUrl = null
-                )
-            )
+            for (p in 2..maxPages) {
+                val pageJson = bridge.callPlugin(pluginId, "parsePage", listOf(path, p))
+                if (pageJson != "null" && pageJson.isNotBlank()) {
+                    val pageArr = try { JSONArray(pageJson) } catch (_: Exception) { null }
+                    if (pageArr != null) allChapters.addAll(LnPluginMapping.parseRawChapters(pageArr))
+                }
+            }
         }
-        return results
+        return allChapters
     }
 
-    override suspend fun getNovelDetails(novelId: String): Novel {
-        throw UnsupportedOperationException("getNovelDetails is not implemented in C1")
+    override suspend fun getNovelDetails(novelId: String): Novel = withContext(ioDispatcher) {
+        val path = decodeAndValidatePath(novelId)
+        runPluginCall("parseNovel") { bridge ->
+            val jsonStr = bridge.callPlugin(pluginId, "__parseNovelDetails", listOf(path))
+            val detailsJson = JSONObject(jsonStr)
+            val novelObj = detailsJson.optJSONObject("novel") ?: detailsJson
+            val allRawChapters = fetchChapters(bridge, path, novelObj)
+            val (baseNovel, _) = LnPluginMapping.parseNovelAndChapters(novelId, pluginId, name, path, detailsJson)
+            val chapters = LnPluginMapping.orderAndMapChapters(novelId, allRawChapters)
+            val novel = baseNovel.copy(totalChapters = chapters.size)
+            cachedEntry.set(CachedNovelEntry(novelId, novel, chapters, System.currentTimeMillis()))
+            novel
+        }
     }
 
-    override suspend fun getChapterList(novelId: String): List<Chapter> {
-        throw UnsupportedOperationException("getChapterList is not implemented in C1")
+    override suspend fun getChapterList(novelId: String): List<Chapter> = withContext(ioDispatcher) {
+        val cached = cachedEntry.get()
+        val now = System.currentTimeMillis()
+        if (cached != null && cached.novelId == novelId && (now - cached.timestampMs) <= 10_000L) {
+            if (cachedEntry.compareAndSet(cached, null)) {
+                return@withContext cached.chapters
+            }
+        }
+
+        val path = decodeAndValidatePath(novelId)
+        runPluginCall("parseNovel") { bridge ->
+            val jsonStr = bridge.callPlugin(pluginId, "__parseNovelDetails", listOf(path))
+            val detailsJson = JSONObject(jsonStr)
+            val novelObj = detailsJson.optJSONObject("novel") ?: detailsJson
+            val allRawChapters = fetchChapters(bridge, path, novelObj)
+            LnPluginMapping.orderAndMapChapters(novelId, allRawChapters)
+        }
     }
 
-    override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent {
-        throw UnsupportedOperationException("getChapterContent is not implemented in C1")
+    override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent = withContext(ioDispatcher) {
+        if (chapterId.isBlank()) throw IllegalArgumentException("chapterId cannot be blank")
+        if (!isPathLengthSafe(chapterId)) throw IllegalArgumentException("Chapter path exceeds safe length limit: $chapterId (plugin=$pluginId)")
+        decodeAndValidatePath(novelId)
+
+        val bestTitle = cachedEntry.get()?.takeIf { it.novelId == novelId }?.chapters?.find { it.id == chapterId }?.title
+            ?: context?.let { ctx ->
+                try {
+                    NovelDatabaseHolder.getInstance(ctx).chapterDao().getChapter(novelId, chapterId)?.title
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            ?: chapterId
+
+        runPluginCall("parseChapter") { bridge ->
+            val jsonStr = bridge.callPlugin(pluginId, "__parseChapterContent", listOf(chapterId))
+            val arr = JSONArray(jsonStr)
+            val paragraphs = (0 until arr.length()).mapNotNull { i -> arr.optString(i, "").trim().takeIf { it.isNotEmpty() } }
+            ChapterContent(chapterId = chapterId, novelId = novelId, title = bestTitle, paragraphs = paragraphs)
+        }
     }
 
     override fun close() {
+        cachedEntry.set(null)
         host?.close()
         host = null
     }
