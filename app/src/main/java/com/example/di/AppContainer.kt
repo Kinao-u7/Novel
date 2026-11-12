@@ -1,8 +1,14 @@
 package com.example.di
 
 import android.content.Context
+import android.util.Log
+import com.example.BuildConfig
 import com.example.data.repository.NovelRepository
 import com.example.data.repository.SettingsRepository
+import com.example.data.source.SourceManager
+import com.example.data.source.plugin.LnPluginSource
+
+private const val DEBUG_PLUGIN_ASSET = "plugins/FansMTL_readwn.js"
 
 /**
  * Dependency container for application-scoped singletons.
@@ -15,6 +21,26 @@ import com.example.data.repository.SettingsRepository
  */
 class AppContainer(context: Context) {
     val appContext: Context = context.applicationContext ?: context
+
+    init {
+        registerDebugPluginIfPresent()
+    }
+
+    private fun registerDebugPluginIfPresent() {
+        if (!BuildConfig.DEBUG) return
+        try {
+            val script = appContext.assets.open(DEBUG_PLUGIN_ASSET).bufferedReader().use { it.readText() }
+            val plugin = LnPluginSource(
+                pluginScript = script,
+                pluginLanguage = "EN",
+                customName = "FanMTL (plugin)",
+                context = appContext
+            )
+            SourceManager.registerSource(plugin)
+        } catch (e: Exception) {
+            Log.w("AppContainer", "Debug plugin registration skipped or failed", e)
+        }
+    }
 
     val novelRepository: NovelRepository by lazy {
         NovelRepository.getInstance(appContext)

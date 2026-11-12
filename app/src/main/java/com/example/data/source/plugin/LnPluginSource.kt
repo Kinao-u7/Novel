@@ -28,6 +28,7 @@ class LnPluginSource(
     private val pluginScript: String,
     private val pluginLanguage: String = "AR",
     private val context: Context? = null,
+    private val customName: String? = null,
     private val allowLoopback: Boolean = false,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : NovelSource, AutoCloseable {
@@ -59,7 +60,7 @@ class LnPluginSource(
     val pluginId: String get() = rawPluginId.replace(Regex("""[^A-Za-z0-9_.-]"""), "_")
 
     override val id: String get() = "ln_$pluginId"
-    override val name: String get() = LnPluginMapping.optStringOrNull(lazyMeta, "name") ?: pluginId
+    override val name: String get() = customName ?: LnPluginMapping.optStringOrNull(lazyMeta, "name") ?: pluginId
     override val language: String get() = pluginLanguage.uppercase()
     override val version: String get() = LnPluginMapping.optStringOrNull(lazyMeta, "version") ?: "1.0.0"
     override val description: String get() = "LNReader plugin: $name"
@@ -73,6 +74,7 @@ class LnPluginSource(
 
     private suspend fun ensureHostInitialized(): PluginBridgeHost {
         host?.let { return it }
+        val startMs = android.os.SystemClock.elapsedRealtime()
         val newHost = PluginBridgeHost(
             httpClient = PluginHttpClientImpl(allowLoopback = allowLoopback)
         )
@@ -83,6 +85,8 @@ class LnPluginSource(
         newHost.initHarness(polyfillsJs, libsJs, harnessJs)
         newHost.loadPlugin(pluginId, pluginScript)
         host = newHost
+        val elapsedMs = android.os.SystemClock.elapsedRealtime() - startMs
+        Log.i("LnPluginSource", "Initialized plugin [$pluginId] in ${elapsedMs}ms")
         return newHost
     }
 
@@ -90,13 +94,17 @@ class LnPluginSource(
         context?.let { ctx ->
             try {
                 return ctx.assets.open(relativePath).bufferedReader().use { it.readText() }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.w("LnPluginSource", "Failed to load asset '$relativePath' via Context for plugin [$pluginId]", e)
+            }
         }
         val fileInApp = File("app/src/main/assets/$relativePath")
         if (fileInApp.exists()) return fileInApp.readText()
         val fileDirect = File("src/main/assets/$relativePath")
         if (fileDirect.exists()) return fileDirect.readText()
-        throw IOException("Failed to load asset: $relativePath")
+        val err = IOException("Required asset '$relativePath' missing for plugin [$pluginId]")
+        Log.w("LnPluginSource", err.message, err)
+        throw err
     }
 
     fun isPathLengthSafe(path: String): Boolean {

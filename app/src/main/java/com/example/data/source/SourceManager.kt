@@ -49,9 +49,11 @@ object SourceManager {
     fun unregisterSource(sourceId: String) {
         // Keep default sources safe from accidental removal
         if (sourceId == webNovelSource.id || sourceId == classicsSource.id) return
+        val removed = _sources.value.firstOrNull { it.id == sourceId }
         _sources.update { list -> list.filterNot { it.id == sourceId } }
         if (_activeSourceId.value == sourceId) {
             _activeSourceId.value = webNovelSource.id
         }
+        (removed as? AutoCloseable)?.close()
     }
 }
