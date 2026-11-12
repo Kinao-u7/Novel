@@ -248,6 +248,7 @@ class LnPluginSource(
     }
 
     override suspend fun getChapterList(novelId: String): List<Chapter> = withContext(ioDispatcher) {
+        val path = decodeAndValidatePath(novelId)
         val cached = cachedEntry.get()
         val now = System.currentTimeMillis()
         if (cached != null && cached.novelId == novelId && (now - cached.timestampMs) <= 10_000L) {
@@ -256,7 +257,6 @@ class LnPluginSource(
             }
         }
 
-        val path = decodeAndValidatePath(novelId)
         runPluginCall("parseNovel") { bridge ->
             val jsonStr = bridge.callPlugin(pluginId, "__parseNovelDetails", listOf(path))
             val detailsJson = JSONObject(jsonStr)
@@ -267,9 +267,9 @@ class LnPluginSource(
     }
 
     override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent = withContext(ioDispatcher) {
+        decodeAndValidatePath(novelId)
         if (chapterId.isBlank()) throw IllegalArgumentException("chapterId cannot be blank")
         if (!isPathLengthSafe(chapterId)) throw IllegalArgumentException("Chapter path exceeds safe length limit: $chapterId (plugin=$pluginId)")
-        decodeAndValidatePath(novelId)
 
         val bestTitle = cachedEntry.get()?.takeIf { it.novelId == novelId }?.chapters?.find { it.id == chapterId }?.title
             ?: chapterId

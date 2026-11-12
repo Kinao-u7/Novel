@@ -99,15 +99,56 @@ class LnPluginIdTest {
         val source = LnPluginSource(pluginScript = samplePluginScript)
         try {
             val longPath = "a".repeat(250)
-            val overlongId = "ln_test_details_" + android.util.Base64.encodeToString(
-                longPath.toByteArray(Charsets.UTF_8),
-                android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP
-            )
+            val overlongId = source.encodeNovelId(longPath)
+
+            // 1. getNovelDetails
             try {
-                source.getNovelDetails(overlongId)
-                fail("Expected IllegalArgumentException for overlong path")
+                val res = source.getNovelDetails(overlongId)
+                fail("Expected IllegalArgumentException for getNovelDetails with overlong novelId, but got: $res")
             } catch (e: IllegalArgumentException) {
-                assertTrue(e.message?.contains("exceeds safe length limit") == true)
+                val msg = e.message ?: "<null>"
+                assertTrue(
+                    "Expected message containing 'exceeds safe length limit' in getNovelDetails, but got: '$msg'",
+                    msg.contains("exceeds safe length limit")
+                )
+            }
+
+            // 2. getChapterList
+            try {
+                val res = source.getChapterList(overlongId)
+                fail("Expected IllegalArgumentException for getChapterList with overlong novelId, but got: $res")
+            } catch (e: IllegalArgumentException) {
+                val msg = e.message ?: "<null>"
+                assertTrue(
+                    "Expected message containing 'exceeds safe length limit' in getChapterList, but got: '$msg'",
+                    msg.contains("exceeds safe length limit")
+                )
+            }
+
+            // 3. getChapterContent with overlong novelId
+            try {
+                val res = source.getChapterContent(overlongId, "ch1")
+                fail("Expected IllegalArgumentException for getChapterContent with overlong novelId, but got: $res")
+            } catch (e: IllegalArgumentException) {
+                val msg = e.message ?: "<null>"
+                assertTrue(
+                    "Expected message containing 'exceeds safe length limit' in getChapterContent (novelId), but got: '$msg'",
+                    msg.contains("exceeds safe length limit")
+                )
+            }
+
+            // 4. getChapterContent with overlong chapterId
+            val normalId = source.encodeNovelId("normal-novel")
+            val overlongChapterId = "c".repeat(250)
+            try {
+                val res = source.getChapterContent(normalId, overlongChapterId)
+                fail("Expected IllegalArgumentException for getChapterContent with overlong chapterId, but got: $res")
+            } catch (e: IllegalArgumentException) {
+                val msg = e.message ?: "<null>"
+                assertTrue(
+                    "Expected message containing 'exceeds safe length limit' in getChapterContent (chapterId), but got: '$msg'",
+                    msg.contains("exceeds safe length limit")
+                )
             }
         } finally {
             source.close()
