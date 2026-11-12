@@ -29,6 +29,8 @@ class LnPluginSource(
     private val pluginLanguage: String = "AR",
     private val context: Context? = null,
     private val customName: String? = null,
+    private val customVersion: String? = null,
+    private val customId: String? = null,
     private val allowLoopback: Boolean = false,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : NovelSource, AutoCloseable {
@@ -56,13 +58,13 @@ class LnPluginSource(
         }
     }
 
-    val rawPluginId: String get() = LnPluginMapping.optStringOrNull(lazyMeta, "id") ?: "unknown"
+    val rawPluginId: String get() = customId ?: LnPluginMapping.optStringOrNull(lazyMeta, "id") ?: "unknown"
     val pluginId: String get() = rawPluginId.replace(Regex("""[^A-Za-z0-9_.-]"""), "_")
 
     override val id: String get() = "ln_$pluginId"
     override val name: String get() = customName ?: LnPluginMapping.optStringOrNull(lazyMeta, "name") ?: pluginId
     override val language: String get() = pluginLanguage.uppercase()
-    override val version: String get() = LnPluginMapping.optStringOrNull(lazyMeta, "version") ?: "1.0.0"
+    override val version: String get() = customVersion ?: LnPluginMapping.optStringOrNull(lazyMeta, "version") ?: "1.0.0"
     override val description: String get() = "LNReader plugin: $name"
     override val isLocal: Boolean get() = false
 
@@ -122,13 +124,6 @@ class LnPluginSource(
         )
         return "ln_${pluginId}_$encoded"
     }
-
-    private data class CachedNovelEntry(
-        val novelId: String,
-        val novel: Novel,
-        val chapters: List<Chapter>,
-        val timestampMs: Long
-    )
 
     private val cachedEntry = AtomicReference<CachedNovelEntry?>(null)
 

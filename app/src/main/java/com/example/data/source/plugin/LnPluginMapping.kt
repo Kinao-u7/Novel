@@ -12,6 +12,13 @@ data class RawPluginChapter(
     val chapterNumber: Double?
 )
 
+internal data class CachedNovelEntry(
+    val novelId: String,
+    val novel: Novel,
+    val chapters: List<Chapter>,
+    val timestampMs: Long
+)
+
 object LnPluginMapping {
     private const val DEFAULT_COVER_MARKER = "coverNotAvailable.jpg"
 

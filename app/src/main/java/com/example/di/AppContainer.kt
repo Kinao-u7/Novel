@@ -29,14 +29,18 @@ class AppContainer(context: Context) {
     private fun registerDebugPluginIfPresent() {
         if (!BuildConfig.DEBUG) return
         try {
-            val script = appContext.assets.open(DEBUG_PLUGIN_ASSET).bufferedReader().use { it.readText() }
+            val bytes = appContext.assets.open(DEBUG_PLUGIN_ASSET).use { it.readBytes() }
+            val script = String(bytes, Charsets.UTF_8)
             val plugin = LnPluginSource(
                 pluginScript = script,
                 pluginLanguage = "EN",
                 customName = "FanMTL (plugin)",
+                customVersion = "1.0.5",
+                customId = "wuxiamtl",
                 context = appContext
             )
             SourceManager.registerSource(plugin)
+            Log.i("AppContainer", "Registered debug plugin [${plugin.id}] from asset, ${bytes.size} bytes")
         } catch (e: Exception) {
             Log.w("AppContainer", "Debug plugin registration skipped or failed", e)
         }
