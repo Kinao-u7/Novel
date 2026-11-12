@@ -123,7 +123,7 @@ class PluginCatalogueParserTest {
             null to "OTHER"
         )
 
-        for ((input, expected) to in testLangs) {
+        for ((input, expected) in testLangs) {
             val code = PluginLanguageMapping.toAppLanguageCode(input)
             assertEquals("Language mapping mismatch for '$input'", expected, code)
         }
