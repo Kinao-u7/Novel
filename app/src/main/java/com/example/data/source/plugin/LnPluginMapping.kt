@@ -15,34 +15,68 @@ data class RawPluginChapter(
 object LnPluginMapping {
     private const val DEFAULT_COVER_MARKER = "coverNotAvailable.jpg"
 
-    fun normalizeNovelStatus(raw: String?): String = when (raw?.trim()) {
-        "Completed", "Publishing Finished" -> "Completed"
-        "Ongoing", "On Hiatus", "Cancelled" -> raw.trim()
-        else -> "Unknown"
+    fun optStringOrNull(json: JSONObject?, key: String): String? {
+        if (json == null || !json.has(key) || json.isNull(key)) return null
+        val v = json.opt(key)
+        if (v == null || v == JSONObject.NULL) return null
+        val s = json.optString(key, "").trim()
+        return if (s.isEmpty() || s.equals("null", ignoreCase = true)) null else s
+    }
+
+    fun optStringOrNull(arr: JSONArray?, index: Int): String? {
+        if (arr == null || index < 0 || index >= arr.length() || arr.isNull(index)) return null
+        val v = arr.opt(index)
+        if (v == null || v == JSONObject.NULL) return null
+        val s = arr.optString(index, "").trim()
+        return if (s.isEmpty() || s.equals("null", ignoreCase = true)) null else s
+    }
+
+    fun normalizeNovelStatus(raw: String?): String {
+        val trimmed = raw?.trim()
+        if (trimmed.isNullOrEmpty() || trimmed.equals("null", ignoreCase = true)) return "Unknown"
+        return when (trimmed) {
+            "Completed", "Publishing Finished" -> "Completed"
+            "Ongoing", "On Hiatus", "Cancelled" -> trimmed
+            else -> "Unknown"
+        }
     }
 
     fun parseGenres(raw: Any?): List<String> = when (raw) {
-        is String -> raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }
-        is JSONArray -> (0 until raw.length()).mapNotNull { raw.optString(it, "").trim().takeIf { s -> s.isNotEmpty() } }
+        null, JSONObject.NULL -> emptyList()
+        is String -> {
+            val s = raw.trim()
+            if (s.isEmpty() || s.equals("null", ignoreCase = true)) emptyList()
+            else s.split(',').map { it.trim() }.filter { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
+        }
+        is JSONArray -> (0 until raw.length()).mapNotNull { i ->
+            optStringOrNull(raw, i)
+        }
         else -> emptyList()
     }
 
-    fun parseRating(obj: JSONObject): Float? =
-        obj.takeIf { it.has("rating") && !it.isNull("rating") }?.optDouble("rating")?.takeUnless { it.isNaN() }?.toFloat()
+    fun parseRating(obj: JSONObject): Float? {
+        if (!obj.has("rating") || obj.isNull("rating")) return null
+        val v = obj.opt("rating")
+        if (v == null || v == JSONObject.NULL || v == "null") return null
+        return obj.optDouble("rating").takeUnless { it.isNaN() }?.toFloat()
+    }
 
     fun cleanCoverUrl(cover: String?): String? =
-        cover?.trim()?.takeUnless { it.isEmpty() || it.contains(DEFAULT_COVER_MARKER, ignoreCase = true) }
+        cover?.trim()?.takeUnless {
+            it.isEmpty() || it.equals("null", ignoreCase = true) || it.contains(DEFAULT_COVER_MARKER, ignoreCase = true)
+        }
 
     fun parseRawChapters(arr: JSONArray?): List<RawPluginChapter> {
         if (arr == null) return emptyList()
         return (0 until arr.length()).mapNotNull { i ->
             val obj = arr.optJSONObject(i) ?: return@mapNotNull null
-            val path = obj.optString("path", "").trim()
-            if (path.isEmpty()) return@mapNotNull null
-            val name = obj.optString("name", "").trim()
-            val time = obj.optString("releaseTime", "").trim().takeIf { it.isNotEmpty() }
+            val path = optStringOrNull(obj, "path") ?: return@mapNotNull null
+            val name = optStringOrNull(obj, "name") ?: ""
+            val time = optStringOrNull(obj, "releaseTime")
             val num = if (obj.has("chapterNumber") && !obj.isNull("chapterNumber")) {
-                obj.optDouble("chapterNumber").takeUnless { it.isNaN() }
+                val v = obj.opt("chapterNumber")
+                if (v == null || v == JSONObject.NULL || v == "null") null
+                else obj.optDouble("chapterNumber").takeUnless { it.isNaN() }
             } else null
             RawPluginChapter(path, name, time, num)
         }
@@ -71,17 +105,19 @@ object LnPluginMapping {
         detailsJson: JSONObject
     ): Pair<Novel, List<RawPluginChapter>> {
         val novelObj = detailsJson.optJSONObject("novel") ?: detailsJson
-        val sourceUrl = detailsJson.optString("sourceUrl", "").takeIf { it.isNotBlank() }
+        val sourceUrl = optStringOrNull(detailsJson, "sourceUrl")
         val rawChapters = parseRawChapters(novelObj.optJSONArray("chapters"))
 
         val novel = Novel(
             id = novelId,
-            title = novelObj.optString("name", "").trim(),
-            author = novelObj.optString("author", "").trim(),
-            coverUrl = cleanCoverUrl(novelObj.optString("cover", "")),
-            description = novelObj.optString("summary", "").trim(),
-            genres = parseGenres(if (novelObj.has("genres")) novelObj.get("genres") else null),
-            status = normalizeNovelStatus(novelObj.optString("status", "").takeIf { it.isNotBlank() }),
+            title = optStringOrNull(novelObj, "name") ?: "",
+            author = optStringOrNull(novelObj, "author") ?: "",
+            coverUrl = cleanCoverUrl(optStringOrNull(novelObj, "cover")),
+            description = optStringOrNull(novelObj, "summary")
+                ?: optStringOrNull(novelObj, "description")
+                ?: "",
+            genres = parseGenres(if (novelObj.has("genres") && !novelObj.isNull("genres")) novelObj.get("genres") else null),
+            status = normalizeNovelStatus(optStringOrNull(novelObj, "status")),
             sourceId = "ln_$pluginId",
             sourceName = pluginName,
             rawId = path,
@@ -102,15 +138,15 @@ object LnPluginMapping {
         val arr = JSONArray(jsonStr)
         return (0 until arr.length()).mapNotNull { i ->
             val obj = arr.optJSONObject(i) ?: return@mapNotNull null
-            val path = obj.optString("path", "")
-            if (path.isBlank() || !isSafe(path)) return@mapNotNull null
+            val path = optStringOrNull(obj, "path")
+            if (path.isNullOrBlank() || !isSafe(path)) return@mapNotNull null
             Novel(
                 id = encodeId(path),
-                title = obj.optString("name", ""),
-                author = "",
-                coverUrl = obj.optString("cover", "").takeIf { it.isNotBlank() },
-                description = "",
-                status = "Ongoing",
+                title = optStringOrNull(obj, "name") ?: "",
+                author = optStringOrNull(obj, "author") ?: "",
+                coverUrl = cleanCoverUrl(optStringOrNull(obj, "cover")),
+                description = optStringOrNull(obj, "summary") ?: optStringOrNull(obj, "description") ?: "",
+                status = normalizeNovelStatus(optStringOrNull(obj, "status")),
                 sourceId = sourceId,
                 sourceName = sourceName,
                 rawId = path

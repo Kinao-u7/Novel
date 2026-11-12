@@ -3,13 +3,14 @@ package com.example.data.source.plugin
 import android.content.Context
 import android.util.Base64
 import android.util.Log
-import com.example.data.local.db.NovelDatabaseHolder
 import com.example.data.model.Chapter
 import com.example.data.model.ChapterContent
 import com.example.data.model.Novel
 import com.example.data.source.NovelSource
 import java.io.File
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -54,13 +55,13 @@ class LnPluginSource(
         }
     }
 
-    val rawPluginId: String get() = lazyMeta.optString("id", "unknown")
+    val rawPluginId: String get() = LnPluginMapping.optStringOrNull(lazyMeta, "id") ?: "unknown"
     val pluginId: String get() = rawPluginId.replace(Regex("""[^A-Za-z0-9_.-]"""), "_")
 
     override val id: String get() = "ln_$pluginId"
-    override val name: String get() = lazyMeta.optString("name", pluginId)
+    override val name: String get() = LnPluginMapping.optStringOrNull(lazyMeta, "name") ?: pluginId
     override val language: String get() = pluginLanguage.uppercase()
-    override val version: String get() = lazyMeta.optString("version", "1.0.0")
+    override val version: String get() = LnPluginMapping.optStringOrNull(lazyMeta, "version") ?: "1.0.0"
     override val description: String get() = "LNReader plugin: $name"
     override val isLocal: Boolean get() = false
 
@@ -123,12 +124,19 @@ class LnPluginSource(
 
     private val cachedEntry = AtomicReference<CachedNovelEntry?>(null)
 
+    companion object {
+        private val BASE64_URL_SAFE_REGEX = Regex("^[A-Za-z0-9_-]+$")
+    }
+
     fun decodeNovelPath(novelId: String): String {
         val prefix = "ln_${pluginId}_"
         if (!novelId.startsWith(prefix)) {
             throw IllegalArgumentException("Plugin [$pluginId] cannot decode novelId not starting with '$prefix': $novelId")
         }
         val encoded = novelId.substring(prefix.length)
+        if (encoded.isEmpty() || !BASE64_URL_SAFE_REGEX.matches(encoded)) {
+            throw IllegalArgumentException("Plugin [$pluginId] malformed novelId base64 (invalid chars or empty): $novelId")
+        }
         val bytes = try {
             Base64.decode(encoded, Base64.URL_SAFE)
         } catch (e: Exception) {
@@ -137,7 +145,25 @@ class LnPluginSource(
         if (bytes == null || bytes.isEmpty()) {
             throw IllegalArgumentException("Plugin [$pluginId] decoded empty novel path from: $novelId")
         }
-        return String(bytes, Charsets.UTF_8)
+        val reencoded = Base64.encodeToString(
+            bytes,
+            Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+        )
+        if (reencoded != encoded) {
+            throw IllegalArgumentException("Plugin [$pluginId] novelId failed base64 round-trip verification: $novelId")
+        }
+        val decoder = Charsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+        val path = try {
+            decoder.decode(ByteBuffer.wrap(bytes)).toString()
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Plugin [$pluginId] decoded bytes are not valid UTF-8: $novelId", e)
+        }
+        if (path.isEmpty()) {
+            throw IllegalArgumentException("Plugin [$pluginId] decoded empty novel path from: $novelId")
+        }
+        return path
     }
 
     private fun decodeAndValidatePath(novelId: String): String {
@@ -246,19 +272,12 @@ class LnPluginSource(
         decodeAndValidatePath(novelId)
 
         val bestTitle = cachedEntry.get()?.takeIf { it.novelId == novelId }?.chapters?.find { it.id == chapterId }?.title
-            ?: context?.let { ctx ->
-                try {
-                    NovelDatabaseHolder.getInstance(ctx).chapterDao().getChapter(novelId, chapterId)?.title
-                } catch (_: Exception) {
-                    null
-                }
-            }
             ?: chapterId
 
         runPluginCall("parseChapter") { bridge ->
             val jsonStr = bridge.callPlugin(pluginId, "__parseChapterContent", listOf(chapterId))
             val arr = JSONArray(jsonStr)
-            val paragraphs = (0 until arr.length()).mapNotNull { i -> arr.optString(i, "").trim().takeIf { it.isNotEmpty() } }
+            val paragraphs = (0 until arr.length()).mapNotNull { i -> LnPluginMapping.optStringOrNull(arr, i) }
             ChapterContent(chapterId = chapterId, novelId = novelId, title = bestTitle, paragraphs = paragraphs)
         }
     }

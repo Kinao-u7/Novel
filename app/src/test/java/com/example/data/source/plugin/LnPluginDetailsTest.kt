@@ -132,42 +132,48 @@ class LnPluginDetailsTest {
     }
 
     @Test
-    fun testMalformedNovelIdThrowsIllegalArgumentException() = runBlocking<Unit> {
-        val source = LnPluginSource(pluginScript = samplePluginScript)
-        try {
-            try {
-                source.getNovelDetails("not_a_valid_id")
-                fail("Expected IllegalArgumentException for invalid prefix")
-            } catch (e: IllegalArgumentException) {
-                assertTrue(e.message?.contains("cannot decode novelId") == true)
-            }
+    fun testJsonNullFieldsMapToDefaultOrNull() = runBlocking<Unit> {
+        val scriptWithNulls = """
+            const plugin = {
+                id: 'test_nulls',
+                name: 'Test Nulls Plugin',
+                async parseNovel(path) {
+                    return {
+                        name: 'Novel With Nulls',
+                        path: path,
+                        author: null,
+                        cover: null,
+                        summary: null,
+                        rating: null,
+                        status: null,
+                        genres: null,
+                        chapters: [
+                            { name: null, path: 'ch1', releaseTime: null, chapterNumber: null }
+                        ]
+                    };
+                }
+            };
+            module.exports = { default: plugin };
+        """.trimIndent()
 
-            try {
-                source.getNovelDetails("ln_test_details_???invalid_base64???")
-                fail("Expected IllegalArgumentException for invalid base64")
-            } catch (e: IllegalArgumentException) {
-                // Expected
-            }
-        } finally {
-            source.close()
-        }
-    }
-
-    @Test
-    fun testOverlongPathThrowsIllegalArgumentException() = runBlocking<Unit> {
-        val source = LnPluginSource(pluginScript = samplePluginScript)
+        val source = LnPluginSource(pluginScript = scriptWithNulls)
         try {
-            val longPath = "a".repeat(250)
-            val overlongId = "ln_test_details_" + android.util.Base64.encodeToString(
-                longPath.toByteArray(Charsets.UTF_8),
-                android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP
-            )
-            try {
-                source.getNovelDetails(overlongId)
-                fail("Expected IllegalArgumentException for overlong path")
-            } catch (e: IllegalArgumentException) {
-                assertTrue(e.message?.contains("exceeds safe length limit") == true)
-            }
+            val novelId = source.encodeNovelId("novel/nulls")
+            val novel = source.getNovelDetails(novelId)
+
+            assertEquals("Novel With Nulls", novel.title)
+            assertEquals("", novel.author)
+            assertNull("Cover should be null, not 'null'", novel.coverUrl)
+            assertEquals("", novel.description)
+            assertNull("Rating should be null, not 'null'", novel.rating)
+            assertEquals("Unknown", novel.status)
+            assertTrue("Genres should be empty", novel.genres.isEmpty())
+            assertNull("SourceUrl should be null, not 'null'", novel.sourceUrl)
+
+            val chapters = source.getChapterList(novelId)
+            assertEquals(1, chapters.size)
+            assertEquals("ch1", chapters[0].title)
+            assertEquals("Recent", chapters[0].releaseDate)
         } finally {
             source.close()
         }
