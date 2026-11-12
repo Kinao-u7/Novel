@@ -360,8 +360,9 @@ class NovelRepository(
     suspend fun getNovel(novelId: String): Novel? = withContext(Dispatchers.IO) {
         val roomNovel = novelDao.getNovelById(novelId)
         if (roomNovel != null) {
+            val enriched = NovelDetailEnricher.enrichNovelIfNeeded(roomNovel, novelDao)
             val downloadedCount = chapterDao.getDownloadedCount(novelId)
-            return@withContext roomNovel.toModel(downloadedCount = downloadedCount)
+            return@withContext enriched.toModel(downloadedCount = downloadedCount)
         }
         val sources = SourceManager.sources.value
         for (source in sources) {
@@ -375,6 +376,7 @@ class NovelRepository(
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
+                android.util.Log.w("NovelRepository", "Failed to fetch details for novel [$novelId] from source [${source.id}]", e)
             }
         }
         null

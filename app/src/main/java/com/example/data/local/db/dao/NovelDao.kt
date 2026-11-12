@@ -8,7 +8,6 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
-import androidx.room.Update
 import com.example.data.local.db.entity.NovelEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -145,6 +144,30 @@ interface NovelDao {
             return existing.id
         }
     }
+
+    @Query("""
+        UPDATE novels
+        SET author = CASE WHEN (author IS NULL OR author = '') AND :newAuthor IS NOT NULL AND :newAuthor != '' THEN :newAuthor ELSE author END,
+            description = CASE WHEN (description IS NULL OR description = '') AND :newDescription IS NOT NULL AND :newDescription != '' THEN :newDescription ELSE description END,
+            genres_json = CASE WHEN (genres_json IS NULL OR genres_json = '' OR genres_json = '[]') AND :newGenresJson IS NOT NULL AND :newGenresJson != '[]' THEN :newGenresJson ELSE genres_json END,
+            rating = CASE WHEN rating IS NULL AND :newRating IS NOT NULL THEN :newRating ELSE rating END,
+            total_chapters = CASE WHEN (total_chapters IS NULL OR total_chapters = 0) AND :newTotalChapters > 0 THEN :newTotalChapters ELSE total_chapters END,
+            status = CASE WHEN (status IS NULL OR status = '' OR status = 'Ongoing' OR status = 'Unknown') AND :newStatus IS NOT NULL AND :newStatus != '' THEN :newStatus ELSE status END,
+            source_url = CASE WHEN (source_url IS NULL OR source_url = '') AND :newSourceUrl IS NOT NULL AND :newSourceUrl != '' THEN :newSourceUrl ELSE source_url END,
+            cover_url = CASE WHEN (cover_url IS NULL OR cover_url = '') AND :newCoverUrl IS NOT NULL AND :newCoverUrl != '' THEN :newCoverUrl ELSE cover_url END
+        WHERE id = :id
+    """)
+    suspend fun updateBlankDetails(
+        id: String,
+        newAuthor: String?,
+        newDescription: String?,
+        newGenresJson: String?,
+        newRating: Float?,
+        newTotalChapters: Int,
+        newStatus: String?,
+        newSourceUrl: String?,
+        newCoverUrl: String?
+    ): Int
 
     @Delete
     suspend fun delete(novel: NovelEntity): Int

@@ -128,6 +128,7 @@ class LnPluginSource(
     private val cachedEntry = AtomicReference<CachedNovelEntry?>(null)
 
     companion object {
+        const val PREFIX = "ln_"
         private val BASE64_URL_SAFE_REGEX = Regex("^[A-Za-z0-9_-]+$")
     }
 
@@ -241,6 +242,9 @@ class LnPluginSource(
             val jsonStr = bridge.callPlugin(pluginId, "__parseNovelDetails", listOf(path))
             val detailsJson = JSONObject(jsonStr)
             val novelObj = detailsJson.optJSONObject("novel") ?: detailsJson
+            val authorStr = novelObj.optString("author", "")
+            val summaryStr = if (novelObj.has("summary")) novelObj.optString("summary", "") else novelObj.optString("description", "")
+            Log.d("LnPluginSource", "parseNovel [$pluginId] keys: ${novelObj.keys().asSequence().toList()}, author len: ${authorStr.length}, summary len: ${summaryStr.length}")
             val allRawChapters = fetchChapters(bridge, path, novelObj)
             val (baseNovel, _) = LnPluginMapping.parseNovelAndChapters(novelId, pluginId, name, path, detailsJson)
             val chapters = LnPluginMapping.orderAndMapChapters(novelId, allRawChapters)
