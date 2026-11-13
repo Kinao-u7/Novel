@@ -37,7 +37,7 @@ import com.example.data.local.db.entity.TermReplacementEntity
         CustomSourceEntity::class,
         RequestedSourceEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = true
 )
 @TypeConverters(DatabaseConverters::class)

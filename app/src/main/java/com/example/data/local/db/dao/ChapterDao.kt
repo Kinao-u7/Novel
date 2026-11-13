@@ -180,4 +180,10 @@ interface ChapterDao {
 
     @Query("DELETE FROM chapters WHERE novel_id = :novelId")
     suspend fun deleteChaptersForNovel(novelId: String): Int
+
+    @Query("SELECT download_file_name FROM chapters WHERE novel_id = :novelId AND id != :chapterId AND download_file_name IS NOT NULL")
+    suspend fun getOtherChapterDownloadFileNames(novelId: String, chapterId: String): List<String>
+
+    @Query("UPDATE chapters SET download_file_name = :fileName WHERE novel_id = :novelId AND id = :chapterId AND download_file_name IS NULL")
+    suspend fun setDownloadFileNameIfNull(novelId: String, chapterId: String, fileName: String): Int
 }

@@ -209,4 +209,21 @@ interface NovelDao {
           AND id NOT IN (SELECT DISTINCT novel_id FROM chapters WHERE storage_tier IN ('DOWNLOADED', 'EPUB'))
     """)
     suspend fun purgeUnusedBrowseNovels(): Int
+
+    @Query("SELECT download_source_folder FROM novels WHERE source_id = :sourceId AND download_source_folder IS NOT NULL LIMIT 1")
+    suspend fun getDownloadSourceFolderForSource(sourceId: String): String?
+
+    @Query("SELECT DISTINCT download_source_folder FROM novels WHERE source_id != :sourceId AND download_source_folder IS NOT NULL")
+    suspend fun getOtherSourcesDownloadFolders(sourceId: String): List<String>
+
+    @Query("SELECT download_novel_folder FROM novels WHERE download_source_folder = :sourceFolder AND id != :novelId AND download_novel_folder IS NOT NULL")
+    suspend fun getOtherNovelsDownloadFolders(sourceFolder: String, novelId: String): List<String>
+
+    @Query("""
+        UPDATE novels
+        SET download_source_folder = COALESCE(download_source_folder, :sourceFolder),
+            download_novel_folder = COALESCE(download_novel_folder, :novelFolder)
+        WHERE id = :novelId AND (download_source_folder IS NULL OR download_novel_folder IS NULL)
+    """)
+    suspend fun setDownloadFoldersIfNull(novelId: String, sourceFolder: String, novelFolder: String): Int
 }

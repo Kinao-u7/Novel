@@ -46,5 +46,9 @@ data class NovelEntity(
     @ColumnInfo(name = "last_read_timestamp")
     val lastReadTimestamp: Long = 0L,
     @ColumnInfo(name = "created_at")
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "download_source_folder")
+    val downloadSourceFolder: String? = null,
+    @ColumnInfo(name = "download_novel_folder")
+    val downloadNovelFolder: String? = null
 )

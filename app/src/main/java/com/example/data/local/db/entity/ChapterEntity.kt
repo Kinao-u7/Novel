@@ -44,5 +44,7 @@ data class ChapterEntity(
     @ColumnInfo(name = "storage_location")
     val storageLocation: String = "INTERNAL",
     @ColumnInfo(name = "file_hash")
-    val fileHash: String = ""
+    val fileHash: String = "",
+    @ColumnInfo(name = "download_file_name")
+    val downloadFileName: String? = null
 )
