@@ -118,7 +118,7 @@ class PluginCatalogueParserTest {
             "বাংলা" to "BN",
             "Multi" to "MULTI",
             "de" to "DE",
-            "German" to "GE",
+            "German" to "OTHER",
             "" to "OTHER",
             null to "OTHER"
         )

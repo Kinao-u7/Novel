@@ -61,7 +61,6 @@ object PluginLanguageMapping {
             clean.contains("polish") || clean.contains("polsk") -> "PL"
             clean.contains("bengali") || clean.contains("বাংলা") -> "BN"
             clean.length in 2..3 && clean.all { it.isLetter() } -> clean.uppercase()
-            clean.length >= 2 && clean.substring(0, 2).all { it.isLetter() } -> clean.substring(0, 2).uppercase()
             else -> "OTHER"
         }
 
