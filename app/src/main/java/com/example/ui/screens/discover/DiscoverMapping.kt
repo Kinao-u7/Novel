@@ -37,26 +37,30 @@ fun NovelSource.toSourceItem(isPinned: Boolean): SourceItem {
     )
 }
 
+fun matchesLanguageFilter(language: String, enabledLanguages: List<String>): Boolean =
+    enabledLanguages.isEmpty() || enabledLanguages.any { it.equals(language, ignoreCase = true) }
+
+fun matchesSearchQuery(name: String, language: String, query: String): Boolean {
+    val trimmed = query.trim()
+    if (trimmed.isEmpty()) return true
+    val q = trimmed.lowercase()
+    return name.lowercase().contains(q) || language.lowercase().contains(q)
+}
+
 /**
  * Filters sources by enabled languages. An empty list means all languages are enabled.
  */
 fun filterSourcesByLanguage(sources: List<NovelSource>, enabledLanguages: List<String>): List<NovelSource> {
     if (enabledLanguages.isEmpty()) return sources
-    return sources.filter { source ->
-        enabledLanguages.any { it.equals(source.language, ignoreCase = true) }
-    }
+    return sources.filter { matchesLanguageFilter(it.language, enabledLanguages) }
 }
 
 /**
  * Filters sources by query (matching name or language case-insensitively).
  */
 fun filterSourcesByQuery(sources: List<NovelSource>, query: String): List<NovelSource> {
-    val trimmed = query.trim()
-    if (trimmed.isEmpty()) return sources
-    val q = trimmed.lowercase()
-    return sources.filter { source ->
-        source.name.lowercase().contains(q) || source.language.lowercase().contains(q)
-    }
+    if (query.isBlank()) return sources
+    return sources.filter { matchesSearchQuery(it.name, it.language, query) }
 }
 
 /**
@@ -110,7 +114,7 @@ fun mapToDiscoverUiState(
 
     return DiscoverUiState(
         tab = DiscoverTab.SOURCES,
-        extensionsEnabled = false,
+        extensionsEnabled = true,
         isSearchOpen = isSearchOpen,
         query = query,
         pinned = pinned,

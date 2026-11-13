@@ -8,7 +8,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.di.LocalAppContainer
 import com.example.di.appViewModelFactory
 
 @Composable
@@ -17,10 +16,18 @@ fun DiscoverRoute(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
-    val container = LocalAppContainer.current
     val viewModel: DiscoverViewModel = viewModel(
         factory = appViewModelFactory { appContainer, _ ->
-            DiscoverViewModel(appContainer.settingsRepository)
+            DiscoverViewModel(
+                settingsRepository = appContainer.settingsRepository,
+                repositoryStore = appContainer.pluginRepositoryStore,
+                installationManager = appContainer.pluginInstallationManager,
+                installedPluginSources = appContainer.installedPluginSources,
+                stringProvider = { resId, args ->
+                    if (args.isEmpty()) appContainer.appContext.getString(resId)
+                    else appContainer.appContext.getString(resId, *args)
+                }
+            )
         }
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -28,9 +35,23 @@ fun DiscoverRoute(
         DiscoverActions(
             onMessageShown = viewModel::onMessageShown,
             onToggleSearch = viewModel::onToggleSearch,
+            onOpenSettings = viewModel::onOpenSettings,
             onQueryChange = viewModel::onQueryChange,
+            onTabChange = viewModel::onTabChange,
             onOpenSource = onOpenSource,
             onTogglePin = viewModel::onTogglePin,
+            onUpdateAll = viewModel::onUpdateAll,
+            onInstall = viewModel::onInstall,
+            onUpdate = viewModel::onUpdate,
+            onRequestUninstall = viewModel::onRequestUninstall,
+            onDismissSettings = viewModel::onDismissSettings,
+            onToggleLanguage = viewModel::onToggleLanguage,
+            onToggleRepository = viewModel::onToggleRepository,
+            onRemoveRepository = viewModel::onRemoveRepository,
+            onAddRepository = viewModel::onAddRepository,
+            onConfirmUninstall = viewModel::onConfirmUninstall,
+            onDismissUninstall = viewModel::onDismissUninstall,
+            onRetryCatalogue = viewModel::onRetryCatalogue,
         )
     }
     DiscoverScreen(

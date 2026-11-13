@@ -277,4 +277,31 @@ class BrowseViewModelTest {
         assertEquals(1, state.novels.size)
         assertEquals("Delayed Novel", state.novels[0].title)
     }
+
+    @Test
+    fun testLnSource_coldStartWaitEndsWithSourceUnavailableWhenPluginUninstalled() {
+        val missingLnId = "${LnPluginSource.PREFIX}uninstalled_plug"
+        val readySignal = CompletableDeferred<Unit>()
+        SourceManager.setPluginsReadySignal(readySignal)
+
+        val vm = BrowseViewModel(repository, SavedStateHandle(mapOf("sourceId" to missingLnId)), SourceManager)
+        viewModel = vm
+        assertTrue(vm.uiState.value.isLoading)
+
+        val state = kotlinx.coroutines.runBlocking {
+            val doneJob = launch(Dispatchers.IO) {
+                delay(50)
+                readySignal.complete(Unit)
+            }
+            try {
+                collectState(vm) { !it.isLoading }
+            } finally {
+                doneJob.join()
+            }
+        }
+
+        assertFalse(state.isLoading)
+        assertTrue(state.novels.isEmpty())
+        assertTrue("Expected unavailable error, got: ${state.error}", state.error?.contains("unavailable", ignoreCase = true) == true)
+    }
 }

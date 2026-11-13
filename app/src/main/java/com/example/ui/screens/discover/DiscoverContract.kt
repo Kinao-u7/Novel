@@ -64,6 +64,7 @@ data class DiscoverUiState(
     val repositories: List<RepositoryItem> = emptyList(),
     val showSettings: Boolean = false,
     val repositoryError: String? = null,
+    val catalogueError: String? = null,
     val pendingUninstall: ExtensionItem? = null,
     val message: String? = null,
 ) {
@@ -90,6 +91,7 @@ data class DiscoverActions(
     val onAddRepository: (String) -> Unit = {},
     val onConfirmUninstall: () -> Unit = {},
     val onDismissUninstall: () -> Unit = {},
+    val onRetryCatalogue: () -> Unit = {},
 ) {
     companion object {
         val NoOp = DiscoverActions()

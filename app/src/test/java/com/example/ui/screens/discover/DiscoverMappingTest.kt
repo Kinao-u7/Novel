@@ -129,7 +129,7 @@ class DiscoverMappingTest {
         )
 
         assertEquals(DiscoverTab.SOURCES, uiState.tab)
-        assertFalse(uiState.extensionsEnabled)
+        assertTrue(uiState.extensionsEnabled)
         assertTrue(uiState.isSearchOpen)
         assertEquals("Test message", uiState.message)
 
@@ -161,6 +161,6 @@ class DiscoverMappingTest {
 
         assertTrue(uiState.pinned.isEmpty())
         assertTrue(uiState.sourceGroups.isEmpty())
-        assertFalse(uiState.extensionsEnabled)
+        assertTrue(uiState.extensionsEnabled)
     }
 }

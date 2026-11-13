@@ -368,8 +368,17 @@ private fun LazyListScope.extensionsContent(state: DiscoverUiState, actions: Dis
         item(key = "h_available") { SectionTitle(stringResource(R.string.discover_section_available)) }
         items(state.available, key = { "a_" + it.id }) { ExtensionRow(it, actions) }
     }
-    if (state.updates.isEmpty() && state.installed.isEmpty() && state.available.isEmpty()) {
-        item(key = "empty") { EmptyState(stringResource(R.string.discover_empty_extensions)) }
+    val hasEnabledRepo = state.repositories.any { it.enabled }
+    when {
+        !hasEnabledRepo -> item(key = "no_repo") {
+            EmptyState(stringResource(R.string.discover_extensions_no_repo))
+        }
+        state.catalogueError != null -> item(key = "cat_error") {
+            CatalogueErrorState(state.catalogueError, actions.onRetryCatalogue)
+        }
+        state.updates.isEmpty() && state.installed.isEmpty() && state.available.isEmpty() -> {
+            item(key = "empty") { EmptyState(stringResource(R.string.discover_empty_extensions)) }
+        }
     }
     item(key = "add_repo") {
         Box(Modifier.fillMaxWidth().padding(top = 22.dp), contentAlignment = Alignment.Center) {
@@ -379,6 +388,26 @@ private fun LazyListScope.extensionsContent(state: DiscoverUiState, actions: Dis
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun CatalogueErrorState(error: String, onRetry: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            stringResource(R.string.discover_catalogue_error_title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            error,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp, bottom = 14.dp),
+        )
+        Button(onClick = onRetry, shape = RoundedCornerShape(12.dp)) {
+            Text(stringResource(R.string.discover_catalogue_error_retry))
         }
     }
 }
@@ -416,7 +445,11 @@ private fun ExtensionAction(item: ExtensionItem, actions: DiscoverActions) {
     val progress = item.progress
     when {
         progress != null -> Box(size, contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = Modifier.size(26.dp), strokeWidth = 2.6.dp)
+            if (progress < 0f) {
+                CircularProgressIndicator(modifier = Modifier.size(26.dp), strokeWidth = 2.6.dp)
+            } else {
+                CircularProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = Modifier.size(26.dp), strokeWidth = 2.6.dp)
+            }
         }
         item.status == ExtensionStatus.AVAILABLE -> Button(
             onClick = { actions.onInstall(item.id) }, modifier = size, shape = shape, contentPadding = padding,
