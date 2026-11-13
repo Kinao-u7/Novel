@@ -59,6 +59,7 @@ Rule for every pass: fix only the items listed for that pass, follow `docs/ARCHI
 - Request Source (6.6): do not save a bare `"https://"`. Say clearly that the request is stored locally.
 - Share one source card between built-in and custom sources (6.7). Move the built-in sources list and the filtering into the ViewModel.
 - One constant for the WTR-Lab base URL (6.8), used everywhere.
+- Plugin installs: HTTPS only, tmp file + rename, never execute during install; no size caps (official repository only; revisit if custom repositories are added).
 
 ## 7d WebBrowser and the add-novel flow
 
