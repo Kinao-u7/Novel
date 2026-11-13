@@ -490,7 +490,7 @@ class NovelRepository(
         }
 
         // 2. Fetch from source when Room has no chapters or forceRefresh requested
-        val source = SourceManager.getSourceById(novel.sourceId)
+        val source = SourceManager.awaitSourceById(novel.sourceId)
             ?: throw SourceUnavailable(novel.sourceId)
         val rawChapters = source.getChapterList(novel.id)
 

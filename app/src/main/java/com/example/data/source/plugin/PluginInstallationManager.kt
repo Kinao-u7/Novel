@@ -85,6 +85,11 @@ class PluginInstallationManager(
         mutex.withLock { readInstalledLocked() }
     }
 
+    fun scriptFile(id: String): File {
+        validateId(id)
+        return File(pluginsDir, "$id.js")
+    }
+
     private fun readInstalledLocked(): List<InstalledPlugin> {
         if (!manifestFile.exists()) return emptyList()
         val text = manifestFile.readText(Charsets.UTF_8)

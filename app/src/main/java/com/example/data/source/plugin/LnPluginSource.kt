@@ -25,37 +25,30 @@ import org.json.JSONObject
  * Native Android [NovelSource] adapter wrapping LNReader JavaScript plugins.
  */
 class LnPluginSource(
-    private val pluginScript: String,
+    pluginScript: String? = null,
     private val pluginLanguage: String = "AR",
     private val context: Context? = null,
     private val customName: String? = null,
     private val customVersion: String? = null,
     private val customId: String? = null,
     private val allowLoopback: Boolean = false,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val scriptFile: File? = null,
+    private val scriptProvider: (() -> String)? = null
 ) : NovelSource, AutoCloseable {
 
+    private val inlineScript: String? = pluginScript
     private val callMutex = Mutex()
     private var host: PluginBridgeHost? = null
 
-    // Read synchronously or lazily from plugin header / script
-    private val lazyMeta: JSONObject by lazy {
-        val idRegex = Regex("""(?:id\s*:\s*["']([^"']+)["']|this\.id\s*=\s*["']([^"']+)["'])""")
-        val nameRegex = Regex("""(?:name\s*:\s*["']([^"']+)["']|this\.name\s*=\s*["']([^"']+)["']|sourceName\s*:\s*["']([^"']+)["'])""")
-        val versionRegex = Regex("""(?:version\s*:\s*["']([^"']+)["']|this\.version\s*=\s*["']([^"']+)["'])""")
-        val siteRegex = Regex("""(?:site\s*:\s*["']([^"']+)["']|this\.site\s*=\s*["']([^"']+)["']|sourceSite\s*:\s*["']([^"']+)["'])""")
-
-        val foundId = idRegex.find(pluginScript)?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() } ?: "unknown"
-        val foundName = nameRegex.find(pluginScript)?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() } ?: foundId
-        val foundVersion = versionRegex.find(pluginScript)?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() } ?: "1.0.0"
-        val foundSite = siteRegex.find(pluginScript)?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() } ?: ""
-
-        JSONObject().apply {
-            put("id", foundId)
-            put("name", foundName)
-            put("version", foundVersion)
-            put("site", foundSite)
+    init {
+        require(inlineScript != null || scriptFile != null || scriptProvider != null) {
+            "LnPluginSource requires pluginScript, scriptFile, or scriptProvider"
         }
+    }
+
+    private val lazyMeta: JSONObject by lazy {
+        LnPluginMapping.extractMetaFromScript(inlineScript ?: loadScriptText())
     }
 
     val rawPluginId: String get() = customId ?: LnPluginMapping.optStringOrNull(lazyMeta, "id") ?: "unknown"
@@ -68,15 +61,36 @@ class LnPluginSource(
     override val description: String get() = "LNReader plugin: $name"
     override val isLocal: Boolean get() = false
 
-    // latestSupported is ASSUMED via source script check
-    override val latestSupported: Boolean get() = pluginScript.contains("showLatestNovels")
+    @Volatile
+    private var cachedLatestSupported: Boolean? = pluginScript?.contains("showLatestNovels")
+    override val latestSupported: Boolean get() = cachedLatestSupported ?: true
     override val filtersSupported: Boolean get() = false
 
     internal fun getBridgeHost(): PluginBridgeHost? = host
 
+    private fun loadScriptText(): String {
+        inlineScript?.let { return it }
+        val text = try {
+            scriptProvider?.invoke() ?: run {
+                val file = scriptFile ?: throw IOException("No script configured for plugin [$pluginId]")
+                if (!file.exists() || !file.isFile) throw IOException("Plugin script file missing for [$pluginId]: ${file.path}")
+                file.readText(Charsets.UTF_8)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IOException) {
+            throw e
+        } catch (e: Throwable) {
+            throw IOException("Failed to load script for plugin [$pluginId]: ${e.message}", e)
+        }
+        return text
+    }
+
     private suspend fun ensureHostInitialized(): PluginBridgeHost {
         host?.let { return it }
         val startMs = android.os.SystemClock.elapsedRealtime()
+        val script = loadScriptText()
+        cachedLatestSupported = script.contains("showLatestNovels")
         val newHost = PluginBridgeHost(
             httpClient = PluginHttpClientImpl(allowLoopback = allowLoopback)
         )
@@ -85,7 +99,7 @@ class LnPluginSource(
         val harnessJs = loadAssetOrFile("js/harness.js")
 
         newHost.initHarness(polyfillsJs, libsJs, harnessJs)
-        newHost.loadPlugin(pluginId, pluginScript)
+        newHost.loadPlugin(pluginId, script)
         host = newHost
         val elapsedMs = android.os.SystemClock.elapsedRealtime() - startMs
         Log.i("LnPluginSource", "Initialized plugin [$pluginId] in ${elapsedMs}ms")
@@ -200,6 +214,7 @@ class LnPluginSource(
     override suspend fun getLatestNovels(page: Int): List<Novel> = withContext(ioDispatcher) {
         if (!latestSupported) return@withContext emptyList()
         runPluginCall("latestNovels") { bridge ->
+            if (cachedLatestSupported == false) return@runPluginCall emptyList()
             val extra = JSONObject().apply { put("showLatestNovels", true) }
             val jsonStr = bridge.callPluginWithOptions(pluginId, "popularNovels", listOf(page), extra)
             LnPluginMapping.parseNovelsArray(jsonStr, id, name, ::isPathLengthSafe, ::encodeNovelId)

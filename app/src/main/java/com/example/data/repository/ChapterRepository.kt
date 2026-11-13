@@ -172,7 +172,7 @@ class ChapterRepository(
     internal suspend fun fetchChapterContentFromNetwork(novel: Novel, chapterId: String): ChapterContent {
         val key = Pair(novel.id, chapterId)
         val candidate = repositoryScope.async(start = CoroutineStart.LAZY) {
-            val source = SourceManager.getSourceById(novel.sourceId)
+            val source = SourceManager.awaitSourceById(novel.sourceId)
                 ?: throw SourceUnavailable(novel.sourceId)
             source.getChapterContent(novel.id, chapterId)
         }

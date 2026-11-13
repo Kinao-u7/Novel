@@ -6,7 +6,13 @@ import com.example.BuildConfig
 import com.example.data.repository.NovelRepository
 import com.example.data.repository.SettingsRepository
 import com.example.data.source.SourceManager
+import com.example.data.source.plugin.InstalledPluginSources
 import com.example.data.source.plugin.LnPluginSource
+import com.example.data.source.plugin.PluginInstallationManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 private const val DEBUG_PLUGIN_ASSET = "plugins/FansMTL_readwn.js"
 
@@ -21,9 +27,16 @@ private const val DEBUG_PLUGIN_ASSET = "plugins/FansMTL_readwn.js"
  */
 class AppContainer(context: Context) {
     val appContext: Context = context.applicationContext ?: context
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    val installedPluginSources: InstalledPluginSources by lazy {
+        InstalledPluginSources(PluginInstallationManager(appContext), appContext)
+    }
 
     init {
         registerDebugPluginIfPresent()
+        SourceManager.setPluginsReadySignal(installedPluginSources.readySignal)
+        appScope.launch { installedPluginSources.loadAll() }
     }
 
     private fun registerDebugPluginIfPresent() {

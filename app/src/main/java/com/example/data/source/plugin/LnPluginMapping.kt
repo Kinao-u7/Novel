@@ -160,4 +160,16 @@ object LnPluginMapping {
             )
         }
     }
+
+    fun extractMetaFromScript(script: String): JSONObject {
+        val idRegex = Regex("""(?:id\s*:\s*["']([^"']+)["']|this\.id\s*=\s*["']([^"']+)["'])""")
+        val nameRegex = Regex("""(?:name\s*:\s*["']([^"']+)["']|this\.name\s*=\s*["']([^"']+)["']|sourceName\s*:\s*["']([^"']+)["'])""")
+        val versionRegex = Regex("""(?:version\s*:\s*["']([^"']+)["']|this\.version\s*=\s*["']([^"']+)["'])""")
+        val siteRegex = Regex("""(?:site\s*:\s*["']([^"']+)["']|this\.site\s*=\s*["']([^"']+)["']|sourceSite\s*:\s*["']([^"']+)["'])""")
+        val foundId = idRegex.find(script)?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() } ?: "unknown"
+        val foundName = nameRegex.find(script)?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() } ?: foundId
+        val foundVersion = versionRegex.find(script)?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() } ?: "1.0.0"
+        val foundSite = siteRegex.find(script)?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() } ?: ""
+        return JSONObject().put("id", foundId).put("name", foundName).put("version", foundVersion).put("site", foundSite)
+    }
 }

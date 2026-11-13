@@ -117,7 +117,7 @@ class BrowseViewModel(
             failedPage = null
 
             try {
-                val currentSource = sourceManager.getSourceById(sourceId)
+                val currentSource = sourceManager.awaitSourceById(sourceId)
                     ?: throw SourceUnavailable(sourceId)
                 val mode = _uiState.value.mode
                 val rawNovels = withContext(Dispatchers.IO) {
