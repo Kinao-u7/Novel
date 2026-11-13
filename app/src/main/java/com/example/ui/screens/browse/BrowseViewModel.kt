@@ -8,6 +8,7 @@ import com.example.data.repository.NovelRepository
 import com.example.data.source.NovelSource
 import com.example.data.source.SourceManager
 import com.example.data.source.SourceUnavailable
+import com.example.data.source.plugin.LnPluginSource
 import com.example.ui.navigation.BrowseSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +52,7 @@ class BrowseViewModel(
     private var failedPage: Int? = null
 
     init {
-        if (initialSource == null) {
+        if (initialSource == null && !sourceId.startsWith(LnPluginSource.PREFIX)) {
             _uiState.update {
                 it.copy(
                     isLoading = false,
@@ -119,6 +120,14 @@ class BrowseViewModel(
             try {
                 val currentSource = sourceManager.awaitSourceById(sourceId)
                     ?: throw SourceUnavailable(sourceId)
+                _uiState.update {
+                    it.copy(
+                        sourceName = currentSource.name,
+                        subtitle = "${currentSource.language} · v${currentSource.version}",
+                        latestSupported = currentSource.latestSupported,
+                        filtersSupported = currentSource.filtersSupported
+                    )
+                }
                 val mode = _uiState.value.mode
                 val rawNovels = withContext(Dispatchers.IO) {
                     when (mode) {

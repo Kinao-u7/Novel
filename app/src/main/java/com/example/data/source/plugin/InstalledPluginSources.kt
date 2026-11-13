@@ -19,7 +19,7 @@ class InstalledPluginSources(
 ) {
     val readySignal = CompletableDeferred<Unit>()
 
-    suspend fun awaitLoaded() {
+    internal suspend fun awaitLoaded() {
         readySignal.await()
     }
 
@@ -74,7 +74,8 @@ class InstalledPluginSources(
             allowLoopback = allowLoopback,
             ioDispatcher = ioDispatcher,
             scriptFile = file,
-            scriptProvider = provider
+            scriptProvider = provider,
+            initialLatestSupported = entry.latestSupported
         )
     }
 

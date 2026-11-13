@@ -99,6 +99,7 @@ class InstalledPluginSourcesTest {
         assertEquals("Valid Plug", valid!!.name)
         assertEquals("FR", valid.language)
         assertEquals("2.0.1", valid.version)
+        assertTrue(valid.latestSupported)
         assertEquals("Bonjour", valid.getPopularNovels(1).single().title)
 
         val missing = SourceManager.getSourceById("ln_missing_js")
@@ -197,5 +198,22 @@ class InstalledPluginSourcesTest {
         job.join()
         assertNotNull(found)
         assertNull(SourceManager.awaitSourceById("ln_never_exists", timeoutMs = 50L))
+    }
+
+    @Test fun latestSupportedIsPersistedWithoutExecutingAndReloaded() = runBlocking<Unit> {
+        serve("/no_lat.js", body = fakeScript("lat_p", "No Latest"))
+        serve("/with_lat.js", body = fakeScript("lat_p", "Has") + "// showLatestNovels")
+        val sources = InstalledPluginSources(manager)
+        sources.install(entry("lat_p", "1.0.0", "$serverUrl/no_lat.js"))
+        assertFalse(SourceManager.getSourceById("ln_lat_p")!!.latestSupported)
+
+        SourceManager.unregisterSource("ln_lat_p")
+        InstalledPluginSources(manager).loadAll()
+        val reloaded = SourceManager.getSourceById("ln_lat_p") as LnPluginSource
+        assertFalse(reloaded.latestSupported)
+        assertNull(reloaded.getBridgeHost())
+
+        sources.update(entry("lat_p", "1.1.0", "$serverUrl/with_lat.js"))
+        assertTrue(SourceManager.getSourceById("ln_lat_p")!!.latestSupported)
     }
 }

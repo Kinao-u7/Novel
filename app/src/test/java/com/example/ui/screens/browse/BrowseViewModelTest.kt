@@ -13,14 +13,18 @@ import com.example.data.model.Novel
 import com.example.data.repository.NovelRepository
 import com.example.data.source.NovelSource
 import com.example.data.source.SourceManager
+import com.example.data.source.plugin.LnPluginSource
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
@@ -109,6 +113,8 @@ class BrowseViewModelTest {
         Dispatchers.resetMain()
         mainDispatcher.close()
         SourceManager.unregisterSource(testSource.id)
+        SourceManager.unregisterSource("${LnPluginSource.PREFIX}delayed_browse")
+        SourceManager.setPluginsReadySignal(CompletableDeferred(Unit))
     }
 
     private suspend fun collectState(
@@ -220,5 +226,55 @@ class BrowseViewModelTest {
         vm.onApplyFilters(newFilters)
         assertEquals(newFilters, vm.uiState.value.filters)
         assertFalse(vm.uiState.value.showFilters)
+    }
+
+    @Test
+    fun testLnSource_waitsForPluginsReadySignalAfterProcessDeath() {
+        val delayedId = "${LnPluginSource.PREFIX}delayed_browse"
+        val delayedSource = object : NovelSource {
+            override val id: String = delayedId
+            override val name: String = "Delayed Pavilion"
+            override val language: String = "AR"
+            override val version: String = "2.1.0"
+            override val description: String = "Delayed plugin"
+            override val isLocal: Boolean = false
+            override val latestSupported: Boolean = false
+            override val filtersSupported: Boolean = false
+            override suspend fun getPopularNovels(page: Int): List<Novel> = listOf(
+                Novel(id = "del_1", title = "Delayed Novel", author = "Author", description = "Desc", sourceId = id, sourceName = name)
+            )
+            override suspend fun searchNovels(query: String, page: Int): List<Novel> = emptyList()
+            override suspend fun getNovelDetails(novelId: String): Novel = throw NotImplementedError()
+            override suspend fun getChapterList(novelId: String): List<Chapter> = emptyList()
+            override suspend fun getChapterContent(novelId: String, chapterId: String): ChapterContent = throw NotImplementedError()
+        }
+
+        val readySignal = CompletableDeferred<Unit>()
+        SourceManager.setPluginsReadySignal(readySignal)
+        val vm = BrowseViewModel(repository, SavedStateHandle(mapOf("sourceId" to delayedId)), SourceManager)
+        viewModel = vm
+
+        assertTrue(vm.uiState.value.isLoading)
+        assertNull(vm.uiState.value.error)
+
+        val state = kotlinx.coroutines.runBlocking {
+            val regJob = launch(Dispatchers.IO) {
+                delay(50)
+                SourceManager.registerSource(delayedSource)
+                readySignal.complete(Unit)
+            }
+            try {
+                collectState(vm) { !it.isLoading && it.novels.isNotEmpty() }
+            } finally {
+                regJob.join()
+            }
+        }
+
+        assertNull(state.error)
+        assertEquals("Delayed Pavilion", state.sourceName)
+        assertEquals("AR · v2.1.0", state.subtitle)
+        assertFalse(state.latestSupported)
+        assertEquals(1, state.novels.size)
+        assertEquals("Delayed Novel", state.novels[0].title)
     }
 }

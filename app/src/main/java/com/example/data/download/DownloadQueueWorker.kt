@@ -185,7 +185,7 @@ class DownloadQueueWorker(
                         }
 
                         val sourceId = novelEntity.sourceId
-                        val source = SourceManager.getSourceById(sourceId)
+                        val source = SourceManager.awaitSourceById(sourceId)
                         if (source == null) {
                             chapterNotBefore.remove(Pair(candidate.novelId, candidate.chapterId))
                             downloadQueueDao.updateStatusIfExpected(
@@ -312,7 +312,7 @@ class DownloadQueueWorker(
                                 return@launch
                             }
 
-                            val source = SourceManager.getSourceById(sourceId)
+                            val source = SourceManager.awaitSourceById(sourceId)
                             if (source == null) {
                                 chapterNotBefore.remove(Pair(item.novelId, item.chapterId))
                                 downloadQueueDao.updateStatusAndRetryIfDownloading(

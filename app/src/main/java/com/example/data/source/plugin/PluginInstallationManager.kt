@@ -21,7 +21,8 @@ data class InstalledPlugin(
     val language: String,
     val version: String,
     val site: String,
-    val iconUrl: String? = null
+    val iconUrl: String? = null,
+    val latestSupported: Boolean = true
 )
 
 class PluginInstallationManager(
@@ -63,7 +64,8 @@ class PluginInstallationManager(
                 }
                 if (tmpFile.length() == 0L) throw IOException("Downloaded script is empty for ${entry.id}")
                 if (!tmpFile.renameTo(targetFile)) throw IOException("Failed to rename ${tmpFile.name}")
-                val record = InstalledPlugin(entry.id, entry.name, entry.lang, entry.version, entry.site, entry.iconUrl)
+                val supportsLatest = targetFile.readText(Charsets.UTF_8).contains("showLatestNovels")
+                val record = InstalledPlugin(entry.id, entry.name, entry.lang, entry.version, entry.site, entry.iconUrl, supportsLatest)
                 writeInstalledLocked(readInstalledLocked().filterNot { it.id == entry.id } + record)
                 record
             } finally {
@@ -101,7 +103,8 @@ class PluginInstallationManager(
                 id = obj.getString("id"), name = obj.getString("name"),
                 language = obj.getString("language"), version = obj.getString("version"),
                 site = obj.optString("site", ""),
-                iconUrl = obj.optString("iconUrl", "").takeIf { it.isNotEmpty() && it != "null" }
+                iconUrl = obj.optString("iconUrl", "").takeIf { it.isNotEmpty() && it != "null" },
+                latestSupported = obj.optBoolean("latestSupported", true)
             )
         }
     }
@@ -112,6 +115,7 @@ class PluginInstallationManager(
             list.forEach { item ->
                 put(JSONObject().put("id", item.id).put("name", item.name).put("language", item.language)
                     .put("version", item.version).put("site", item.site)
+                    .put("latestSupported", item.latestSupported)
                     .apply { if (item.iconUrl != null) put("iconUrl", item.iconUrl) })
             }
         }
